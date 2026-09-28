@@ -173,8 +173,17 @@ The product's own rules, on top of everything above.
   world looks around within its bounds, and the page scrolls everywhere
   else. A drag never opens anything. Moves are short and can be interrupted;
   with Reduce Motion they are instant.
+- **The selection is always actionable.** The selected project's name, its
+  one dominant status and a Brief action sit in a slim dock under the world,
+  above the tab bar, whatever was panned, focused, rotated or reopened. It is
+  a pointer to the brief, not a second brief: the details live there.
+- **Attention is short because the row says why.** Each button says only
+  what the project needs — Decision, QA, or what is blocking — and its
+  accessible name says it in full. It is never hidden behind a control.
 - **One status per label.** A label says the project's name and one status —
-  what needs you, if anything does — in words and a shape. The brief says the
+  what needs you, if anything does — in words and a shape. Labels are type,
+  not boxes: a chip only for what needs you, a backing only for the
+  selection. The brief says the
   rest. Labels never shrink as projects are added; the world pans instead. A
   label that cannot be read without covering another is not shown, and cannot
   be tapped.

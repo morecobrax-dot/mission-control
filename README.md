@@ -33,8 +33,10 @@ and works offline.
   status on its label (what needs you comes first), a beacon lit only by a
   known state, and a worker whose station and pose follow that state; a
   project with no recorded state has no worker. Tap once to bring a project
-  into focus; tap again (or press Enter) for its brief. Drag inside the world
-  to look around; Overview shows every project again. Where WebGL 2 is not
+  into focus; tap again (or press Enter) for its brief, or use the Brief
+  button in the slim bar under the world, which always shows the selected
+  project above the tab bar. Drag inside the world to look around; Overview
+  shows every project again. Where WebGL 2 is not
   available, or the world fails, the flat isometric field is used instead.
 - **Quick brief.** Purpose, version, phase, status, current work, next action,
   the blocker if there is one, and when it was last updated — plus the tools

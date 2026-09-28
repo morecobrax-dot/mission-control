@@ -129,6 +129,8 @@
   --tabbar-h: 58px;
   /* The interactive target, not necessarily the visible mark. */
   --touch-min: 44px;
+  /* The selection dock under the world: one row, a name of up to two lines. */
+  --dock-h: 56px;
   /* iOS Safari zooms a focused field below this and never zooms back. */
   --input-min-size: 16px;
 
@@ -199,6 +201,8 @@
   --light-sky: #B9C7DE;
   --light-ground: #1A2231;
   --world-label: rgba(11,15,22,0.72);
+  /* The ground every place stands on, a step above the floor. */
+  --field-ground: #0F1622;
 
   /* Each project's ground and landmark accent. The grounds stay dark and
      every accent is at least ΔE 20 (CIELAB) from every status hue above —
@@ -837,11 +841,14 @@ body.scroll-locked{
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm);
   margin: 0 0 var(--space-xs);
 }
+/* The hub gives the world the height: the counts start close under the
+   header. */
+#view-home{ padding-top: var(--space-sm); }
 .attention-strip{ display: flex; flex-wrap: wrap; gap: var(--space-xs); max-width: 100%; }
 .attention-strip:empty{ display: none; }
 .attn-pill{
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0;
-  min-height: var(--touch-min); padding: 0 var(--space-sm);
+  min-height: var(--touch-min); padding: 0 var(--space-md) 0 var(--space-sm);
   background: var(--surface); color: var(--text); text-align: left; cursor: pointer;
   border: 1px solid var(--border); border-left: 3px solid var(--sig); border-radius: var(--radius-md);
   font-size: var(--fs-support); line-height: var(--lh-tight);
@@ -849,9 +856,21 @@ body.scroll-locked{
 }
 .attn-pill:active{ transform: scale(0.98); }
 .attn-pill .attn-mark{ flex-shrink: 0; display: flex; color: var(--sig); }
-.attn-pill .attn-name{ flex-shrink: 0; font-weight: 600; white-space: nowrap; }
-.attn-pill .attn-why{ min-width: 0; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.attn-pill .attn-go{ flex-shrink: 0; display: flex; color: var(--text-faint); }
+.attn-pill .attn-name{ flex: 0 1 auto; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.attn-pill .attn-why{ flex: 0 1 auto; min-width: 2.5em; color: var(--sig); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Three or more on a phone: two to a row, so the row stays short, each
+   with its name over what it needs so both have the pill's width. What
+   still cannot fit ends with an ellipsis; its accessible name and the brief
+   say all of it. */
+@media (max-width: 559px){
+  .attention-strip.is-many{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .attention-strip.is-many .attn-pill{
+    display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; row-gap: 1px;
+    align-content: center; padding-top: 3px; padding-bottom: 3px;
+  }
+  .attention-strip.is-many .attn-mark{ grid-row: span 2; }
+  .attention-strip.is-many .attn-why{ font-size: var(--fs-meta); }
+}
 
 .hub-summary{
   display: flex; align-items: center; gap: var(--space-sm);
@@ -1000,20 +1019,29 @@ body.scroll-locked{
 }
 
 /* ---- The 3D world ----
-   field/render3d.js draws into .world-view: one transparent canvas over
-   the field's own floor, and above it one real button per project (its tap
-   target, its name and its keyboard stop), moved onto its tile each frame.
-   While the world loads, the field already has the world's height and the
-   SVG waits hidden, so nothing jumps and the flat field never flashes. */
+   field/render3d.js draws into #worldHost, laid over the field's own box:
+   one transparent canvas over the field's floor, and above it one real
+   button per project (its tap target, its name and its keyboard stop),
+   moved onto its tile each frame. While the world loads, the flat field in
+   the same box stays drawn and stays the one you can touch; the world takes
+   over only once its first frame is on screen. The box's height is what
+   the screen has left (fitField() measures it); this is its fallback. */
+.field-box{ position: relative; }
 .project-field{ --world-h: clamp(300px, calc(100dvh - 330px - var(--inset-top) - var(--inset-bottom)), 780px); }
-.project-field.is-world, .project-field.world-pending{
-  height: var(--world-h); padding: 0;
+.project-field.is-world, .project-field.world-loading{ height: var(--world-h); }
+.project-field.is-world{
+  padding: 0;
   background: radial-gradient(ellipse at 50% 42%, var(--field-haze), transparent 70%), var(--field-floor);
 }
-.project-field.world-pending > .field-grid{ visibility: hidden; }
+/* Loading: the flat field, whole and usable, in the world's box. */
+.project-field.world-loading{ display: flex; flex-direction: column; justify-content: center; overflow-y: auto; }
+.world-host{
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  border-radius: var(--radius-xl);
+}
 /* Inside the world a drag pans it; outside, the page scrolls as ever. */
 .world-view{
-  position: absolute; inset: 0; overflow: hidden; cursor: grab;
+  position: absolute; inset: 0; overflow: hidden; cursor: grab; pointer-events: auto;
   touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .world-view.is-panning{ cursor: grabbing; }
@@ -1028,19 +1056,31 @@ body.scroll-locked{
 }
 .world-tile:focus-visible{ outline: none; }
 .world-hit{ position: absolute; inset: 0; pointer-events: auto; cursor: pointer; }
+/* A label is part of the scene: no box, just type with a soft edge of the
+   floor's own colour so it reads over a plinth. The name leads; one status
+   follows — a chip only when it needs you. The selected project alone gets
+   a backing, so it stands out without every label competing. */
 .world-label{
   position: absolute; top: calc(100% - var(--label-tuck, 0px)); left: 50%; transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   width: max-content; max-width: var(--label-max, 140px); min-height: var(--touch-min);
-  padding: 3px var(--space-sm); border-radius: var(--radius-md);
-  background: var(--world-label); text-align: center; pointer-events: auto; cursor: pointer;
+  padding: 2px var(--space-sm); border-radius: var(--radius-md);
+  background: none; text-align: center; pointer-events: auto; cursor: pointer;
   transition: opacity var(--dur) var(--ease);
 }
+.world-tile.is-selected .world-label{ background: var(--world-label); }
 .world-name{
   font-size: var(--fs-meta); font-weight: 700; line-height: var(--lh-tight);
-  color: var(--text-dim); overflow-wrap: break-word;
+  color: var(--text); overflow-wrap: break-word;
+  text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor), 0 0 2px var(--field-floor);
 }
-.world-tile.is-selected .world-name{ color: var(--text); }
+.world-state{
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; color: var(--sig);
+  text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor);
+}
+.world-badge .block-unrecorded{ text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor); }
 .world-tile.is-selected .world-name::after{
   content: ''; display: block; height: 2px; margin: 3px auto 0; width: 60%;
   border-radius: var(--radius-pill); background: var(--field-select);
@@ -1061,29 +1101,38 @@ body.scroll-locked{
 }
 .world-overview[hidden]{ display: none; }
 
-/* ---- The focus bar: the selected project, one tap from its brief ---- */
-.focus-host{ margin-top: var(--space-md); }
+/* ---- The dock: the selected project, one tap from its brief ----
+   Directly under the world and always the same height — a hint until
+   something is selected — so choosing a project never moves the world.
+   fitField() leaves room for it above the tab bar, and a reveal stops
+   short of the bar. The details stay in the brief. */
+.focus-host{
+  margin-top: var(--space-xs);
+  scroll-margin-bottom: calc(var(--tabbar-h) + var(--inset-bottom) + var(--space-sm));
+}
+.focus-bar, .focus-hint{ height: var(--dock-h); margin: 0; }
 .focus-bar{
-  display: flex; align-items: center; gap: var(--space-md); width: 100%;
-  min-height: var(--touch-min); padding: var(--space-md) var(--space-lg);
+  display: flex; align-items: center; gap: var(--space-sm); width: 100%;
+  padding: 0 var(--space-sm) 0 var(--space-md);
   background: var(--surface); color: var(--text); text-align: left; cursor: pointer;
   border: 1px solid var(--border); border-left: 3px solid var(--sig);
   border-radius: var(--radius-md); box-shadow: inset 0 1px 0 var(--edge-hi);
 }
-.focus-main{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.focus-name{ display: flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-title); font-weight: 600; }
-.chip-row{ display: flex; flex-wrap: wrap; gap: var(--space-xs); }
-.focus-next{
-  font-size: var(--fs-meta); color: var(--text-dim);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.focus-name{
+  flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 700; line-height: var(--lh-tight);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere;
 }
+.focus-bar .chip{ flex-shrink: 0; }
 .focus-go{
-  flex-shrink: 0; display: flex; align-items: center; gap: 2px;
+  flex-shrink: 0; display: flex; align-items: center; gap: 2px; align-self: stretch;
+  padding: 0 var(--space-xs) 0 var(--space-sm); border-left: 1px solid var(--border-quiet);
   color: var(--accent); font-size: var(--fs-support); font-weight: 600;
 }
-.focus-hint{ padding: var(--space-sm) var(--space-md); text-align: center; color: var(--text-faint); font-size: var(--fs-support); }
-.focus-source{ display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-micro); color: var(--text-faint); }
-.focus-source svg{ flex-shrink: 0; }
+.focus-hint{
+  display: flex; align-items: center; justify-content: center; padding: 0 var(--space-md);
+  text-align: center; color: var(--text-faint); font-size: var(--fs-support);
+}
+.chip-row{ display: flex; flex-wrap: wrap; gap: var(--space-xs); }
 
 /* ---- Quick brief ---- */
 .brief-head{ display: flex; align-items: flex-start; gap: var(--space-md); margin-bottom: var(--space-md); }
@@ -1193,11 +1242,14 @@ body.scroll-locked{
   .hud-item{ padding: var(--space-xs); }
   .project-field{ padding-bottom: var(--space-md); }
   .field-grid{ grid-template-columns: repeat(6, minmax(0, 1fr)); max-width: 640px; }
-  /* The world takes what height there is; the camera fits the row to it. */
-  .project-field{ --world-h: max(140px, calc(100dvh - 246px - var(--inset-top) - var(--inset-bottom))); }
-  /* Six labels share one short row: smaller type, closer set, still whole words. */
-  .world-label{ gap: 2px; padding: 2px 3px; }
-  .world-name{ font-size: var(--fs-micro); }
+  /* With the world, the hub takes the phone's whole width, and the world
+     the screen's whole height under its counts: the page scrolls to it and
+     every place is large enough to read and tap. */
+  #view-home.has-world, .app-header.hub-top.has-world{
+    max-width: none;
+    padding-left: calc(var(--space-lg) + var(--inset-left));
+    padding-right: calc(var(--space-lg) + var(--inset-right));
+  }
   .field-grid .block:nth-child(3n+2){ margin-top: 0; }
   .field-grid .block:nth-child(even){ margin-top: 18%; }
 }
@@ -1206,7 +1258,7 @@ body.scroll-locked{
    The same query is WIDE_QUERY in the script; a contract keeps them equal. */
 .hub-brief{ display: none; }
 @media (min-width: 900px) and (min-height: 600px){
-  .app-header, .tabbar, #view-home{ max-width: var(--layout-wide); }
+  .app-header, .tabbar, #view-home, #view-home.has-world, .app-header.hub-top.has-world{ max-width: var(--layout-wide); }
   .hub{
     display: grid; grid-template-columns: minmax(0, 1fr) var(--brief-dock);
     gap: var(--space-xl); align-items: start;
@@ -1274,7 +1326,10 @@ body.scroll-locked{
           <p class="hub-summary" id="hubSummary"></p>
         </div>
         <span class="sr-only" id="fieldHeading">All projects</span>
-        <div class="project-field" id="projectField" role="group" aria-labelledby="fieldHeading"></div>
+        <div class="field-box">
+          <div class="project-field" id="projectField" role="group" aria-labelledby="fieldHeading"></div>
+          <div class="world-host" id="worldHost" aria-labelledby="fieldHeading"></div>
+        </div>
         <div class="focus-host" id="focusBar"></div>
       </section>
       <section class="hub-brief" id="dockedBrief" aria-label="Quick brief"></section>
@@ -1560,6 +1615,25 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-3-1',
+    version: '0.3.1',
+    title: 'A composed world',
+    date: '2026-09-28',
+    summary: 'The world fills the screen it has, the places are larger, and the selected project\'s brief is always one tap away above the tab bar.',
+    newFeatures: [],
+    improvements: [
+      'The selected project sits in a slim bar under the world with its one status and a Brief button, always above the tab bar',
+      'Places are larger on a phone: each row sits as close as its own buildings and labels allow, and every place stands on one shared ground',
+      'Labels are lighter: the name, then one status, with a chip only for what needs you',
+      'What needs you takes one row: each button says Decision, QA or what is blocking, and three or more sit two to a row on a phone',
+      'On a phone turned sideways the world uses the whole width and height, so every place is large enough to read and to tap',
+      'On a slow first visit the flat field stays usable until the world is ready, and a project chosen meanwhile stays chosen'
+    ],
+    fixes: [
+      'On a phone the selected project\'s summary could sit behind the tab bar, and its Brief action with it'
+    ]
+  },
   {
     id: 'v0-3-0',
     version: '0.3.0',
@@ -3223,8 +3297,10 @@ function watchLayout(){
    first paint, only where WebGL 2 exists. It keeps a real
    button per project as its tap target and accessibility layer.
    IsoField, an inline SVG platform inside one button per
-   project, draws the first paint while the world loads and is
-   the fallback for the rest of the visit when it cannot run.
+   project, draws the first paint and stays the one you can
+   touch while the world loads behind it in #worldHost; it is
+   also the fallback for the rest of a visit when the world
+   cannot run. Each renderer has its own host in one box.
    ========================================================= */
 
 /* The files the app loads besides itself: the world's modules and the
@@ -3233,8 +3309,6 @@ function watchLayout(){
    contract checks every file exists. */
 const APP_FILES = ['./field/world.js', './field/render3d.js', './vendor/three/three.min.js'];
 const WORLD_MODULE = './field/render3d.js';
-/* A slow first visit shows the flat field rather than an empty floor. */
-const WORLD_WAIT_MS = 4000;
 
 function fieldScene(views){
   return views.map(v => ({
@@ -3254,16 +3328,17 @@ function fieldSpoken(v){
 }
 
 /* One status on a world label, with its word and shape: what needs you if
-   anything does (and how many more things do), else the recorded status,
-   else Needs update — said in words, never as a chip, which would read as
-   a status. */
+   anything does (and how many more things do), as a chip; else the
+   recorded status, quietly, in its colour with no chip; else Needs update
+   — said in words, never as a chip, which would read as a status. */
 function fieldBadgeHtml(v){
   if(v.attention.length){
     const k = v.attention[0];
     return '<span class="chip sig-' + k + '">' + signalIcon(k, 11) + escapeHtml(SIGNALS[k].short) +
       (v.attention.length > 1 ? ' +' + (v.attention.length - 1) : '') + '</span>';
   }
-  if(v.recorded) return statusChipHtml(v.status, true);
+  if(v.recorded) return '<span class="world-state sig-' + v.status + '">' + signalIcon(v.status, 11) +
+    escapeHtml(SIGNALS[v.status].short) + '</span>';
   return '<span class="block-unrecorded sig-unrecorded">' + signalIcon('unrecorded', 11) +
     escapeHtml(SIGNALS.unrecorded.label) + '</span>';
 }
@@ -3297,7 +3372,6 @@ const WorldField = {
     const w = this.world;
     this.world = null;
     if(w) try{ w.destroy(); }catch(e){}
-    if(this.host) this.host.classList.remove('is-world');
     this.host = null;
   }
 };
@@ -3319,48 +3393,98 @@ function worldSupported(){
   }catch(e){ return false; }
 }
 
+/* The world is made behind the flat field, in its own host. Until its
+   first frame is on screen the flat field stays drawn and stays the one
+   renderer you can touch (the world's view is invisible, so it takes no
+   taps and no focus); then adoptWorld() hands the field over in one step. */
 function startWorld(){
   if(worldStage !== 'idle') return;
-  const host = document.getElementById('projectField');
-  if(!host || !worldSupported()){ worldStage = 'off'; return; }
+  const field = document.getElementById('projectField'), host = document.getElementById('worldHost');
+  if(!field || !host || !worldSupported()){ worldStage = 'off'; return; }
   worldStage = 'loading';
-  host.classList.add('world-pending');
-  const reveal = setTimeout(() => host.classList.remove('world-pending'), WORLD_WAIT_MS);
+  field.classList.add('world-loading');
+  setWorldLayout(true);
   import(WORLD_MODULE).then(mod => {
-    clearTimeout(reveal);
     if(worldStage !== 'loading') return;
-    /* The flat field leaves first: the host holds one renderer at a time.
-       If the world cannot start, stopWorld() draws the flat field again. */
-    Field.unmount();
-    const world = mod.createWorld(host, {
+    WorldField.world = mod.createWorld(host, {
       onTap: tapProject,
       onFail: stopWorld,
+      onReady: adoptWorld,
       reducedMotion: prefersReducedMotion,
       covered: () => document.body.classList.contains('scroll-locked')
     });
-    WorldField.world = world;
-    Field = WorldField;
-    Field.mount(host);
-    host.classList.remove('world-pending');
-    host.classList.add('is-world');
-    worldStage = 'on';
-    renderHub();
-  }).catch(() => {
-    clearTimeout(reveal);
-    stopWorld();
-  });
+    WorldField.world.draw(fieldScene(allViews()));
+  }).catch(() => stopWorld());
+}
+
+function adoptWorld(){
+  if(worldStage !== 'loading') return;
+  const field = document.getElementById('projectField'), host = document.getElementById('worldHost');
+  /* A keyboard on a flat platform moves to the same project's tile. */
+  const keep = isBlockFocused() ? selectedId : null;
+  IsoField.unmount();
+  field.classList.remove('world-loading');
+  field.classList.add('is-world');
+  field.removeAttribute('role');
+  field.setAttribute('aria-hidden', 'true');
+  host.setAttribute('role', 'group');
+  Field = WorldField;
+  Field.mount(host);
+  worldStage = 'on';
+  renderHub();
+  if(keep) Field.focus(keep);
 }
 
 function stopWorld(){
   if(worldStage === 'off') return;
   worldStage = 'off';
-  const host = document.getElementById('projectField');
-  if(host) host.classList.remove('world-pending');
-  if(Field === WorldField){
-    Field.unmount();
-    Field = IsoField;
+  const field = document.getElementById('projectField'), host = document.getElementById('worldHost');
+  if(field){
+    field.classList.remove('world-loading', 'is-world');
+    field.setAttribute('role', 'group');
+    field.removeAttribute('aria-hidden');
   }
+  if(host) host.removeAttribute('role');
+  setWorldLayout(false);
+  WorldField.unmount();
+  if(Field === WorldField) Field = IsoField;
   renderHub();
+}
+
+/* The hub's width and the field's height follow the world: only the world
+   takes a phone's full width on its side, and only the world's box is
+   sized to the screen. */
+function setWorldLayout(on){
+  [document.getElementById('view-home'), document.querySelector('.app-header.hub-top')]
+    .forEach(el => { if(el) el.classList.toggle('has-world', on); });
+  const field = document.getElementById('projectField');
+  if(!on && field && field.style && field.style.removeProperty) field.style.removeProperty('--world-h');
+  fitField();
+}
+
+/* The world's box takes the height the screen has left: from where the box
+   starts to the tab bar, less the dock and its gap. Measured, so a second
+   row of attention, a safe area or a docked brief changes it, and nothing
+   is guessed per device. On a phone on its side the box takes the screen's
+   whole height under the tab bar and the page scrolls to it, so the places
+   stay large enough to read and to tap. The camera frames whatever it gets. */
+const FIELD_MIN = 280, FIELD_MIN_SHORT = 180, FIELD_MAX = 1000;
+function fitField(){
+  const field = document.getElementById('projectField');
+  if(worldStage === 'off' || !field || typeof field.getBoundingClientRect !== 'function') return;
+  try{
+    const vh = window.innerHeight, vw = window.innerWidth;
+    if(!vh) return;
+    const tab = document.querySelector('.tabbar'), dock = document.getElementById('focusBar');
+    const bar = tab ? tab.getBoundingClientRect().height : 0;
+    const dockH = dock && getComputedStyle(dock).display !== 'none' ? dock.getBoundingClientRect().height + 4 : 0;
+    const gap = 8;
+    const short = vh <= 500 && vw > vh;
+    const top = short ? gap : field.getBoundingClientRect().top + (window.scrollY || 0);
+    const h = Math.round(Math.min(FIELD_MAX, Math.max(short ? FIELD_MIN_SHORT : FIELD_MIN, vh - top - bar - dockH - gap)));
+    const now = parseFloat(field.style.getPropertyValue('--world-h')) || 0;
+    if(Math.abs(now - h) >= 1) field.style.setProperty('--world-h', h + 'px');
+  }catch(e){}
 }
 
 function isoBlockHtml(b){
@@ -3625,6 +3749,7 @@ function renderHub(given){
     const v = views.find(x => x.id === selectedId);
     if(v) renderBriefPage(v);
   }
+  fitField();
 }
 
 /* One line under the counts, in place of a note, a heading and an empty
@@ -3697,18 +3822,24 @@ function renderAttention(views){
   if(!el) return;
   const queue = attentionQueue(views);
   el.innerHTML = queue.map(attentionPillHtml).join('');
+  el.classList.toggle('is-many', queue.length > 2);
   if(queue.length){ el.setAttribute('role', 'group'); el.setAttribute('aria-label', 'Needs attention'); }
   else { el.removeAttribute('role'); el.removeAttribute('aria-label'); }
 }
+/* The row already says these need you, so each button says only what:
+   Decision, QA, or what is blocking — the short word, and "+1" when there
+   is more. Its accessible name says all of it in full. */
 function attentionPillHtml(v){
   const kind = v.attention[0];
   const reasons = [kind === 'blocked' ? 'Blocked: ' + v.blocker : SIGNALS[kind].label]
     .concat(v.attention.slice(1).map(k => SIGNALS[k].label));
-  return '<button class="attn-pill sig-' + kind + '" onclick="openProjectBrief(\'' + escapeAttr(v.id) + '\')">' +
+  const why = (kind === 'blocked' ? 'Blocked: ' + v.blocker : SIGNALS[kind].short) +
+    (v.attention.length > 1 ? ' +' + (v.attention.length - 1) : '');
+  return '<button class="attn-pill sig-' + kind + '" onclick="openProjectBrief(\'' + escapeAttr(v.id) + '\')"' +
+      ' aria-label="' + escapeAttr(v.name + ': ' + reasons.join(', ') + '. Open its brief') + '">' +
     '<span class="attn-mark" aria-hidden="true">' + signalIcon(kind, 16) + '</span>' +
     '<span class="attn-name">' + escapeHtml(v.name) + '</span>' +
-    '<span class="attn-why">' + escapeHtml(reasons.join(' · ')) + '</span>' +
-    '<span class="attn-go" aria-hidden="true">' + chevronRight(14) + '</span>' +
+    '<span class="attn-why">' + escapeHtml(why) + '</span>' +
   '</button>';
 }
 
@@ -3729,16 +3860,14 @@ function renderFocusBar(views){
     el.innerHTML = '<p class="focus-hint">Tap a project to focus it. Tap it again for its brief.</p>';
     return;
   }
-  el.innerHTML = '<button class="focus-bar sig-' + v.signal + '" onclick="openBrief()">' +
-    '<span class="glyph-tile theme-' + v.theme + '" aria-hidden="true">' + projectGlyph(v.theme, 18) + '</span>' +
-    '<span class="focus-main">' +
-      '<span class="focus-name">' + escapeHtml(v.name) + '</span>' +
-      '<span class="chip-row">' + chipsHtml(v, false) + '</span>' +
-      (v.nextAction ? '<span class="focus-next">Next: ' + escapeHtml(v.nextAction) + '</span>'
-        : !v.recorded ? '<span class="focus-next">No state recorded yet</span>' : '') +
-      (v.connected && v.recorded ? '<span class="focus-source">' + svg(repoIconPaths(), 11) +
-        escapeHtml('From repository · updated ' + ageText(v.lastUpdated)) + '</span>' : '') +
-    '</span>' +
+  /* One status: what needs you first, else the recorded status, else Needs
+     update. Everything else is in the brief. */
+  const key = v.attention.length ? v.attention[0] : v.recorded ? v.status : 'unrecorded';
+  const more = v.attention.length > 1 ? ' +' + (v.attention.length - 1) : '';
+  el.innerHTML = '<button class="focus-bar sig-' + key + '" onclick="openBrief()"' +
+      ' aria-label="' + escapeAttr(fieldSpoken(v)) + '. Open its brief">' +
+    '<span class="focus-name">' + escapeHtml(v.name) + '</span>' +
+    '<span class="chip sig-' + key + '">' + signalIcon(key, 11) + escapeHtml(SIGNALS[key].short + more) + '</span>' +
     '<span class="focus-go">Brief' + chevronRight(15) + '</span>' +
   '</button>';
 }
@@ -4404,6 +4533,9 @@ Domain.wire    = () => {
   window.addEventListener('pagehide', flushFormDrafts);
   window.addEventListener('pageshow', e => { if(e && e.persisted) refreshStatuses('front'); });
   watchLayout();
+  /* A rotation, a resized window or a docked brief gives the world a new
+     box; the world reframes itself inside it. */
+  window.addEventListener('resize', fitField);
   /* The first screen is already drawn from what is stored; the world and
      the repositories come after it, so neither holds up the app. */
   startWorld();

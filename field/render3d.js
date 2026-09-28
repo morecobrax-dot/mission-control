@@ -24,7 +24,7 @@
    ========================================================= */
 import * as THREE from '../vendor/three/three.min.js';
 import {
-  WORLD, TILE, SILHOUETTE, BEACON, layoutTiles, viewBounds, chooseLayout, overviewFrame,
+  WORLD, TILE, SILHOUETTE, BEACON, chooseLayout, placeTop, tuckPx, overviewFrame,
   focusFrame, revealFrame, clampFrame, sameFrame, mixFrame, toView, toScreen, pixelRatioFor,
   resolveLabels, createArbiter, CREW, CREW_FACING, poseFor, crewLoops, PALETTE, environmentFor, STATIONS, HAND_PROPS
 } from './world.js';
@@ -38,15 +38,15 @@ const CELEBRATE_MS = 1400;       // release ready's one acknowledgment
 const BREATH_S = 2.6;            // an attention beacon's slow breath
 const POSE_EASE_S = 0.12;        // how quickly a worker settles into a new pose
 
-/* A tile's tap area: the plinth and the room above it for its buildings,
-   cut from the button's box, so the box's empty corners take no tap meant
-   for a neighbour. */
-const HIT_SHAPE = (() => {
-  const q = SILHOUETTE, w = q.halfW * 2, h = q.plinthBottom - q.top;
-  const pt = (x, y) => ((x + q.halfW) / w * 100).toFixed(1) + '% ' + ((y - q.top) / h * 100).toFixed(1) + '%';
-  return 'polygon(' + [pt(-q.halfW, 0), pt(-2.2, q.top), pt(2.2, q.top), pt(q.halfW, 0),
+/* A tile's tap area: its plinth and the room above it for its own
+   buildings, cut from the button's box, so the box's empty corners take no
+   tap meant for a neighbour. `top` is the place's own (placeTop). */
+function hitShape(top){
+  const q = SILHOUETTE, w = q.halfW * 2, h = q.plinthBottom - top;
+  const pt = (x, y) => ((x + q.halfW) / w * 100).toFixed(1) + '% ' + ((y - top) / h * 100).toFixed(1) + '%';
+  return 'polygon(' + [pt(-q.halfW, 0), pt(-2.2, top), pt(2.2, top), pt(q.halfW, 0),
     pt(q.halfW, q.shoulder), pt(0, q.plinthBottom), pt(-q.halfW, q.shoulder)].join(', ') + ')';
-})();
+}
 
 /* ---------- colour, from the page's tokens ---------- */
 function parseColour(raw){
@@ -191,7 +191,7 @@ export function createWorld(host, hooks){
     tiles: new Map(), order: [], selected: null, focused: null, first: true,
     bounds: null, cols: 0, raf: 0, lastRender: 0, lastTick: 0, lastWake: 0,
     onscreen: true, covered: false, lost: false, lostTimer: 0, destroyed: false, failed: false,
-    frames: 0, cost: 0, swallowClick: false, labelMax: 0, dirty: false, room: WORLD.labelPx, reroom: 0
+    frames: 0, cost: 0, swallowClick: false, labelMax: 0, tuck: 0, dirty: false, reroom: 0
   };
 
   /* ---------- shared resources ---------- */
@@ -280,6 +280,12 @@ export function createWorld(host, hooks){
   ], () => select.c).glow;
   const selectMesh = new THREE.Mesh(frameGeo, mats.select);
   selectMesh.renderOrder = 2;
+  /* One ground under every plinth, so the places stand in one world rather
+     than float as a catalog. It joins nothing to anything: no paths, no
+     links. Resized with the layout; never rebuilt. */
+  const board = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: col('ground'), flatShading: true }));
+  board.visible = false;
+  scene.add(board);
 
   function meshesFor(geoSet, parent, dimmable){
     const list = [];
@@ -297,7 +303,7 @@ export function createWorld(host, hooks){
   /* ---------- a tile ---------- */
   function makeTile(item){
     const t = { id: item.id, theme: item.theme, state: {}, u: 0, v: 0, row: 0, pose: null, celebrate: 0,
-                labelW: 0, labelH: 0, labelDirty: true };
+                labelW: 0, labelH: 0, labelDirty: true, room: WORLD.labelPx };
     /* Its button first: the tile's colours are the page's, read from it. */
     const b = document.createElement('button');
     b.type = 'button';
@@ -307,8 +313,9 @@ export function createWorld(host, hooks){
     const hit = document.createElement('span');
     hit.className = 'world-hit';
     hit.setAttribute('aria-hidden', 'true');
-    hit.style.clipPath = HIT_SHAPE;
-    hit.style.webkitClipPath = HIT_SHAPE;
+    t.top = placeTop(item.theme);
+    hit.style.clipPath = hitShape(t.top);
+    hit.style.webkitClipPath = hitShape(t.top);
     const label = document.createElement('span');
     label.className = 'world-label';
     const name = document.createElement('span');
@@ -335,7 +342,7 @@ export function createWorld(host, hooks){
 
     const ground = new THREE.Mesh(geos.shadow, mats.shadow);
     ground.scale.set(15, 1, 15);
-    ground.position.set(0.5, -TILE.baseDepth - 0.02, 0.4);
+    ground.position.set(0.5, -TILE.baseDepth - 0.015, 0.4);
     t.root.add(ground);
 
     /* The beacon's lamp sits in the tile's frame; its halo faces the camera. */
@@ -445,22 +452,31 @@ export function createWorld(host, hooks){
 
   /* ---------- layout and camera ---------- */
   function relayout(){
-    const n = S.order.length;
-    const pick = chooseLayout(n, S.w, S.h, S.room);
+    const pick = chooseLayout(S.order.map(id => S.tiles.get(id).top), S.w, S.h, S.order.map(id => S.tiles.get(id).room));
     S.cols = pick.cols;
-    const lay = layoutTiles(n, pick.cols, pick.stagger);
+    let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
     S.order.forEach((id, i) => {
-      const t = S.tiles.get(id), p = lay.tiles[i];
+      const t = S.tiles.get(id), p = pick.tiles[i];
       t.u = p.u; t.v = p.v; t.row = p.row;
       t.root.position.set(p.u, 0, p.v);
+      minU = Math.min(minU, p.u); maxU = Math.max(maxU, p.u); minV = Math.min(minV, p.v); maxV = Math.max(maxV, p.v);
     });
-    S.bounds = viewBounds(lay.tiles);
+    S.bounds = pick.bounds;
+    if(S.order.length){
+      /* Wider than any view can reach (the camera never leaves the places
+         by more than half a screen), so it has no edge to read as a panel;
+         within the camera's depth range in front and behind. */
+      const mu = SILHOUETTE.halfW + 150, mv = 100;
+      board.scale.set(maxU - minU + mu * 2, 0.4, maxV - minV + mv * 2);
+      board.position.set((minU + maxU) / 2, -TILE.baseDepth - 0.22, (minV + maxV) / 2);
+      board.visible = true;
+    }
   }
 
   function targetFor(mode){
     const sel = S.selected && S.tiles.get(S.selected);
-    if(mode === 'focus' && sel) return focusFrame(sel, S.bounds, S.w, S.h, S.room);
-    return overviewFrame(S.bounds, S.w, S.h, S.room);
+    if(mode === 'focus' && sel) return focusFrame(sel, S.bounds, S.w, S.h, sel.room);
+    return overviewFrame(S.bounds, S.w, S.h);
   }
 
   function goTo(frame, mode, instant){
@@ -508,42 +524,46 @@ export function createWorld(host, hooks){
   /* The same mode and the same selection in a new shape. A pan keeps its
      centre and is only held inside the world. */
   function reframe(){
-    if(S.mode === 'free' && S.frame) goTo(clampFrame(S.to || S.frame, S.bounds, S.room), 'free', true);
+    if(S.mode === 'free' && S.frame) goTo(clampFrame(S.to || S.frame, S.bounds), 'free', true);
     else goTo(targetFor(S.mode), S.mode, true);
   }
 
   /* ---------- the button layer ---------- */
   function placeButtons(){
-    const f = S.frame, s = f.scale, W = S.w, Hh = S.h;
-    const bw = SILHOUETTE.halfW * 2 * s, bh = (SILHOUETTE.plinthBottom - SILHOUETTE.top) * s;
+    const f = S.frame, s = f.scale, W = S.w, Hh = S.h, tuck = tuckPx(s);
+    const bw = SILHOUETTE.halfW * 2 * s;
     const labelMax = Math.max(88, Math.round(WORLD.colStep * s - 4));
     if(labelMax !== S.labelMax){
       S.labelMax = labelMax;
       layer.style.setProperty('--label-max', labelMax + 'px');
-      layer.style.setProperty('--label-tuck', WORLD.labelTuck + 'px');
       S.tiles.forEach(t => { t.labelDirty = true; });
     }
+    if(tuck !== S.tuck){ S.tuck = tuck; layer.style.setProperty('--label-tuck', tuck + 'px'); }
     const measured = [...S.tiles.values()].some(t => t.labelDirty);
     const rects = [];
     S.order.forEach(id => {
       const t = S.tiles.get(id), c = toView(t.u, t.v, 0), p = toScreen(f, c.x, c.y, W, Hh);
-      const left = p.x - SILHOUETTE.halfW * s, top = p.y + SILHOUETTE.top * s;
+      const left = p.x - SILHOUETTE.halfW * s, top = p.y + t.top * s, bh = (SILHOUETTE.plinthBottom - t.top) * s;
       const st = t.button.style;
       st.width = bw.toFixed(1) + 'px';
       st.height = bh.toFixed(1) + 'px';
       st.transform = 'translate(' + left.toFixed(1) + 'px,' + top.toFixed(1) + 'px)';
       if(t.labelDirty){ t.labelW = t.label.offsetWidth; t.labelH = t.label.offsetHeight; t.labelDirty = false; }
       t.off = left + bw < 0 || left > W || top + bh < 0 || top > Hh;
-      rects.push({ id: id, row: t.row, x: p.x - t.labelW / 2, y: top + bh - WORLD.labelTuck, w: t.labelW, h: t.labelH });
+      rects.push({ id: id, row: t.row, x: p.x - t.labelW / 2, y: top + bh - tuck, w: t.labelW, h: t.labelH });
     });
-    /* Frame for the labels there really are: a two-line name needs more
-       room than one. Settles in a step or two, never more than four. Only
-       the overview moves for it: a focused or panned camera stays where it
-       is when a label changes, and uses the new room on its next move. */
+    /* Frame for the labels there really are: a long name needs more room
+       than a short one, and only under its own place. Settles in a step or
+       two, never more than four. Only the overview moves for it: a focused
+       or panned camera stays where it is when a label changes, and uses the
+       new room on its next move. */
     if(measured && S.reroom < 4 && !S.to){
-      const room = Math.max(24, Math.max.apply(null, rects.map(r => r.h)) - WORLD.labelTuck + 4);
-      if(Math.abs(room - S.room) > 2){
-        S.room = room;
+      let changed = false;
+      rects.forEach(r => {
+        const t = S.tiles.get(r.id), room = Math.max(24, r.h + 4);
+        if(Math.abs(room - t.room) > 2){ t.room = room; changed = true; }
+      });
+      if(changed){
         if(S.mode === 'overview'){
           S.reroom++;
           relayout();
@@ -671,7 +691,11 @@ export function createWorld(host, hooks){
     /* The frame's cost on the main thread, averaged, for the QA to read. */
     const spent = performance.now() - began;
     S.cost = S.cost ? S.cost * 0.9 + spent * 0.1 : spent;
-    if(view.style.visibility) view.style.visibility = '';
+    if(view.style.visibility){
+      view.style.visibility = '';
+      /* The first frame is on screen: the app may hand the field over. */
+      if(H.onReady) H.onReady();
+    }
     if(moving || ambient || settling) S.raf = requestAnimationFrame(tick);
     else S.lastTick = 0;
   }
@@ -690,7 +714,7 @@ export function createWorld(host, hooks){
     if(!S.frame) return;
     S.from = S.to = null;
     S.mode = 'free';
-    S.frame = clampFrame({ x: S.frame.x - dx / S.frame.scale, y: S.frame.y - dy / S.frame.scale, scale: S.frame.scale }, S.bounds, S.room);
+    S.frame = clampFrame({ x: S.frame.x - dx / S.frame.scale, y: S.frame.y - dy / S.frame.scale, scale: S.frame.scale }, S.bounds);
     S.dirty = true;
     wake();
   }
@@ -738,7 +762,7 @@ export function createWorld(host, hooks){
     S.focused = b ? b.getAttribute('data-project') : null;
     const t = S.focused && S.tiles.get(S.focused);
     if(t && S.frame){
-      const f = revealFrame(S.to || S.frame, t, S.bounds, S.w, S.h, S.room);
+      const f = revealFrame(S.to || S.frame, t, S.bounds, S.w, S.h, t.room);
       if(!sameFrame(f, S.to || S.frame)) goTo(f, 'free');
     }
     S.dirty = true;

@@ -23,12 +23,12 @@ export const WORLD = {
   elevation: 0.62,               // the camera's fixed tilt, about 35.5 degrees: an isometric look
   tileTurn: -Math.PI / 4,        // tiles turn 45 degrees so their corners face the camera
   colStep: 13,                   // view units between columns
-  rowStep: 27,                   // ground units between rows: room for a label under each plinth
-  focusFill: 0.86,               // a focused tile fills this share of the view
+  rowGap: 0.5,                   // view units between a label and the next place's roof
+  stagger: 0.42,                 // a staggered odd column sits this share of a row lower
+  focusFill: 0.92,               // a focused tile fills this share of the view
   minScale: 7,                   // px per unit below which the overview pans instead of shrinking
   maxScale: 44,                  // the closest the camera comes
   labelPx: 46,                   // a label's room under its plinth, in px, until the real labels are measured
-  labelTuck: 10,                 // a label overlaps its plinth's front corner by this much, like a nameplate
   edgePx: 12,                    // breathing room at the viewport's edges, in px
   transitionMs: 380,             // a focus or overview move: interruptible, instant under Reduce Motion
   slopPx: 8,                     // movement that turns a touch into a pan
@@ -47,12 +47,14 @@ export const BUDGET = { drawCalls: 150, triangles: 60000, threeGzipBytes: 160000
    `crew` times, so buildings fill their plinth and a worker reads at a
    glance; `tallest` is the highest a scaled place reaches. */
 export const TILE = { half: 3.8, baseHalf: 4.1, topDepth: 0.45, seam: 0.1, baseDepth: 1.75, reach: 3.3,
-                      content: 1.15, crew: 1.2, tallest: 3.9 };
+                      content: 1.15, crew: 1.45, tallest: 3.9 };
 
 const SIN = Math.sin(WORLD.elevation), COS = Math.cos(WORLD.elevation), R2 = Math.SQRT2;
 
 /* A tile's silhouette on screen, relative to its centre, in view units:
-   the corner-on plinth plus the tallest structure's room above it. */
+   the corner-on plinth plus the tallest structure's room above it. `top`
+   is the worst case; each place has its own, measured from its recipe by
+   placeTop(), and the layout packs by those. */
 export const SILHOUETTE = {
   halfW: TILE.baseHalf * R2,
   top: -(TILE.half * R2 * SIN + TILE.tallest * COS),
@@ -62,118 +64,164 @@ export const SILHOUETTE = {
 
 /* ---------- layout ---------- */
 
-/* Screen position (view units, y down) of a ground point raised by h. */
-export function toView(u, v, h){ return { x: u, y: v * SIN - (h || 0) * COS }; }
+/* How far a label reaches below its plinth, in view units at this scale:
+   its measured height, less the part tucked over the plinth's front corner
+   like a nameplate. Labels are px and never scale with the world. */
+export function tuckPx(scale){ return Math.max(8, Math.min(22, Math.round(SILHOUETTE.shoulder * scale * 0.85))); }
+export function labelUnits(roomPx, scale){
+  const room = roomPx === undefined || roomPx === null ? WORLD.labelPx : roomPx;
+  return Math.max(0, room - tuckPx(scale)) / Math.max(scale, 0.01);
+}
 
-/* Tile centres on the ground, in registry order: u across the screen, v
-   toward the viewer. Staggered, the odd columns sit half a row lower, so
-   the field reads as one archipelago rather than a table; a short last row
-   is centred. Adding a project adds a tile, never a special case. */
-export function layoutTiles(count, cols, staggered){
-  const n = Math.max(0, count | 0);
+/* Tile centres, in registry order: x across the screen and y down it (view
+   units); the renderer puts a tile on the ground at v = y / sin(elevation).
+   `spec` is the number of tiles, or each tile's own top (placeTop): a low
+   place lets the row behind it sit closer. Each row sits as high as it can
+   without its roofs reaching a label above it in the same column; a
+   staggered field drops its odd columns part of a row, so it reads as one
+   archipelago rather than a table, and a short last row is centred.
+   `label` is the labels' reach in view units (labelUnits): one number,
+   or one per tile, so a long name costs only its own column. Adding a
+   project adds a tile, never a special case. */
+export function layoutTiles(spec, cols, staggered, label){
+  const tops = typeof spec === 'number' ? Array.from({ length: Math.max(0, spec | 0) }, () => SILHOUETTE.top) : spec.slice();
+  const n = tops.length;
   const c = Math.max(1, Math.min(cols | 0 || 1, Math.max(1, n)));
   const rows = Math.ceil(n / c);
   const stagger = staggered !== false && rows > 1 && c > 1;
+  const reach = i => label === undefined ? labelUnits(WORLD.labelPx, 10) : Array.isArray(label) ? label[i] : label;
+  const spanOf = i => SILHOUETTE.plinthBottom + reach(i);
+  const meanTop = n ? tops.reduce((a, b) => a + b, 0) / n : SILHOUETTE.top;
+  const meanSpan = n ? tops.reduce((a, b, i) => a + spanOf(i), 0) / n : spanOf(0);
+  const drop = (meanSpan + WORLD.rowGap - meanTop) * WORLD.stagger;
   const tiles = [];
-  for(let i = 0; i < n; i++){
-    const r = Math.floor(i / c), inRow = Math.min(c, n - r * c);
-    const pos = (i % c) + (c - inRow) / 2;
-    const drop = !stagger ? 0 : pos % 1 ? 0.25 : pos % 2 ? 0.5 : 0;
-    tiles.push({ u: (pos - (c - 1) / 2) * WORLD.colStep, v: (r + drop) * WORLD.rowStep, row: r, col: pos });
+  let base = 0;
+  for(let r = 0; r < rows; r++){
+    const row = [];
+    for(let i = r * c; i < Math.min(n, (r + 1) * c); i++){
+      const inRow = Math.min(c, n - r * c);
+      const pos = (i % c) + (c - inRow) / 2;
+      const d = !stagger ? 0 : pos % 1 ? drop / 2 : pos % 2 ? drop : 0;
+      row.push({ x: (pos - (c - 1) / 2) * WORLD.colStep, d: d, top: tops[i], span: spanOf(i), row: r, col: pos });
+    }
+    /* The row's baseline: every tile clears everything above it that shares
+       its column; the stagger rides on top of the baseline. */
+    if(r > 0){
+      base = -Infinity;
+      row.forEach(t => {
+        let need = -Infinity;
+        tiles.forEach(p => { if(Math.abs(p.x - t.x) < WORLD.colStep - 1e-6) need = Math.max(need, p.y + p.span + WORLD.rowGap - t.top); });
+        base = Math.max(base, need - t.d);
+      });
+    }
+    row.forEach(t => { t.y = base + t.d; t.u = t.x; t.v = t.y / SIN; tiles.push(t); });
   }
-  const mid = rows ? ((rows - 1) + (stagger ? 0.5 : 0)) / 2 * WORLD.rowStep : 0;
-  tiles.forEach(t => { t.v -= mid; });
+  const b = viewBounds(tiles);
+  const mid = tiles.length ? (b.minY + b.maxY) / 2 : 0;
+  tiles.forEach(t => { t.y -= mid; t.v = t.y / SIN; delete t.d; });
   return { cols: c, rows: rows, stagger: stagger, tiles: tiles };
 }
 
-/* The view-space rectangle the tiles occupy, from the tallest roof to the
-   bottom of the plinth. Labels are px, so framing adds their room: `room`
-   below, the tallest label's height less its tuck. Every framing function
-   takes it, measured by the renderer, and falls back to WORLD.labelPx. */
-const roomOf = room => room === undefined || room === null ? WORLD.labelPx : room;
+/* Screen position (view units, y down) of a ground point raised by h. */
+export function toView(u, v, h){ return { x: u, y: v * SIN - (h || 0) * COS }; }
+
+/* The view-space rectangle the tiles and their labels occupy: from each
+   place's own roof to the bottom of its label. */
 export function viewBounds(tiles){
   if(!tiles.length) return { minX: -6, maxX: 6, minY: -6, maxY: 6, w: 12, h: 12 };
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   tiles.forEach(t => {
     const c = toView(t.u, t.v, 0);
+    const top = t.top === undefined ? SILHOUETTE.top : t.top, span = t.span === undefined ? SILHOUETTE.plinthBottom : t.span;
     minX = Math.min(minX, c.x - SILHOUETTE.halfW); maxX = Math.max(maxX, c.x + SILHOUETTE.halfW);
-    minY = Math.min(minY, c.y + SILHOUETTE.top); maxY = Math.max(maxY, c.y + SILHOUETTE.plinthBottom);
+    minY = Math.min(minY, c.y + top); maxY = Math.max(maxY, c.y + span);
   });
   return { minX: minX, maxX: maxX, minY: minY, maxY: maxY, w: maxX - minX, h: maxY - minY };
 }
 
-/* The largest scale at which these bounds and their labels fit the view. */
-export function fitScale(bounds, viewW, viewH, room){
-  const w = Math.max(1, viewW - WORLD.edgePx * 2), h = Math.max(1, viewH - WORLD.edgePx * 2 - roomOf(room));
+/* The largest scale at which these bounds fit the view. */
+export function fitScale(bounds, viewW, viewH){
+  const w = Math.max(1, viewW - WORLD.edgePx * 2), h = Math.max(1, viewH - WORLD.edgePx * 2);
   return Math.min(w / Math.max(bounds.w, 1), h / Math.max(bounds.h, 1));
 }
 
-/* The arrangement that suits this view: whichever lets the tiles be
-   largest. A near tie goes to fewer columns, which keeps reading order
-   simple, and then to the staggered field, which reads as one place. */
-export function chooseLayout(count, viewW, viewH, room){
-  const n = Math.max(1, count | 0);
-  let best = { cols: 1, stagger: false }, bestScale = -1;
+/* The arrangement that suits this view: whichever lets the places be
+   largest, with the labels there really are (roomPx, measured: one number
+   or one per tile). Labels are px, so each candidate settles its scale in
+   a few passes. A near tie goes to fewer columns, which keeps reading
+   order simple, and then to the staggered field, which reads as one place. */
+export function chooseLayout(spec, viewW, viewH, roomPx){
+  const units = s => Array.isArray(roomPx) ? roomPx.map(r => labelUnits(r, s)) : labelUnits(roomPx, s);
+  const n = typeof spec === 'number' ? Math.max(1, spec | 0) : Math.max(1, spec.length);
+  let best = null;
   for(let c = 1; c <= Math.min(n, 8); c++){
     [true, false].forEach(st => {
-      const s = fitScale(viewBounds(layoutTiles(n, c, st).tiles), viewW, viewH, room);
-      if(s > bestScale * 1.04){ best = { cols: c, stagger: st }; bestScale = s; }
+      let scale = 10, lay = null, bounds = null;
+      for(let k = 0; k < 4; k++){
+        lay = layoutTiles(spec, c, st, units(scale));
+        bounds = viewBounds(lay.tiles);
+        scale = Math.max(WORLD.minScale, Math.min(fitScale(bounds, viewW, viewH), WORLD.maxScale));
+      }
+      if(!best || scale > best.scale * 1.04) best = { cols: c, stagger: lay.stagger, scale: scale, tiles: lay.tiles, bounds: bounds };
     });
   }
   return best;
 }
 
-/* The overview: every tile in view, centred, as large as fits. When a
-   registry is too large to fit at WORLD.minScale the camera stops shrinking
-   and the world pans instead, so tiles and labels never become unreadable. */
-export function overviewFrame(bounds, viewW, viewH, room){
-  const pad = roomOf(room);
-  const scale = Math.max(WORLD.minScale, Math.min(fitScale(bounds, viewW, viewH, pad), WORLD.maxScale));
-  const frame = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 + pad / 2 / scale, scale: scale };
-  const fitsX = bounds.w * scale + WORLD.edgePx * 2 <= viewW, fitsY = bounds.h * scale + pad + WORLD.edgePx * 2 <= viewH;
+/* The overview: every tile and label in view, centred, as large as fits.
+   When a registry is too large to fit at WORLD.minScale the camera stops
+   shrinking and the world pans instead, so places and labels never become
+   unreadable. */
+export function overviewFrame(bounds, viewW, viewH){
+  const scale = Math.max(WORLD.minScale, Math.min(fitScale(bounds, viewW, viewH), WORLD.maxScale));
+  const frame = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2, scale: scale };
+  const fitsX = bounds.w * scale + WORLD.edgePx * 2 <= viewW + 0.5, fitsY = bounds.h * scale + WORLD.edgePx * 2 <= viewH + 0.5;
   /* Too large to fit: start at the top left, where reading begins. */
   if(!fitsX) frame.x = bounds.minX + (viewW / 2 - WORLD.edgePx) / scale;
   if(!fitsY) frame.y = bounds.minY + (viewH / 2 - WORLD.edgePx) / scale;
-  return clampFrame(frame, bounds, pad);
+  return clampFrame(frame, bounds);
 }
 
 /* A focused tile: as close as fills the view, never further than the
-   overview, centred with its label in view. */
-export function focusFrame(tile, bounds, viewW, viewH, room){
-  const pad = roomOf(room);
-  const over = overviewFrame(bounds, viewW, viewH, pad);
-  const tileW = SILHOUETTE.halfW * 2 + 1, tileH = SILHOUETTE.plinthBottom - SILHOUETTE.top + 0.5;
-  const fit = Math.min((viewW - WORLD.edgePx * 2) / tileW, (viewH - WORLD.edgePx * 2 - pad) / tileH) * WORLD.focusFill;
-  const scale = Math.min(WORLD.maxScale, Math.max(fit, over.scale));
+   overview, centred on its roof, plinth and label. */
+export function focusFrame(tile, bounds, viewW, viewH, roomPx){
+  const over = overviewFrame(bounds, viewW, viewH);
+  const top = tile.top === undefined ? SILHOUETTE.top : tile.top;
+  let scale = over.scale;
+  for(let k = 0; k < 3; k++){
+    const tileW = SILHOUETTE.halfW * 2 + 1, tileH = SILHOUETTE.plinthBottom + labelUnits(roomPx, scale) - top + 0.5;
+    const fit = Math.min((viewW - WORLD.edgePx * 2) / tileW, (viewH - WORLD.edgePx * 2) / tileH) * WORLD.focusFill;
+    scale = Math.min(WORLD.maxScale, Math.max(fit, over.scale));
+  }
   const c = toView(tile.u, tile.v, 0);
-  const midY = c.y + (SILHOUETTE.top + SILHOUETTE.plinthBottom) / 2;
-  return clampFrame({ x: c.x, y: midY + pad / 2 / scale, scale: scale }, bounds, pad);
+  const midY = c.y + (top + SILHOUETTE.plinthBottom + labelUnits(roomPx, scale)) / 2;
+  return clampFrame({ x: c.x, y: midY, scale: scale }, bounds);
 }
 
 /* The camera's centre never leaves the world's rectangle: a pan can show
    an edge, never lose the world. */
-export function clampFrame(frame, bounds, room){
-  const pad = roomOf(room) / frame.scale;
+export function clampFrame(frame, bounds){
   return {
     x: Math.min(Math.max(frame.x, bounds.minX), bounds.maxX),
-    y: Math.min(Math.max(frame.y, bounds.minY), bounds.maxY + pad),
+    y: Math.min(Math.max(frame.y, bounds.minY), bounds.maxY),
     scale: frame.scale
   };
 }
 
 /* Pan so a tile and its label are on screen, moving as little as possible;
    an already visible tile leaves the camera where it is. */
-export function revealFrame(frame, tile, bounds, viewW, viewH, room){
+export function revealFrame(frame, tile, bounds, viewW, viewH, roomPx){
   const c = toView(tile.u, tile.v, 0), s = frame.scale, m = WORLD.edgePx;
+  const top = tile.top === undefined ? SILHOUETTE.top : tile.top;
   const left = (c.x - SILHOUETTE.halfW - frame.x) * s + viewW / 2, right = (c.x + SILHOUETTE.halfW - frame.x) * s + viewW / 2;
-  const top = (c.y + SILHOUETTE.top - frame.y) * s + viewH / 2, bottom = (c.y + SILHOUETTE.plinthBottom - frame.y) * s + viewH / 2 + roomOf(room);
+  const up = (c.y + top - frame.y) * s + viewH / 2, down = (c.y + SILHOUETTE.plinthBottom + labelUnits(roomPx, s) - frame.y) * s + viewH / 2;
   let dx = 0, dy = 0;
   if(right - left > viewW - 2 * m) dx = (left + right) / 2 - viewW / 2;
   else if(left < m) dx = left - m; else if(right > viewW - m) dx = right - (viewW - m);
-  if(bottom - top > viewH - 2 * m) dy = (top + bottom) / 2 - viewH / 2;
-  else if(top < m) dy = top - m; else if(bottom > viewH - m) dy = bottom - (viewH - m);
+  if(down - up > viewH - 2 * m) dy = (up + down) / 2 - viewH / 2;
+  else if(up < m) dy = up - m; else if(down > viewH - m) dy = down - (viewH - m);
   if(!dx && !dy) return frame;
-  return clampFrame({ x: frame.x + dx / s, y: frame.y + dy / s, scale: s }, bounds, room);
+  return clampFrame({ x: frame.x + dx / s, y: frame.y + dy / s, scale: s }, bounds);
 }
 
 /* Two frames are the same place, to the pixel. */
@@ -322,7 +370,7 @@ export function crewLoops(state, reducedMotion){
    identity (--tint-<theme>, --terrain-<theme>); nothing here is a status
    colour, and nothing is a literal colour. */
 export const PALETTE = {
-  plinth: '--mat-plinth', stone: '--mat-stone', steel: '--mat-metal', ink: '--mat-ink',
+  plinth: '--mat-plinth', ground: '--field-ground', stone: '--mat-stone', steel: '--mat-metal', ink: '--mat-ink',
   gold: '--mat-coin', rice: '--mat-rice', salmon: '--mat-fish', nori: '--mat-nori', wood: '--mat-crate',
   woodLight: '--mat-wood-light', paper: '--mat-paper', water: '--mat-water', fur: '--mat-fur',
   furDark: '--mat-fur-dark', board: '--mat-board', blueprint: '--mat-blueprint',
@@ -615,3 +663,40 @@ export const HAND_PROPS = {
     box(0, -0.6, 0.135, 0.2, 0.24, 0.01, 'matte', 'paper', { r: [-0.6, 0, 0] })
   ]
 };
+
+/* ---------- each place's real height ----------
+   How high a place reaches above its tile's centre on screen (view units,
+   negative is up): its tallest part, where it stands, the beacon's lamp, the
+   crew and the plinth's own back corner. Framing and packing use it, so a
+   low place never pays for the tallest one. Conservative: a part counts as
+   tall as its longest side when it is tipped over. */
+const partReach = p => {
+  const d = p.d, k = p.k || [1, 1, 1];
+  const tipped = !!p.r && (Math.abs(p.r[0]) > 0.3 || Math.abs(p.r[2]) > 0.3);
+  let h, r;
+  switch(p.s){
+    case 'box':   h = d[1] * k[1]; r = Math.max(d[0] * k[0], d[2] * k[2]) / 2; if(tipped){ h = Math.max(d[0], d[1], d[2]); r = h / 2; } break;
+    case 'cyl':   h = tipped ? d[0] * 2 : d[1] * k[1]; r = tipped ? d[1] / 2 : d[0]; break;
+    case 'cone':  h = d[1] * k[1]; r = d[0]; break;
+    case 'ball':  h = d[0] * 2 * k[1]; r = d[0]; break;
+    case 'ring':  h = 0.02; r = d[1] * Math.max(k[0], k[2]); break;
+    default:      h = d[0] * 2; r = d[0];
+  }
+  return { h: h, r: r };
+};
+const screenTop = (x, z, y, h, r) => 0.7071 * (x + z) * SIN - r * SIN - (y + h) * COS;
+const TOPS = {};
+export function placeTop(theme){
+  const key = ENVIRONMENTS[theme] ? theme : 'generic';
+  if(TOPS[key] !== undefined) return TOPS[key];
+  const e = ENVIRONMENTS[key], g = TILE.content, crew = TILE.crew;
+  let top = -(TILE.half * R2 * SIN);
+  e.parts.forEach(p => {
+    const m = partReach(p);
+    top = Math.min(top, screenTop(p.p[0] * g, p.p[2] * g, p.p[1] * g, m.h * g, m.r * g));
+  });
+  top = Math.min(top, screenTop(BEACON.x, BEACON.z, BEACON.mast, BEACON.lamp * 2.4, BEACON.lamp));
+  top = Math.min(top, screenTop(e.crew.x * g, e.crew.z * g, 0, 1.6 * crew, 0.5 * crew));
+  TOPS[key] = top - 0.25;
+  return TOPS[key];
+}

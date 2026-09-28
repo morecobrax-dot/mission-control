@@ -187,7 +187,9 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     selection: it reports a tap, and the next draw says what is selected.
     `WorldField` (`field/render3d.js`) is the field and keeps a real button
     per project; `IsoField` is its fallback for the rest of a visit when the
-    world cannot run. The camera's frame is never stored.
+    world cannot run. Each has its own host in one box, and the flat field
+    stays drawn and is the one you can touch until the world has drawn its
+    first frame. The camera's frame is never stored.
 36. **The residue-scan exemption never grows.** It is exactly the two registry
     lines that name the first project and link its repository. Anywhere else
     that name still fails.

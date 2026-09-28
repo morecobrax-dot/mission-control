@@ -340,13 +340,20 @@ integrity, pinned esbuild, target `es2020,safari15` so no class static
 blocks), with its licence and a provenance file whose sha256 contract 30
 holds the file to. It is about 135 KB gzipped. Nothing is fetched from a CDN.
 
-**Lifecycle.** The page draws `IsoField` first. `startWorld()` runs once,
-only where `WebGL2RenderingContext` exists: the field keeps the world's height
-with the SVG hidden while the module loads (so nothing jumps and the flat
-field never flashes; a slow first visit shows it after 4 s), then the SVG is
-unmounted and the world mounted. Any failure — the import, the context, a
-render, or a lost context not restored within 2.5 s — calls `stopWorld()`:
-the world is destroyed and `IsoField` draws again, for the rest of the visit.
+**Lifecycle.** Each renderer has its own host inside one `.field-box`:
+`#projectField` for `IsoField` and `#worldHost`, laid over it, for the world.
+The page draws `IsoField` first. `startWorld()` runs once, only where a WebGL 2
+context can really be made (one probe, released at once): the field box takes
+the world's height with the flat field drawn inside it, whole and usable,
+while the module downloads and the world is made behind it. Until the world's
+first frame is on screen its view is invisible, so it takes no taps and no
+focus. Its `onReady` then calls `adoptWorld()`, which in one step unmounts the
+flat field, makes the world the field and moves keyboard focus from a flat
+platform to the same project's tile; a selection made while loading carries
+over. Any failure — the import, the context, a render, or a lost context not
+restored within 2.5 s — calls `stopWorld()`: the world is destroyed and the
+flat field, never removed while loading, is what remains, for the rest of the
+visit.
 `worldStage` goes `idle → loading → on` or `off`, never back, so there is no
 retry loop. `destroy()` disposes every geometry, material and texture,
 releases the context and removes its DOM.
@@ -360,10 +367,21 @@ breathing attention beacon) is capped at 30 fps and settles into still poses
 and nothing loops. The drawing buffer is at most 2 device pixels per CSS
 pixel and 2.5 million pixels.
 
+**Composition.** Places are packed by what they really occupy. Each place's
+height on screen is measured from its recipe (`placeTop`), and each label's
+height is measured on the page; a row sits as high as it can without a roof
+reaching a label above it in the same column, so a low place or a short name
+never pays for the tallest. Labels tuck over the front corner of their
+plinth. The arrangement (columns, and whether odd columns drop part of a row
+into a staggered field) is whichever makes the places largest in the box
+the world has, settled in a few passes because labels are px. All places
+stand on one shared ground, a step above the floor, wide enough that its
+edges show only where the world ends; it joins nothing to anything.
+
 **Camera and touch.** A fixed isometric view: no orbit, no zoom gesture. Two
-framings — the overview (every tile at the largest scale that fits, never
-below a readable minimum; a larger world pans instead) and focus (one tile,
-close) — with 380 ms interruptible moves. The viewport alone has
+framings — the overview (every place and label at the largest scale that
+fits, never below a readable minimum; a larger world pans instead) and focus
+(one place, close) — with 380 ms interruptible moves. The viewport alone has
 `touch-action: none`: a drag inside it pans (bounded to the world), a drag
 outside scrolls the page. One arbiter decides every touch: under 8 px it is a
 tap; past that it is a pan for good and the click it would make is swallowed,
@@ -373,10 +391,12 @@ Resizing, rotating or docking reframes in the same mode with the same
 selection; a reload starts at the overview with the stored selection.
 
 **The button layer.** Every project keeps a real `<button>` in registry
-order, moved onto its tile each frame: its tap target is the tile's shape
-(`clip-path`, so a box's empty corners take no taps), its label (name and
-one status, attention first) is at least 44 px tall, and its accessible name
-says every status. A label that would overlap another is hidden and takes no
+order, moved onto its tile each frame: its tap target is the place's own
+shape (`clip-path`, so a box's empty corners take no taps), its label is at
+least 44 px tall, and its accessible name says every status. A label is type,
+not a box: the name, then one status — a chip only for what needs you,
+otherwise the status word in its colour — with a soft edge of the floor's
+colour for contrast. Only the selected project's label has a backing. A label that would overlap another is hidden and takes no
 taps (the focused and selected labels win), as is one out of view; keyboard
 focus shows a hidden label and pans its tile into view. Overview appears
 whenever the whole world is not in view.
@@ -404,12 +424,21 @@ status hue — contract 24 measures it.
 ## Layout
 
 Mobile first. The top of the hub is compact — a small header with Refresh,
-tight counts, and one wrapping line of attention buttons and the unknown
-count — so the field starts in the first screen. On a phone the hub is one
-column and the Quick Brief is a page; on a phone on its side the field
-becomes rows of six, held to a width whose platforms fit above the tab bar.
-In the wide layout the field is sized by the height it has as well as the
-width. At
+tight counts, and one row of attention buttons that say only what each needs
+(Decision, QA, or what is blocking; three or more sit two to a row on a
+phone) and the unknown count — so the world starts in the first screen.
+
+The world's box takes the height the screen has left: `fitField()` measures
+where the box starts, the tab bar and the dock, after every hub render and on
+resize, and sets `--world-h`; the camera frames whatever it gets. Under the
+world sits the dock: the selected project's name, its one dominant status and
+a Brief action, always the same height (a hint until something is selected),
+so choosing a project never resizes the world, and always above the tab bar.
+The details are in the brief. On a phone the hub is one column and the Quick
+Brief is a page. On a phone on its side the hub takes the full width and the
+world the screen's whole height under the tab bar; the page scrolls to it,
+and selecting a project brings the dock into view. In the wide layout the
+dock gives way to the docked brief. At
 `(min-width: 900px) and (min-height: 600px)` — `WIDE_QUERY` in the script and
 the same media query in the stylesheet, kept equal by a contract — the hub
 widens and the brief docks beside the field. Rotating into the wide layout

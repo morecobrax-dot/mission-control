@@ -713,7 +713,10 @@ function testMobile(){
     /The visible mark can be small; the target never is/.test(style));
 
   sub('the product\'s own targets meet the same floor');
-  ['.block', '.tool-link', '.focus-bar', '.status-option', '.attn-pill', '.world-label', '.world-overview'].forEach(sel => {
+  const dockH = +((style.match(/--dock-h: (\d+)px;/) || [])[1] || 0);
+  T('.focus-bar is the dock: a fixed height, never under the floor',
+    dockH >= 44 && /\.focus-bar, \.focus-hint\{ height: var\(--dock-h\)/.test(style), String(dockH));
+  ['.block', '.tool-link', '.status-option', '.attn-pill', '.world-label', '.world-overview'].forEach(sel => {
     const re = new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\{[^}]*min-height:\\s*var\\(--touch-min\\)');
     T(sel + ' meets the floor', re.test(style));
   });
@@ -1702,8 +1705,12 @@ function testHub(){
   T('the project is selected', c.selectedId === 'dayplan');
   T('its platform reports it', /id="block-dayplan" aria-pressed="true"/.test(html('projectField')));
   T('only one platform is pressed', (html('projectField').match(/aria-pressed="true"/g) || []).length === 1);
-  T('the focus bar shows it, as Needs update', /DayPlan/.test(html('focusBar')) &&
-    /class="focus-bar sig-unrecorded"/.test(html('focusBar')) && /No state recorded yet/.test(html('focusBar')));
+  T('the dock shows it, as Needs update in words and shape', /DayPlan/.test(html('focusBar')) &&
+    /class="focus-bar sig-unrecorded"/.test(html('focusBar')) && /class="chip sig-unrecorded"><svg[\s\S]*?<\/svg>Needs update</.test(html('focusBar')));
+  T('the dock is compact: one status and the Brief action, the details stay in the brief',
+    (html('focusBar').match(/class="chip /g) || []).length === 1 && /class="focus-go">Brief/.test(html('focusBar')) &&
+    !/Next:|From repository|focus-next|focus-source/.test(html('focusBar')));
+  T('its accessible name says the whole state and what it opens', /aria-label="DayPlan\. Needs update: no state recorded\. Open its brief"/.test(html('focusBar')));
   T('no brief opened yet', !d.getElementById('briefOverlay').classList.contains('open'));
   T('the choice is saved', shared.get(ns + c.KEYS.selectedProject) === 'dayplan');
   c.tapProject('dayplan'); c.__flush();
@@ -1736,6 +1743,9 @@ function testHub(){
   T('as a group named for assistive tech, only while something needs you', d.getElementById('attentionList').getAttribute('aria-label') === 'Needs attention' &&
     d.getElementById('attentionList').getAttribute('role') === 'group');
   T('each one a single line: a button straight to its brief', (attention.match(/<button class="attn-pill sig-/g) || []).length === 3);
+  T('each says only what it needs, in its short word, because the row already says it needs you',
+    /<span class="attn-why">Decision/.test(attention) && !/<span class="attn-why">Needs/.test(attention));
+  T('its accessible name says it in full', /aria-label="[^"]*: Needs decision[^"]*\. Open its brief"/.test(attention));
   T('the summary line counts the rest, and says the counts leave them out',
     /3 of 6 need an update, not counted/.test(text('hubSummary')) && !/No recorded attention items/.test(text('hubSummary')));
   T('a known state lights its beacon', /id="block-capybara-sushi"[\s\S]*?beacon-glow/.test(html('projectField')));
@@ -2466,7 +2476,7 @@ function testConnectedState(){
         /Checked just now/.test(brief));
       T('it offers the switch to your own state, and no editor',
         /Use my own state instead/.test(brief) && !/>Update state</.test(brief));
-      T('the focus bar says so too, quietly', /From repository · updated 8 days ago/.test(html('focusBar')));
+      T('the dock stays one line: the source is the brief\'s to say', !/From repository/.test(html('focusBar')) && /Brief/.test(html('focusBar')));
       c.closeBrief(); c.__flush();
 
       sub('editing a connected project never makes a hidden override');
@@ -2905,41 +2915,58 @@ async function testWorld(){
   T('it plays only on a change, never on a first draw or reload',
     /if\(!S\.first && prev\.workerState && prev\.workerState !== 'celebrating' && item\.workerState === 'celebrating' && !rm\(\)\) t\.celebrate = now;/.test(r3));
 
-  sub('layout: every project reachable, none shrunk to nothing, no ceiling');
-  const shapes = [[358, 512], [341, 335], [590, 142], [706, 568], [590, 778], [1200, 700]];
-  const overlapping = tiles => {
-    const S = W.SILHOUETTE;
-    for(let i = 0; i < tiles.length; i++) for(let j = i + 1; j < tiles.length; j++){
-      const a = W.toView(tiles[i].u, tiles[i].v, 0), b = W.toView(tiles[j].u, tiles[j].v, 0);
-      if(Math.abs(a.x - b.x) < S.halfW * 2 - 1e-6 && Math.abs(a.y - b.y) < S.plinthBottom - S.top - 1e-6) return true;
+  sub('layout: packed by each place\'s real height, every project reachable, no ceiling');
+  const themes6 = ['track', 'calendar', 'book', 'vault', 'rocket', 'sushi'];
+  T('each place is measured from its recipe: never lower than its plinth, never higher than the worst case',
+    Object.keys(W.ENVIRONMENTS).every(t => W.placeTop(t) <= -(W.TILE.half * Math.SQRT2 * Math.sin(W.WORLD.elevation)) && W.placeTop(t) >= W.SILHOUETTE.top));
+  T('a tall place is taller than a low one: the launchpad\'s gantry outreaches the running track',
+    W.placeTop('rocket') < W.placeTop('track') - 1);
+  const shapes = [[358, 512], [341, 335], [590, 142], [760, 260], [706, 568], [590, 778], [1200, 700]];
+  const rng = H.mulberry32(30);
+  /* A roof never reaches a label or plinth above it in the same column;
+     tiles in one row never share a column. */
+  const collides = tiles => {
+    for(let i = 0; i < tiles.length; i++) for(let j = 0; j < tiles.length; j++){
+      if(i === j) continue;
+      const a = tiles[i], b = tiles[j];
+      const ay = W.toView(a.u, a.v, 0).y, by = W.toView(b.u, b.v, 0).y;
+      if(Math.abs(a.u - b.u) >= W.WORLD.colStep - 1e-6) continue;
+      if(a.row === b.row) return true;
+      if(by > ay && by + b.top < ay + a.span - 1e-6) return true;
     }
     return false;
   };
   let clean = true, reading = true, readable = true, framed = true;
   [1, 2, 3, 5, 6, 7, 9, 12, 20, 50].forEach(n => shapes.forEach(([w, h]) => {
-    const pick = W.chooseLayout(n, w, h);
-    const lay = W.layoutTiles(n, pick.cols, pick.stagger);
-    if(lay.tiles.length !== n || overlapping(lay.tiles)) clean = false;
+    const tops = Array.from({ length: n }, (_, i) => n === 6 ? W.placeTop(themes6[i]) : W.SILHOUETTE.top * (0.5 + rng() * 0.5));
+    const pick = W.chooseLayout(tops, w, h, 46 + Math.round(rng() * 30));
+    const lay = pick.tiles;
+    if(lay.length !== n || collides(lay)) clean = false;
     for(let i = 1; i < n; i++){
-      const p = lay.tiles[i - 1], q = lay.tiles[i];
+      const p = lay[i - 1], q = lay[i];
       if(q.row < p.row || (q.row === p.row && q.u <= p.u)) reading = false;
     }
-    const b = W.viewBounds(lay.tiles), f = W.overviewFrame(b, w, h);
+    const b = pick.bounds, f = W.overviewFrame(b, w, h);
     if(!(f.scale >= W.WORLD.minScale) || !Number.isFinite(f.x + f.y)) readable = false;
     if(f.scale > W.WORLD.minScale + 1e-9){
       const tl = W.toScreen(f, b.minX, b.minY, w, h), br = W.toScreen(f, b.maxX, b.maxY, w, h);
-      if(tl.x < -0.5 || tl.y < -0.5 || br.x > w + 0.5 || br.y + W.WORLD.labelPx > h + 0.5) framed = false;
+      if(tl.x < -0.5 || tl.y < -0.5 || br.x > w + 0.5 || br.y > h + 0.5) framed = false;
     }
   }));
-  T('tiles never overlap, from one project to fifty, on every screen', clean);
+  T('no roof reaches a label above it, from one project to fifty, on every screen', clean);
   T('tiles keep registry order: left to right, then down', reading);
   T('the overview never shrinks a tile below the readable scale; a large world pans instead', readable);
-  T('an overview that fits shows every tile and its label room', framed);
+  T('an overview that fits shows every place, roof to label', framed);
+  const phone = W.chooseLayout(themes6.map(W.placeTop), 358, 500, 46), worst = W.chooseLayout(6, 358, 500, 46);
+  T('packing by real heights makes the places larger than packing by the tallest', phone.scale > worst.scale * 1.1,
+    phone.scale.toFixed(1) + ' vs ' + worst.scale.toFixed(1));
+  T('a label reaches below its plinth only as far as it really is tall, less the part tucked over the plinth',
+    Math.abs(W.labelUnits(46, 10) - (46 - W.tuckPx(10)) / 10) < 1e-9 && W.tuckPx(10) > 0);
   T('labels are type-scale text, never scaled with the world', /\.world-name\{[^}]*font-size: var\(--fs-meta\)/.test(style) &&
     !/scale\(/.test((style.match(/\.world-label\{[^}]*\}/) || [''])[0]));
 
   sub('the camera stays in the world and goes where it is sent');
-  const lay6 = W.layoutTiles(6, 2, false), b6 = W.viewBounds(lay6.tiles);
+  const lay6 = W.layoutTiles(themes6.map(W.placeTop), 2, false, W.labelUnits(46, 12)), b6 = W.viewBounds(lay6.tiles);
   const over = W.overviewFrame(b6, 358, 512);
   const far = W.clampFrame({ x: 1e6, y: -1e6, scale: over.scale }, b6);
   T('a pan cannot lose the world', far.x <= b6.maxX && far.y >= b6.minY);
@@ -3003,7 +3030,20 @@ async function testWorld(){
   T('and it is not tried again this visit', destroyed === 1 && c.worldStage === 'off' && c.Field === c.IsoField);
   T('the world reports taps to the app and asks it about motion and cover',
     /onTap: tapProject,[\s\S]{0,80}onFail: stopWorld,[\s\S]{0,80}reducedMotion: prefersReducedMotion,[\s\S]{0,80}covered: \(\) => document\.body\.classList\.contains\('scroll-locked'\)/.test(js()));
-  T('the flat field leaves the host before the world takes it', /Field\.unmount\(\);\s*const world = mod\.createWorld\(host/.test(js()));
+  T('the world is made behind the flat field, in its own host, and takes over only once it has drawn',
+    /WorldField\.world = mod\.createWorld\(host, \{[\s\S]{0,120}onReady: adoptWorld/.test(js()) &&
+    !/import\(WORLD_MODULE\)[\s\S]{0,400}IsoField\.unmount\(\)/.test(js()) &&
+    /function adoptWorld\(\)\{\s*if\(worldStage !== 'loading'\) return;[\s\S]{0,300}IsoField\.unmount\(\);[\s\S]{0,300}Field = WorldField;/.test(js()));
+  T('while it loads the flat field stays drawn and the world takes no taps',
+    /\.world-host\{[^}]*pointer-events: none/.test(css()) && /view\.style\.visibility = 'hidden'/.test(r3) &&
+    /if\(view\.style\.visibility\)\{\s*view\.style\.visibility = '';[\s\S]{0,120}if\(H\.onReady\) H\.onReady\(\);/.test(r3) &&
+    !/world-pending|visibility: hidden; \}/.test((css().match(/\.project-field\.world-loading[^}]*\}/g) || []).join('')));
+  T('the world\'s box is what the screen has left, measured: above the tab bar, with the dock\'s room kept',
+    /vh - top - bar - dockH - gap/.test(js()) && /fitField\(\);\r?\n\}/.test(js()) && /addEventListener\('resize', fitField\)/.test(js()) &&
+    /if\(worldStage === 'off' \|\|/.test(js()));
+  T('labels are type, not boxes: only the selected one has a backing', /\.world-label\{[^}]*background: none;/.test(css()) &&
+    /\.world-tile\.is-selected \.world-label\{ background: var\(--world-label\); \}/.test(css()) && /\.world-name\{[^}]*text-shadow:/.test(css()));
+  T('each renderer has its own host in one box', /<div class="field-box">\s*<div class="project-field" id="projectField"[^>]*><\/div>\s*<div class="world-host" id="worldHost"/.test(H.readApp()));
   T('no errors', app.errors.length === 0, app.errors.join(' | '));
 }
 

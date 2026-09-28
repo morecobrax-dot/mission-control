@@ -341,7 +341,7 @@ const BRIDGE = [
   'STATUS_UNREADABLE', 'CHECK_OUTCOMES', 'CHECK_PROBLEMS', 'REPO_URL', 'ISO_TIME', 'STATUS_BAD_TEXT',
   'stateSources', 'stateSourcesForeign', 'repoStatus', 'repoStatusForeign', 'statusInFlight',
   'editingStateId', 'editingLinksId', 'formState', 'Field', 'IsoField', 'WorldField', 'worldStage',
-  'APP_FILES', 'WORLD_MODULE', 'WORLD_WAIT_MS',
+  'APP_FILES', 'WORLD_MODULE', 'FIELD_MIN', 'FIELD_MIN_SHORT', 'FIELD_MAX',
   'currentTab',
   'TOAST_MS', 'MAX_TOASTS', 'TOAST_VARIANTS',
   'OVERLAY_Z_BASE', '_openSheetStack', '_sheetOpeners', '_lockDepth', '_lockedScrollY',
