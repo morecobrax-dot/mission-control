@@ -156,11 +156,13 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     token, an API key, a credential or a local machine path. Tests use obvious
     fixtures — `.test` hosts, ids that say `FAKE` — and `npm run secrets`
     (inside `npm run verify`) fails on anything that looks real.
-30. **Identity is public, state is local, links are private.** Names, purposes,
-    repositories and live URLs live in `PROJECT_REGISTRY`. Status, attention,
-    version, phase, work and next step live in `data.projectStates` on the
-    device. ChatGPT and Claude links live only in `data.privateLinks`. Never
-    give a private link a default in source; never put state in the registry.
+30. **Identity is public, state is yours or published, links are private.**
+    Names, purposes, repositories, live URLs and `publicRepo` live in
+    `PROJECT_REGISTRY`. A state you record lives in `data.projectStates` on the
+    device; a state a public repository publishes lives in its own
+    `PROJECT-STATUS.json` and is cached in `cache.repoStatus`. ChatGPT and
+    Claude links live only in `data.privateLinks`. Never give a private link a
+    default in source; never put state in the registry.
 31. **No record is no state.** A project nobody has recorded says "Needs
     update", has a `null` status and no attention, counts toward Projects and
     toward nothing else, and opens its editor empty. Never fill in a status,
@@ -184,20 +186,25 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     that name still fails.
 37. **Moodboards are never shipped.** `references/visual/` is git-ignored.
     Never commit, trace or reproduce that artwork.
-38. **No integration the brief did not ask for.** No AI, backend, auth, cloud
-    sync, Notion, OpenAI, Anthropic or private GitHub API, and no guessing at
-    whether a Claude session is running. Status is explicit data until a
-    phase brief says otherwise.
+38. **No integration the brief did not ask for.** No AI, backend, proxy, auth,
+    cloud sync, Notion, OpenAI, Anthropic, GitHub API or private repository,
+    and no guessing at whether a Claude session is running. Status is explicit
+    data: recorded here, or published by a public repository as
+    `PROJECT-STATUS.json` and read from GitHub's raw host with nothing attached
+    — no token, no credentials, no referrer. Never infer a status from commit
+    frequency, test counts or a version number.
 39. **Dev server on port 8398.** Port 8391 is shared by other projects on this
     machine, and one localhost origin means their service workers replace
     each other.
 40. **A backup is an allowlist, both ways.** Export only what
     `backupMissionControl` builds from `BACKUP_FIELDS`: recorded project
-    states. Never private links, drafts, preferences, recovery snapshots or
-    unreadable records — keeping unknown data locally is not permission to
-    export it. Import accepts only project states, rebuilt from the same
-    allowlist, and never restores, merges or deletes private links; say so
-    when a file held some. Contract 26 guards all of it.
+    states. Never private links, drafts, preferences, recovery snapshots,
+    source choices, fetched repository status or unreadable records — keeping
+    unknown data locally is not permission to export it. Import accepts only
+    project states, rebuilt from the same allowlist, never restores, merges or
+    deletes private links, and never changes which record a project shows;
+    say so when a file held links, and when an imported state is kept behind
+    a repository status. Contract 26 guards all of it.
 41. **Say the shared origin plainly.** Every app on `morecobrax-dot.github.io`
     shares one browser origin. The storage prefix keeps names apart, not
     access. Never describe it as isolation, never claim how iOS Safari or a
@@ -208,3 +215,27 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     a new record needs no other change, and a look it does not have yet falls
     back to `generic`. Never write code or a test that assumes six is the
     maximum.
+43. **One effective state, two kept records.** A project shows its manual
+    record or its repository snapshot — never a blend, field by field or
+    otherwise. An unrecorded project adopts a valid repository status and the
+    choice is saved at once; a project with a manual record switches only
+    when the person chooses. A connected project has no editor (that would be
+    a hidden override); saving in the editor chooses your own state; clearing
+    one shows Needs update. Switching never deletes either record. Contract 28.
+44. **A status file is refused whole.** `validateStatusFile` checks every key,
+    type, status, limit and time; a newer `schemaVersion` is unsupported,
+    never half-read; remote text is plain text, escaped when drawn. Every
+    failed check keeps the last valid snapshot and its fetch time, and an
+    older copy never replaces a newer one. Contract 27.
+45. **Ask when due, never on a timer.** On open (after the first render), on
+    return to the foreground, and by Refresh: 15 minutes after an answer, a
+    minute after a failure that may pass, an hour after a 403 or 429. One
+    request per project in flight, an 8-second timeout, nothing sent offline.
+    `updatedAt` is the publisher's time and `checkedAt` the device's: never
+    show one as the other. Contract 29.
+46. **Identity never wears a status colour.** Every `--tint-*` stays at least
+    ΔE 20 (CIELAB) from every `--sig-*`, and a beacon is lit only by a known
+    state. Contract 24 measures both.
+47. **A toast is never touched.** It has no controls and `pointer-events:
+    none`, so it can never take a tap meant for what lies beneath it.
+    Contract 8.

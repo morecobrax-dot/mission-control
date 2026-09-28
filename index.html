@@ -164,8 +164,12 @@
      its status. Faces are shaded by mixing toward --iso-shade. */
   --field-floor: #0D131D;
   --field-line: rgba(143,163,191,0.07);
-  --field-haze: rgba(76,194,255,0.07);
+  --field-haze: rgba(76,194,255,0.10);
   --field-select: rgba(238,241,245,0.85);
+  /* Light, not status: the lit lip of every platform and the pool under
+     the one in focus. Neutral, so it can never be read as a signal. */
+  --field-rim: rgba(238,241,245,0.22);
+  --field-pool: rgba(238,241,245,0.09);
   --iso-shade: #04060A;
   --mat-plinth: #283246;
   --mat-stone: #C9D0DB;
@@ -180,15 +184,17 @@
   --worker-head: #F1F3F6;
   --worker-shadow: rgba(4,6,10,0.45);
 
-  /* Each project's ground and landmark accent. Dark and
-     desaturated on purpose: identity recedes, status speaks. */
-  --terrain-track: #23384A;     --tint-track: #5E86B0;
-  --terrain-calendar: #3A3326;  --tint-calendar: #B0707E;
-  --terrain-book: #2C3042;      --tint-book: #8A6A4E;
-  --terrain-vault: #213428;     --tint-vault: #8C96A4;
-  --terrain-rocket: #22264A;    --tint-rocket: #7F95D8;
-  --terrain-sushi: #3A2A2A;     --tint-sushi: #C9765F;
-  --terrain-generic: #262F3F;   --tint-generic: #7C8BA1;
+  /* Each project's ground and landmark accent. The grounds stay dark and
+     every accent is at least ΔE 20 (CIELAB) from every status hue above —
+     contract 24 measures it — so identity can be strong without reading
+     as a status. The words and shapes carry status either way. */
+  --terrain-track: #1F3B57;     --tint-track: #5C95D6;
+  --terrain-calendar: #40352A;  --tint-calendar: #CB7F9E;
+  --terrain-book: #2E3452;      --tint-book: #B38258;
+  --terrain-vault: #1F3A2C;     --tint-vault: #D8CFC4;
+  --terrain-rocket: #242B5C;    --tint-rocket: #8FA2F2;
+  --terrain-sushi: #452D2C;     --tint-sushi: #DB8466;
+  --terrain-generic: #283246;   --tint-generic: #B9B2A6;
 
   /* The hub goes wide only where a docked brief fits beside the
      field. The same query is WIDE_QUERY in the script. */
@@ -689,7 +695,11 @@ body.scroll-locked{
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   font-size: var(--fs-support); color: var(--text);
-  pointer-events: auto;
+  /* A toast is read, never touched: it has no controls. It used to take
+     every tap that landed on it, and after "Use my own state instead" it
+     sat over the state editor's lower fields for 3.2 seconds — a tap on
+     Next action focused nothing and the words typed went nowhere. */
+  pointer-events: none;
   animation: toast-in var(--dur) var(--ease) both;
 }
 .toast.leaving{ animation: toast-out var(--dur-fast) var(--ease) both; }
@@ -759,22 +769,38 @@ body.scroll-locked{
 }
 .glyph-tile.large{ width: 48px; height: 48px; border-radius: var(--radius-lg); }
 
+/* ---- A compact top: the world is the focus, so the shell's header gives
+   up its height here. It extends the foundation's header, never redefines
+   it, and still pays the top inset. ---- */
+.app-header.hub-top{
+  padding: var(--space-sm) var(--space-lg) 0;
+  padding-top: calc(var(--space-sm) + var(--inset-top));
+  border-bottom: none;
+}
+.app-header.hub-top .app-title{ font-size: var(--fs-section); letter-spacing: -0.01em; }
+/* Checking the repositories: the arrows turn while it runs (never under
+   Reduce Motion, which stops every animation) and the label says so. */
+.icon-btn.is-busy svg{ animation: refresh-turn 1s linear infinite; }
+@keyframes refresh-turn{ to{ transform: rotate(360deg); } }
+/* The button is a flex box, which would otherwise outrank [hidden]. */
+#refreshBtn[hidden]{ display: none; }
+
 /* ---- HUD: quiet counts, not a dashboard ---- */
 .hud{
   display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
-  margin-bottom: var(--space-sm);
+  margin-bottom: var(--space-xs);
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-lg); box-shadow: inset 0 1px 0 var(--edge-hi);
 }
 .hud-item{
-  min-width: 0; padding: var(--space-md) var(--space-xs);
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 0; padding: var(--space-sm) var(--space-xs);
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
   border-left: 1px solid var(--border-quiet);
 }
 .hud-item:first-child{ border-left: none; }
 .hud-value{
   display: inline-flex; align-items: center; gap: 4px;
-  font-family: var(--font-display); font-size: var(--fs-section); font-weight: 700;
+  font-family: var(--font-display); font-size: var(--fs-title); font-weight: 700;
   line-height: var(--lh-tight); font-variant-numeric: tabular-nums; color: var(--text);
 }
 .hud-value svg{ color: var(--sig); }
@@ -787,44 +813,61 @@ body.scroll-locked{
   letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint);
 }
 
-/* ---- Needs attention ---- */
-.attention-row{ border-left: 3px solid var(--sig); }
-.attention-row .attn-mark{ flex-shrink: 0; display: flex; color: var(--sig); }
-.attention-clear{
-  display: flex; align-items: center; gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
-  border: 1px dashed var(--border); border-radius: var(--radius-md);
-  color: var(--text-dim); font-size: var(--fs-support);
+/* ---- Under the counts, one wrapping row: what needs you, as one-line
+   buttons straight to each brief, then a quiet line on what is unknown.
+   It replaces a heading, two-line rows and an empty box, so the world
+   stays high even when something needs you. ---- */
+.hub-status{
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm);
+  margin: 0 0 var(--space-xs);
 }
-.attention-clear svg{ color: var(--sig-stable); flex-shrink: 0; }
-/* Not "all clear": only nothing recorded asks for you. No green tick. */
-.attention-clear.is-partial svg{ color: var(--text-faint); }
+.attention-strip{ display: flex; flex-wrap: wrap; gap: var(--space-xs); max-width: 100%; }
+.attention-strip:empty{ display: none; }
+.attn-pill{
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0;
+  min-height: var(--touch-min); padding: 0 var(--space-sm);
+  background: var(--surface); color: var(--text); text-align: left; cursor: pointer;
+  border: 1px solid var(--border); border-left: 3px solid var(--sig); border-radius: var(--radius-md);
+  font-size: var(--fs-support); line-height: var(--lh-tight);
+  -webkit-tap-highlight-color: transparent;
+}
+.attn-pill:active{ transform: scale(0.98); }
+.attn-pill .attn-mark{ flex-shrink: 0; display: flex; color: var(--sig); }
+.attn-pill .attn-name{ flex-shrink: 0; font-weight: 600; white-space: nowrap; }
+.attn-pill .attn-why{ min-width: 0; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attn-pill .attn-go{ flex-shrink: 0; display: flex; color: var(--text-faint); }
 
-/* ---- The quiet line under the counts, while some states are unknown ---- */
-.state-note{
+.hub-summary{
   display: flex; align-items: center; gap: var(--space-sm);
-  margin: 0 0 var(--space-xs); padding: 0 var(--space-xs);
-  color: var(--text-faint); font-size: var(--fs-meta);
+  min-height: 28px; margin: 0; padding: 0 var(--space-xs);
+  color: var(--text-faint); font-size: var(--fs-meta); line-height: var(--lh-tight);
 }
-.state-note[hidden]{ display: none; }
-.state-note svg{ flex-shrink: 0; color: var(--sig-unrecorded); }
+.hub-summary[hidden]{ display: none; }
+.hub-summary svg{ flex-shrink: 0; color: var(--sig-unrecorded); }
+/* Only when every state is known and none asks for you. */
+.hub-summary.is-clear{ color: var(--text-dim); }
+.hub-summary.is-clear svg{ color: var(--sig-stable); }
+.hub-summary .sep{ color: var(--border); }
 
 /* ---- The project field ----
    Named .project-field, never .field: that is the foundation's form-field
    class, and sharing it painted this floor behind every input. */
 .project-field{
   position: relative; overflow: hidden;
-  padding: var(--space-lg) var(--space-sm) var(--space-md);
+  padding: var(--space-sm) var(--space-sm) var(--space-lg);
   border: 1px solid var(--border-quiet); border-radius: var(--radius-xl);
   background:
-    radial-gradient(ellipse at 50% 38%, var(--field-haze), transparent 70%),
+    radial-gradient(ellipse at 50% 40%, var(--field-haze), transparent 72%),
     repeating-linear-gradient(30deg, var(--field-line) 0 1px, transparent 1px 24px),
     repeating-linear-gradient(150deg, var(--field-line) 0 1px, transparent 1px 24px),
     var(--field-floor);
 }
+/* Every label clears the platforms below it and the field's own edge, so
+   the lowest row never sits on the frame or under the tab bar. */
 .field-grid{
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: var(--space-xs); row-gap: var(--space-sm); align-items: start;
+  column-gap: var(--space-xs); row-gap: var(--space-md); align-items: start;
+  margin: 0 auto;
 }
 /* The middle column sits half a step lower, so six platforms read as one
    field rather than a table. A margin, not a transform: it moves the tap
@@ -899,8 +942,21 @@ body.scroll-locked{
   fill: none; stroke: var(--field-select); stroke-width: 0.16;
   stroke-dasharray: 0.7 0.45; stroke-linejoin: round;
 }
+/* Light that belongs to the place, never to its status: the plinth's lit
+   lip in neutral light, the ground's rim in the project's own accent, and
+   a pool of light under the project in focus. */
+.platform .select-pool{ fill: var(--field-pool); }
+.platform .rim-light{ fill: none; stroke: var(--field-rim); stroke-width: 0.1; stroke-linejoin: round; }
+.platform .tint-light{ fill: none; stroke: var(--tint); stroke-width: 0.13; stroke-linejoin: round; opacity: 0.75; }
+.block.is-selected .platform .tint-light{ opacity: 1; stroke-width: 0.17; }
+.block.is-selected .platform .rim-light{ stroke: var(--field-select); }
+/* The beacon is lit only by a known state: its hue is the signal's, with a
+   small bright core. With no state the lamp is off — a ring, no glow. */
 .platform .beacon-light{ fill: var(--sig); }
-.platform .beacon-glow{ fill: var(--sig); opacity: 0.22; }
+.platform .beacon-glow{ fill: var(--sig); opacity: 0.26; }
+.platform .beacon-halo{ fill: var(--sig); opacity: 0.1; }
+.platform .beacon-core{ fill: var(--text); opacity: 0.8; }
+.block.sig-unrecorded .platform .beacon-light{ fill: var(--field-floor); stroke: var(--sig); stroke-width: 0.14; }
 .platform .w-body{ fill: var(--worker-suit); }
 .platform .w-head{ fill: var(--worker-head); }
 .platform .w-helmet, .platform .w-prop{ fill: var(--sig); }
@@ -947,7 +1003,9 @@ body.scroll-locked{
   flex-shrink: 0; display: flex; align-items: center; gap: 2px;
   color: var(--accent); font-size: var(--fs-support); font-weight: 600;
 }
-.focus-hint{ padding: var(--space-md); text-align: center; color: var(--text-faint); font-size: var(--fs-support); }
+.focus-hint{ padding: var(--space-sm) var(--space-md); text-align: center; color: var(--text-faint); font-size: var(--fs-support); }
+.focus-source{ display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-micro); color: var(--text-faint); }
+.focus-source svg{ flex-shrink: 0; }
 
 /* ---- Quick brief ---- */
 .brief-head{ display: flex; align-items: flex-start; gap: var(--space-md); margin-bottom: var(--space-md); }
@@ -965,6 +1023,23 @@ body.scroll-locked{
 .brief .notice{ margin-bottom: var(--space-md); }
 .brief .notice-error .notice-mark{ color: var(--sig-blocked); }
 .brief-tools[hidden]{ display: none; }
+
+/* ---- Where a project's state comes from ----
+   Quiet by design: a source is provenance, not a status, so it wears no
+   signal hue. A failed check is said in words, beside what is still shown. */
+.source-panel{
+  display: flex; flex-direction: column; gap: var(--space-xs);
+  margin-bottom: var(--space-md); padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-quiet); border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: var(--fs-meta); color: var(--text-dim);
+}
+.source-line{ display: flex; align-items: center; gap: var(--space-xs); color: var(--text); font-weight: 600; }
+.source-line svg{ flex-shrink: 0; color: var(--text-dim); }
+.source-detail{ color: var(--text-faint); }
+.source-detail code{ font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-dim); overflow-wrap: anywhere; }
+.source-warn{ display: flex; align-items: flex-start; gap: var(--space-xs); color: var(--warning); }
+.source-warn svg{ flex-shrink: 0; margin-top: 1px; }
 
 .tools{
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
@@ -1031,9 +1106,15 @@ body.scroll-locked{
 /* ---- A phone on its side ----
    Width to spare and no height: rows of six keep the field short — the
    first six projects share one row instead of two that need scrolling, and
-   any more wrap onto the next. */
+   any more wrap onto the next. The row is held to a width whose platforms
+   fit between the counts and the tab bar, so the world is on screen at
+   once rather than one scroll away. */
 @media (orientation: landscape) and (max-height: 500px){
-  .field-grid{ grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .app-header.hub-top{ padding-top: calc(var(--space-xs) + var(--inset-top)); }
+  #view-home{ padding-top: var(--space-xs); }
+  .hud-item{ padding: var(--space-xs); }
+  .project-field{ padding-bottom: var(--space-md); }
+  .field-grid{ grid-template-columns: repeat(6, minmax(0, 1fr)); max-width: 640px; }
   .field-grid .block:nth-child(3n+2){ margin-top: 0; }
   .field-grid .block:nth-child(even){ margin-top: 18%; }
 }
@@ -1056,7 +1137,10 @@ body.scroll-locked{
     border-radius: var(--radius-xl); box-shadow: inset 0 1px 0 var(--edge-hi);
   }
   .focus-host{ display: none; }
-  .project-field{ padding: var(--space-xl) var(--space-lg) var(--space-lg); }
+  .project-field{ padding: var(--space-lg) var(--space-lg); }
+  /* Sized by the height it has, not only the width: two rows of platforms
+     and their labels stay above the tab bar on an iPad on its side. */
+  .field-grid{ max-width: 600px; max-width: calc((100dvh - 380px) * 1.2); }
   .block-name{ font-size: var(--fs-support); }
 }
 
@@ -1081,27 +1165,30 @@ body.scroll-locked{
 
 <div id="app" style="display:none">
 
-  <header class="app-header">
+  <header class="app-header hub-top">
     <div class="header-row">
       <h1 class="app-title" id="appTitle">Mission Control</h1>
       <div class="header-actions">
+        <button class="icon-btn" id="refreshBtn" aria-label="Check the repositories for project status" onclick="refreshNow()" hidden></button>
         <button class="icon-btn" id="updatesBtn" aria-label="What's new" onclick="openUpdates()"></button>
       </div>
     </div>
   </header>
 
-  <!-- HUB — what needs you first, then every project, then the one in focus.
-       On a wide screen the quick brief docks beside the field. -->
+  <!-- HUB — the counts, one line on what needs you, the world of projects,
+       then the one in focus. On a wide screen the quick brief docks beside
+       the field. -->
   <main class="view active" id="view-home">
     <div id="storageNotice"></div>
     <div class="hub">
       <section class="hub-main" aria-labelledby="hubHeading">
         <h2 class="sr-only" id="hubHeading">Projects</h2>
         <div class="hud" id="hud" role="group" aria-label="Summary"></div>
-        <p class="state-note" id="stateNote" hidden></p>
-        <div class="section-label" id="attentionHeading">Needs attention</div>
-        <div id="attentionList"></div>
-        <div class="section-label" id="fieldHeading">All projects</div>
+        <div class="hub-status">
+          <div class="attention-strip" id="attentionList"></div>
+          <p class="hub-summary" id="hubSummary"></p>
+        </div>
+        <span class="sr-only" id="fieldHeading">All projects</span>
         <div class="project-field" id="projectField" role="group" aria-labelledby="fieldHeading"></div>
         <div class="focus-host" id="focusBar"></div>
       </section>
@@ -1302,7 +1389,7 @@ body.scroll-locked{
       </div>
       <input type="file" id="importInput" accept="application/json,.json" class="sr-only" onchange="importData(this)">
       <div class="field-hint" style="margin-top:var(--space-md)">Importing merges by id, so re-importing the same file changes nothing and an older backup can never delete newer records.</div>
-      <div class="field-hint" style="margin-top:var(--space-sm)">A backup carries recorded project states only. Your private ChatGPT and Claude links, unsaved edits and this device's preferences stay on this device: they are never written to the file, and importing never changes them.</div>
+      <div class="field-hint" style="margin-top:var(--space-sm)">A backup carries recorded project states only. Your private ChatGPT and Claude links, unsaved edits, this device's preferences, which record each project shows and the status fetched from repositories stay on this device: they are never written to the file, and importing never changes them.</div>
       <div class="import-notes" id="importNotes" role="status"></div>
       <div class="section-label">Danger zone</div>
       <div class="field-hint" style="margin-bottom:var(--space-md)">This permanently erases everything this app has stored. It cannot be undone.</div>
@@ -1389,6 +1476,25 @@ function validateAppId(id){
    ========================================================= */
 const APP_UPDATES = [
   {
+    id: 'v0-2-0',
+    version: '0.2.0',
+    title: 'Connected status',
+    date: '2026-09-28',
+    summary: 'A project whose repository publishes its status now keeps itself up to date, and the world of projects sits higher on the screen.',
+    newFeatures: [
+      'Projects that publish a PROJECT-STATUS.json in their public repository update themselves when you open the app, come back to it, or tap Refresh',
+      'A connected project says where its status comes from and how old it is, and switching it to your own state and back keeps both',
+      'When a repository cannot be reached, the last status it published stays on screen, with when it was last checked'
+    ],
+    improvements: [
+      'The world of projects starts higher: a smaller header, tighter counts, and one line about what needs you and what is unknown',
+      'On a phone turned sideways and on an iPad, every platform and its label fit above the tab bar',
+      'Stronger project colours, platforms that catch the light, and a pool of light under the project in focus',
+      'A beacon lights up only when its project\'s state is known'
+    ],
+    fixes: []
+  },
+  {
     id: 'v0-1-1',
     version: '0.1.1',
     title: 'Truthful state',
@@ -1441,6 +1547,8 @@ const KEYS = {
   selectedProject: 'ui.selectedProject',
   projectStates:   'data.projectStates',
   privateLinks:    'data.privateLinks',
+  stateSources:    'data.stateSources',
+  repoStatus:      'cache.repoStatus',
   stateDraft:      'draft.projectState',
   linksDraft:      'draft.projectLinks'
 };
@@ -2023,12 +2131,20 @@ function renderAll(){
 
    THE MODEL
    - IDENTITY is public and lives in source: PROJECT_REGISTRY.
-     Name, purpose, repository, live app, default branch, look.
-   - STATE is yours, entered on this device, under
-     data.projectStates: status, what it needs from you,
-     version, phase, current work, next step, and when you last
-     said so.
-   - A project with no recorded state has NO state. It says
+     Name, purpose, repository, live app, default branch, look,
+     and whether its repository is public (publicRepo).
+   - STATE comes from one of two sources, one at a time:
+     · MANUAL — entered on this device, under data.projectStates:
+       status, what it needs from you, version, phase, current
+       work, next step, and when you last said so.
+     · REPOSITORY — the PROJECT-STATUS.json a public repository
+       publishes, validated and cached under cache.repoStatus with
+       where and when it was fetched. Never merged with a manual
+       record, field by field or otherwise.
+     Which one a project shows is data.stateSources: your choice,
+     or a repository status adopted by a project nobody had
+     recorded. Switching keeps both records.
+   - A project with no state from its source has NO state. It says
      "Needs update", counts as a project and as nothing else, and
      is never shown as planning, paused, stable or anything a
      person could mistake for a fact.
@@ -2092,6 +2208,11 @@ const SIGNALS = {
    Personal Savings is a private repository with no Pages
    site, so it has no live app — absent, not invented.
 
+   publicRepo says the repository is public, so its status
+   file may be read (statusUrlFor). It is false for Personal
+   Savings: a private repository is never asked for anything,
+   and that project's state stays manual.
+
    Nothing private belongs here. This file is public.
    ========================================================= */
 const PROJECT_REGISTRY = [
@@ -2102,7 +2223,8 @@ const PROJECT_REGISTRY = [
     repositoryUrl: 'https://github.com/morecobrax-dot/loop',
     liveUrl: 'https://morecobrax-dot.github.io/loop/',
     defaultBranch: 'main',
-    visualTheme: 'track'
+    visualTheme: 'track',
+    publicRepo: true
   },
   {
     id: 'dayplan',
@@ -2111,7 +2233,8 @@ const PROJECT_REGISTRY = [
     repositoryUrl: 'https://github.com/morecobrax-dot/dayplan',
     liveUrl: 'https://morecobrax-dot.github.io/dayplan/',
     defaultBranch: 'main',
-    visualTheme: 'calendar'
+    visualTheme: 'calendar',
+    publicRepo: true
   },
   {
     id: 'daily-verse',
@@ -2120,7 +2243,8 @@ const PROJECT_REGISTRY = [
     repositoryUrl: 'https://github.com/morecobrax-dot/Daily-Verse',
     liveUrl: 'https://morecobrax-dot.github.io/Daily-Verse/',
     defaultBranch: 'main',
-    visualTheme: 'book'
+    visualTheme: 'book',
+    publicRepo: true
   },
   {
     id: 'personal-savings',
@@ -2129,7 +2253,8 @@ const PROJECT_REGISTRY = [
     repositoryUrl: 'https://github.com/morecobrax-dot/personal-savings',
     liveUrl: null,
     defaultBranch: 'main',
-    visualTheme: 'vault'
+    visualTheme: 'vault',
+    publicRepo: false
   },
   {
     id: 'space-kindergarten',
@@ -2138,7 +2263,8 @@ const PROJECT_REGISTRY = [
     repositoryUrl: 'https://github.com/morecobrax-dot/space-kindergarten',
     liveUrl: 'https://morecobrax-dot.github.io/space-kindergarten/',
     defaultBranch: 'main',
-    visualTheme: 'rocket'
+    visualTheme: 'rocket',
+    publicRepo: true
   },
   {
     id: 'capybara-sushi',
@@ -2147,7 +2273,8 @@ const PROJECT_REGISTRY = [
     repositoryUrl: 'https://github.com/morecobrax-dot/Capybara-Sushi',
     liveUrl: 'https://morecobrax-dot.github.io/Capybara-Sushi/',
     defaultBranch: 'main',
-    visualTheme: 'sushi'
+    visualTheme: 'sushi',
+    publicRepo: true
   }
 ];
 
@@ -2272,9 +2399,19 @@ function usableLink(raw, kind){
    stored. The documented form is claude.ai/code/new with `repo` and
    `branch` parameters. Nothing launches it yet. */
 function claudeFallbackFor(p){
-  const m = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)\/?$/.exec((p && p.repositoryUrl) || '');
-  if(!m || !p.defaultBranch) return null;
-  return { repo: m[1] + '/' + m[2], branch: p.defaultBranch };
+  const repo = repoPath(p);
+  if(!repo || !p.defaultBranch) return null;
+  return { repo: repo, branch: p.defaultBranch };
+}
+
+/* owner/name of a registry record's GitHub repository, or null. The one
+   place a repository address is read, for the fallback above and for the
+   status file below. */
+const REPO_URL = /^https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100}?)\/?$/;
+function repoPath(p){
+  const m = REPO_URL.exec((p && p.repositoryUrl) || '');
+  if(!m || m[2] === '.' || m[2] === '..') return null;
+  return m[1] + '/' + m[2];
 }
 
 /* =========================================================
@@ -2328,22 +2465,27 @@ function normalizeLinks(raw){
 }
 
 /* Records are read the way backup import merges them — one per project,
-   the newest winning — so a merged file and a local save agree. */
-function readRecords(key, normalize){
+   the newest winning — so a merged file and a local save agree. `stamp`
+   names what "newest" means for a collection: when it was recorded, by
+   default. */
+function readRecords(key, normalize, stamp){
+  const when = stamp || (r => r.updatedAt);
   const raw = Store.getJSON(key, []);
   const own = {}, foreign = [];
   (Array.isArray(raw) ? raw : []).forEach(r => {
     const rec = normalize(r);
     if(!rec){ foreign.push(r); return; }
     const cur = own[rec.id];
-    if(!cur || (rec.updatedAt || '') > (cur.updatedAt || '')) own[rec.id] = rec;
+    if(!cur || (when(rec) || '') > (when(cur) || '')) own[rec.id] = rec;
   });
   return { own: own, foreign: foreign };
 }
-function writeRecords(key, own, foreign){
+/* A write the person asked for says so when it fails. A write the app makes
+   on its own (a fetched status) fails quietly: it is only a cache. */
+function writeRecords(key, own, foreign, quiet){
   const list = PROJECT_REGISTRY.map(p => own[p.id]).filter(Boolean).concat(foreign);
   const ok = Store.setJSON(key, list);
-  if(!ok) toast('Could not save — this browser is not storing data.', 'error');
+  if(!ok && !quiet) toast('Could not save — this browser is not storing data.', 'error');
   return ok;
 }
 
@@ -2370,7 +2512,190 @@ function loadSelection(){
 function hydrateMissionControl(){
   loadProjectStates();
   loadPrivateLinks();
+  loadStateSources();
+  loadRepoStatus();
   loadSelection();
+}
+
+/* =========================================================
+   REPOSITORY STATUS — what a public repository publishes
+   ---------------------------------------------------------
+   A project whose repository is public may publish its state
+   as PROJECT-STATUS.json at the root of its default branch.
+   It is read from GitHub's raw host, which answers any origin,
+   caches for five minutes and revalidates by ETag. Nothing is
+   sent with the request: no credentials, no referrer, no token.
+   A private repository is never asked.
+
+   THE CONTRACT — schemaVersion 1, every key present:
+     schemaVersion  1
+     appId          this project's registry id
+     version        text, or null when unknown
+     phase          text, or null
+     status         planning | building | release_ready | stable | paused
+     needsQa        true | false
+     needsDecision  true | false
+     currentTask    text, or null
+     nextAction     text, or null
+     blocker        text, or null — a project is blocked exactly
+                    when one is written, as it is here
+     updatedAt      ISO 8601 with a zone: when the status was written
+
+   The same words and limits as a state recorded on this device,
+   so a repository cannot say anything this app could not show.
+   A file that breaks any rule is refused whole and the last
+   valid one stays; a newer schema is refused as unsupported,
+   never half-read. Its text is plain text: escaped, never a link.
+
+   Two times, never confused: updatedAt is when the project's
+   status was written; checkedAt is when this device last asked.
+   Asking again never makes old news look new.
+   ========================================================= */
+const STATUS_FILE = 'PROJECT-STATUS.json';
+const STATUS_HOST = 'https://raw.githubusercontent.com/';
+const STATUS_SCHEMA_VERSION = 1;
+const STATUS_KEYS = ['schemaVersion', 'appId', 'version', 'phase', 'status', 'needsQa', 'needsDecision',
+                     'currentTask', 'nextAction', 'blocker', 'updatedAt'];
+const STATUS_MAX_BYTES = 8192;
+/* How long one request may take, and how often each project is asked —
+   only when due, on open and on coming back; never on a timer. */
+const STATUS_TIMEOUT_MS = 8000;
+const STATUS_FRESH_MS = 15 * 60 * 1000;       // after an answer
+const STATUS_RETRY_MS = 60 * 1000;            // after a failure that may pass
+const STATUS_BACKOFF_MS = 60 * 60 * 1000;     // after GitHub asks for fewer requests
+const STATUS_TRANSIENT = ['offline', 'unreachable', 'timeout', 'http'];
+const STATUS_UNREADABLE = ['invalid', 'unsupported', 'wrong-app', 'too-large'];
+const CHECK_OUTCOMES = ['ok', 'older', 'missing', 'rate-limited'].concat(STATUS_TRANSIENT, STATUS_UNREADABLE);
+/* A clock a little ahead is forgiven; a status dated tomorrow is not. */
+const STATUS_FUTURE_MS = 24 * 60 * 60 * 1000;
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+/* Control characters, and the direction overrides that make text read
+   differently from what it is. Tabs and line breaks are only spaces. */
+const STATUS_BAD_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/;
+
+/* The one address a project's status is read from, derived from public
+   registry facts only — or null, when the repository is not public or its
+   record does not name a repository and branch GitHub would recognise. */
+function statusUrlFor(p){
+  if(!p || p.publicRepo !== true) return null;
+  const repo = repoPath(p);
+  const branch = p.defaultBranch;
+  if(!repo || typeof branch !== 'string' ||
+     !/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(branch) || /(^|\/)\.\.?(\/|$)/.test(branch)) return null;
+  return STATUS_HOST + repo + '/' + branch + '/' + STATUS_FILE;
+}
+
+/* A published file, checked against the contract. Refused whole with the
+   reason in words, or rebuilt field by field into the same record a state
+   saved on this device is — nothing else it carries is kept. */
+function validateStatusFile(data, expectedId, now){
+  const no = (outcome, detail) => ({ ok: false, outcome: outcome, detail: detail });
+  if(!data || typeof data !== 'object' || Array.isArray(data)) return no('invalid', 'It is not a status record.');
+  if(data.schemaVersion !== STATUS_SCHEMA_VERSION){
+    return (Number.isInteger(data.schemaVersion) && data.schemaVersion > STATUS_SCHEMA_VERSION)
+      ? no('unsupported', 'It uses status format ' + data.schemaVersion + '; this version reads format ' + STATUS_SCHEMA_VERSION + '.')
+      : no('invalid', 'It has no schemaVersion this app understands.');
+  }
+  if(data.appId !== expectedId) return no('wrong-app', 'It names a different project.');
+  const missing = STATUS_KEYS.filter(k => !Object.prototype.hasOwnProperty.call(data, k));
+  if(missing.length) return no('invalid', 'It is missing ' + missing.join(', ') + '.');
+  if(PROJECT_STATUSES.indexOf(data.status) === -1) return no('invalid', 'Its status is not one this app knows.');
+  if(typeof data.needsQa !== 'boolean' || typeof data.needsDecision !== 'boolean'){
+    return no('invalid', 'needsQa and needsDecision must be true or false.');
+  }
+  const text = {};
+  for(const f of ['version', 'phase', 'currentTask', 'nextAction', 'blocker']){
+    const v = data[f];
+    if(v === null){ text[f] = null; continue; }
+    if(typeof v !== 'string') return no('invalid', f + ' must be text or null.');
+    if(STATUS_BAD_TEXT.test(v)) return no('invalid', f + ' contains control characters.');
+    const t = v.replace(/\s+/g, ' ').trim();
+    if(t.length > STATE_LIMITS[f]) return no('invalid', f + ' is longer than ' + STATE_LIMITS[f] + ' characters.');
+    text[f] = t || null;
+  }
+  const at = (typeof data.updatedAt === 'string' && ISO_TIME.test(data.updatedAt)) ? Date.parse(data.updatedAt) : NaN;
+  if(isNaN(at)) return no('invalid', 'updatedAt is not a date and time with a zone.');
+  if(at - now > STATUS_FUTURE_MS) return no('invalid', 'updatedAt is in the future.');
+  return { ok: true, record: {
+    id: expectedId, status: data.status, needsQa: data.needsQa, needsDecision: data.needsDecision,
+    blocker: text.blocker, version: text.version, phase: text.phase,
+    currentTask: text.currentTask, nextAction: text.nextAction,
+    updatedAt: new Date(at).toISOString()
+  } };
+}
+
+/* ---------- where each project's state comes from ----------
+   data.stateSources holds a choice per project: 'manual' or
+   'repository'. cache.repoStatus holds, per project, the last valid
+   status its repository published (the snapshot), where and when it
+   was fetched, and how the last check went. The cache is only ever
+   written by a check; a failed check changes its outcome, never its
+   snapshot. Unreadable entries in either are kept aside and written
+   back untouched, like every other collection here. */
+let stateSources = {};           // id -> { id, source, updatedAt }
+let stateSourcesForeign = [];
+let repoStatus = {};             // id -> { id, snapshot, sourceUrl, fetchedAt, checkedAt, outcome, detail }
+let repoStatusForeign = [];
+
+function normalizeSource(raw){
+  if(!raw || typeof raw !== 'object' || !isKnownProject(raw.id)) return null;
+  if(raw.source !== 'manual' && raw.source !== 'repository') return null;
+  return { id: raw.id, source: raw.source,
+           updatedAt: typeof raw.updatedAt === 'string' && raw.updatedAt ? raw.updatedAt : null };
+}
+
+function normalizeRepoEntry(raw){
+  if(!raw || typeof raw !== 'object' || !isKnownProject(raw.id)) return null;
+  let snapshot = null;
+  if(raw.snapshot){
+    snapshot = normalizeState(Object.assign({}, raw.snapshot, { id: raw.id }));
+    if(!snapshot || !snapshot.updatedAt) return null;
+  }
+  const time = v => (typeof v === 'string' && !isNaN(Date.parse(v))) ? v : null;
+  return {
+    id: raw.id, snapshot: snapshot,
+    sourceUrl: typeof raw.sourceUrl === 'string' ? raw.sourceUrl : null,
+    fetchedAt: time(raw.fetchedAt), checkedAt: time(raw.checkedAt),
+    outcome: CHECK_OUTCOMES.indexOf(raw.outcome) !== -1 ? raw.outcome : null,
+    detail: typeof raw.detail === 'string' ? raw.detail.slice(0, 200) : null
+  };
+}
+
+function loadStateSources(){
+  const r = readRecords(KEYS.stateSources, normalizeSource);
+  stateSources = r.own; stateSourcesForeign = r.foreign;
+}
+function persistStateSources(){ return writeRecords(KEYS.stateSources, stateSources, stateSourcesForeign); }
+function loadRepoStatus(){
+  const r = readRecords(KEYS.repoStatus, normalizeRepoEntry, e => e.checkedAt);
+  repoStatus = r.own; repoStatusForeign = r.foreign;
+}
+function persistRepoStatus(){ return writeRecords(KEYS.repoStatus, repoStatus, repoStatusForeign, true); }
+
+function setSource(id, source){
+  stateSources[id] = { id: id, source: source, updatedAt: new Date().toISOString() };
+  stateSourcesForeign = stateSourcesForeign.filter(r => !(r && r.id === id));
+  return persistStateSources();
+}
+
+/* Which record a project shows — exactly one, never a blend of both. Your
+   choice when you made one; otherwise a state you recorded here; otherwise
+   a repository status, adopted by a project nobody had recorded (and saved
+   as the choice when it arrived, so importing a manual record later can
+   never flip it). A project whose repository is not public, or no longer
+   is, always shows its manual record. */
+function sourceOf(id){
+  const p = registryEntry(id);
+  if(!p || !statusUrlFor(p)) return 'manual';
+  const chosen = stateSources[id];
+  if(chosen) return chosen.source;
+  if(projectStates[id]) return 'manual';
+  return (repoStatus[id] && repoStatus[id].snapshot) ? 'repository' : 'manual';
+}
+function effectiveState(id){
+  return sourceOf(id) === 'repository'
+    ? ((repoStatus[id] && repoStatus[id].snapshot) || null)
+    : (projectStates[id] || null);
 }
 
 /* =========================================================
@@ -2392,11 +2717,17 @@ function attentionOf(state){
 
 /* No record means no state. The view says so (`recorded: false`, signal
    `unrecorded`) and carries nulls rather than any plausible default, so the
-   counts, the queue and the crew cannot mistake unknown for quiet. */
+   counts, the queue and the crew cannot mistake unknown for quiet.
+
+   The state is the effective one — the record of the project's source —
+   so everything below this line reads one state, whichever source it came
+   from, and nothing downstream needs to know which. */
 function projectView(id){
   const p = registryEntry(id);
   if(!p) return null;
-  const state = projectStates[id] || null;
+  const source = sourceOf(id);
+  const state = effectiveState(id);
+  const statusUrl = statusUrlFor(p);
   const attention = state ? attentionOf(state) : [];
   const signal = !state ? 'unrecorded' : (attention.length ? attention[0] : state.status);
   const links = privateLinks[id] || null;
@@ -2419,6 +2750,12 @@ function projectView(id){
     currentTask: state ? state.currentTask : null,
     nextAction: state ? state.nextAction : null,
     lastUpdated: state ? state.updatedAt : null,
+    source: source,
+    connected: source === 'repository',
+    /* Where a published status would come from, and how the last check
+       went — null for a repository that is not public. */
+    repo: statusUrl ? { url: statusUrl, path: repoPath(p), entry: repoStatus[id] || null } : null,
+    hasManual: !!projectStates[id],
     tools: tools,
     brokenLinks: links ? ['chatgpt', 'claude'].filter(k => links[k + 'Url'] && !tools[k]) : [],
     claudeFallback: claudeFallbackFor(p)
@@ -2447,6 +2784,225 @@ function hudCounts(views){
 function attentionQueue(views){
   return views.filter(v => v.attention.length)
     .sort((a, b) => ATTENTION_KINDS.indexOf(a.attention[0]) - ATTENTION_KINDS.indexOf(b.attention[0]));
+}
+
+/* =========================================================
+   CHECKING THE REPOSITORIES
+   ---------------------------------------------------------
+   When: on open and on coming back to the app — each project
+   only when it is due — and whenever you tap Refresh. Never on
+   a timer, never in the background. The first screen is drawn
+   from what is already stored; asking happens after it.
+
+   Each project is asked on its own, so a missing file, a
+   timeout or a refusal for one changes nothing for the others,
+   and a failure never removes what was last fetched. One
+   request per project at a time: asking again while one runs
+   joins it rather than starting a second.
+   ========================================================= */
+const statusInFlight = new Map();      // id -> the promise of its check
+
+function canCheckStatus(){ return typeof fetch === 'function'; }
+function isOffline(){ try{ return navigator.onLine === false; }catch(e){ return false; } }
+
+function lastCheckOf(id){
+  const e = repoStatus[id];
+  const t = e && e.checkedAt ? Date.parse(e.checkedAt) : NaN;
+  return isNaN(t) ? null : t;
+}
+/* Due: never asked, the clock went backwards, or long enough since the
+   last answer — soon after a failure that may pass, an hour after GitHub
+   asks for fewer requests, fifteen minutes otherwise. */
+function statusDue(id, now){
+  const last = lastCheckOf(id);
+  if(last === null || last > now) return true;
+  const outcome = repoStatus[id].outcome;
+  const wait = outcome === 'rate-limited' ? STATUS_BACKOFF_MS
+    : STATUS_TRANSIENT.indexOf(outcome) !== -1 ? STATUS_RETRY_MS : STATUS_FRESH_MS;
+  return now - last >= wait;
+}
+/* Refresh asks now, whatever the schedule — except of a repository GitHub
+   has asked us to leave alone for a while. */
+function backingOff(id, now){
+  const last = lastCheckOf(id);
+  return last !== null && last <= now && repoStatus[id].outcome === 'rate-limited' && now - last < STATUS_BACKOFF_MS;
+}
+
+function refreshStatuses(reason, only){
+  if(!canCheckStatus()) return Promise.resolve({ results: [], waiting: [] });
+  const now = Date.now();
+  const manual = reason === 'manual';
+  const eligible = PROJECT_REGISTRY.filter(p => statusUrlFor(p) && (!only || only.indexOf(p.id) !== -1));
+  const waiting = eligible.filter(p => !statusInFlight.has(p.id) && manual && backingOff(p.id, now)).map(p => p.id);
+  const targets = eligible.filter(p => statusInFlight.has(p.id) ||
+    (manual ? waiting.indexOf(p.id) === -1 : statusDue(p.id, now)));
+  if(!targets.length) return Promise.resolve({ results: [], waiting: waiting });
+  return Promise.all(targets.map(checkProject)).then(results => ({ results: results, waiting: waiting }));
+}
+
+function checkProject(p){
+  if(statusInFlight.has(p.id)) return statusInFlight.get(p.id);
+  const url = statusUrlFor(p);
+  /* However the check ends, it ends: the project leaves the in-flight set
+     and the screen is redrawn, so Refresh can never stay stuck "checking". */
+  const job = fetchStatusFile(url)
+    .then(answer => settleCheck(p.id, url, answer))
+    .catch(() => ({ id: p.id, outcome: 'unreachable', changed: false, adopted: false }))
+    .then(result => {
+      statusInFlight.delete(p.id);
+      try{ keepFocusAcross(renderMissionControl); }catch(e){}
+      return result;
+    });
+  statusInFlight.set(p.id, job);
+  renderRefreshButton();
+  return job;
+}
+
+/* One GET with nothing attached: no cookies, no referrer, no token. It
+   never rejects — every way it can end is an outcome, said in words later. */
+function fetchStatusFile(url){
+  if(isOffline()) return Promise.resolve({ outcome: 'offline' });
+  let timer = null, controller = null;
+  try{ if(typeof AbortController === 'function') controller = new AbortController(); }catch(e){}
+  const timeout = new Promise(resolve => {
+    timer = setTimeout(() => {
+      try{ if(controller) controller.abort(); }catch(e){}
+      resolve({ outcome: 'timeout' });
+    }, STATUS_TIMEOUT_MS);
+  });
+  const failed = () => ({ outcome: isOffline() ? 'offline' : 'unreachable' });
+  let request;
+  try{
+    request = Promise.resolve(fetch(url, {
+      method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-cache',
+      referrerPolicy: 'no-referrer', redirect: 'follow',
+      signal: controller ? controller.signal : undefined
+    })).then(readStatusAnswer, failed);
+  }catch(e){ request = Promise.resolve(failed()); }
+  return Promise.race([request, timeout]).then(answer => { clearTimeout(timer); return answer; });
+}
+
+function readStatusAnswer(res){
+  if(!res || typeof res.status !== 'number') return { outcome: 'unreachable' };
+  if(res.status === 404) return { outcome: 'missing' };
+  if(res.status === 403 || res.status === 429) return { outcome: 'rate-limited', detail: 'GitHub answered ' + res.status + '.' };
+  if(!res.ok) return { outcome: 'http', detail: 'GitHub answered ' + res.status + '.' };
+  if(typeof res.url === 'string' && res.url && res.url.indexOf(STATUS_HOST) !== 0){
+    return { outcome: 'invalid', detail: 'The answer came from somewhere other than GitHub.' };
+  }
+  const declared = Number(res.headers && typeof res.headers.get === 'function' ? res.headers.get('content-length') : NaN);
+  if(declared > STATUS_MAX_BYTES) return { outcome: 'too-large' };
+  return Promise.resolve(res.text()).then(text => {
+    if(typeof text !== 'string' || byteLength(text) > STATUS_MAX_BYTES) return { outcome: 'too-large' };
+    try{ return { outcome: 'received', data: JSON.parse(text) }; }
+    catch(e){ return { outcome: 'invalid', detail: 'It is not valid JSON.' }; }
+  }, () => ({ outcome: isOffline() ? 'offline' : 'unreachable' }));
+}
+
+function byteLength(s){
+  try{ if(typeof TextEncoder === 'function') return new TextEncoder().encode(s).length; }catch(e){}
+  return s.length;
+}
+
+/* What a check leaves behind. A valid file replaces the snapshot only when
+   it is not older than the one already kept — an older copy from a cache
+   never undoes a newer status. Anything else changes only the outcome and
+   the time of the check. */
+function settleCheck(id, url, answer){
+  const now = Date.now();
+  const at = new Date(now).toISOString();
+  const prev = repoStatus[id] || { id: id, snapshot: null, sourceUrl: null, fetchedAt: null };
+  const next = Object.assign({}, prev, { id: id, checkedAt: at, outcome: answer.outcome, detail: answer.detail || null });
+  let changed = false;
+  if(answer.outcome === 'received'){
+    const v = validateStatusFile(answer.data, id, now);
+    if(!v.ok){
+      next.outcome = v.outcome; next.detail = v.detail;
+    } else if(prev.snapshot && Date.parse(v.record.updatedAt) < Date.parse(prev.snapshot.updatedAt)){
+      next.outcome = 'older'; next.detail = null;
+    } else {
+      changed = !prev.snapshot || JSON.stringify(prev.snapshot) !== JSON.stringify(v.record);
+      Object.assign(next, { snapshot: v.record, sourceUrl: url, fetchedAt: at, outcome: 'ok', detail: null });
+    }
+  }
+  repoStatus[id] = next;
+  repoStatusForeign = repoStatusForeign.filter(r => !(r && r.id === id));
+  persistRepoStatus();
+  /* A project nobody has recorded takes its repository's status, and the
+     choice is saved now — even with its state editor open, because saving
+     there is choosing your own state, and cancelling leaves the choice
+     already made, so no later import can flip it. */
+  let adopted = false;
+  if(next.snapshot && !stateSources[id] && !projectStates[id]){
+    setSource(id, 'repository');
+    adopted = true;
+  }
+  return { id: id, outcome: next.outcome, changed: changed, adopted: adopted };
+}
+
+/* A redraw nobody asked for — a check finishing in the background — must
+   not take keyboard focus away: redrawing replaces the control that had it.
+   The control is found again by its id, or by the action it carries, and
+   focused where it now is. */
+function keepFocusAcross(render){
+  const a = document.activeElement;
+  const had = a && a !== document.body;
+  const id = had && a.id ? a.id : null;
+  const action = had && !id && a.getAttribute ? a.getAttribute('onclick') : null;
+  render();
+  if((!id && !action) || document.activeElement === a) return;
+  const again = id ? document.getElementById(id)
+    : [...document.querySelectorAll('button[onclick]')].find(x => x.getAttribute('onclick') === action && x.offsetParent !== null);
+  if(again) try{ again.focus({ preventScroll: true }); }catch(e){}
+}
+
+/* ---------- asking on purpose ---------- */
+function refreshNow(){
+  return refreshStatuses('manual').then(r => { toastRefresh(r); return r; });
+}
+function checkProjectNow(id){
+  return refreshStatuses('manual', [id]).then(r => { toastRefresh(r); return r; });
+}
+
+/* One toast for a round of checks, most important news first. */
+function toastRefresh(r){
+  const results = r.results;
+  const count = list => results.filter(x => list.indexOf(x.outcome) !== -1).length;
+  const failed = count(STATUS_TRANSIENT);
+  const limited = count(['rate-limited']) + r.waiting.length;
+  const unreadable = count(STATUS_UNREADABLE);
+  const changed = results.filter(x => x.changed).length;
+  if(!canCheckStatus()){ toast('This browser cannot check the repositories.', 'warning'); return; }
+  if(results.length && results.every(x => x.outcome === 'offline')){
+    toast('Offline. The last status each repository published is still shown.', 'warning'); return;
+  }
+  if(limited){ toast('GitHub asked for fewer requests. The last status is kept; try again later.', 'warning'); return; }
+  if(failed){
+    toast((failed === 1 ? '1 repository' : failed + ' repositories') + ' could not be checked. The last status is kept.', 'warning');
+    return;
+  }
+  if(unreadable){
+    toast((unreadable === 1 ? '1 status file' : unreadable + ' status files') + ' could not be read. The brief says why.', 'warning');
+    return;
+  }
+  toast(changed ? (changed === 1 ? '1 project' : changed + ' projects') + ' updated from the repositories'
+                : 'Repository status is up to date', 'success');
+}
+
+/* How long ago, in the words a person uses: minutes, hours, days, then the
+   date. Never more precise than it is. */
+function ageText(iso){
+  const t = iso ? Date.parse(iso) : NaN;
+  if(isNaN(t)) return 'at an unknown time';
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if(s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if(m < 60) return m + ' min ago';
+  const h = Math.floor(m / 60);
+  if(h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+  const d = Math.floor(h / 24);
+  if(d < 14) return d + (d === 1 ? ' day ago' : ' days ago');
+  return 'on ' + formatDate(iso);
 }
 
 /* =========================================================
@@ -2728,12 +3284,26 @@ function landmarkPart(p){
 
 /* The status beacon stands on the right-hand corner, clear of every
    landmark: its light is the signal's hue, and it breathes only when the
-   project needs you. */
-function beaconSvg(){
+   project needs you. It is lit only by a known state — with none, the
+   lamp is off: a ring, with no glow and no core. */
+function beaconSvg(b){
   const light = isoPt(8.64, 1.44, TOP + 5.3);
+  const at = '" cx="' + n2(light[0]) + '" cy="' + n2(light[1]) + '" r="';
   return isoBox(8.5, 1.3, TOP, 0.28, 0.28, 5.0, 'm-ink') +
-    '<circle class="beacon-glow" cx="' + n2(light[0]) + '" cy="' + n2(light[1]) + '" r="1.5"/>' +
-    '<circle class="beacon-light" cx="' + n2(light[0]) + '" cy="' + n2(light[1]) + '" r="0.58"/>';
+    (b.recorded ? '<circle class="beacon-halo' + at + '2.4"/><circle class="beacon-glow' + at + '1.5"/>' : '') +
+    '<circle class="beacon-light' + at + '0.58"/>' +
+    (b.recorded ? '<circle class="beacon-core' + at + '0.2"/>' : '');
+}
+
+/* Edges that catch the light: the plinth's front lip in neutral light, and
+   the ground's rim in the project's own accent. Identity, never status. */
+function lightSvg(){
+  const lip = [isoPt(0, PLINTH, PLINTH_H), isoPt(PLINTH, PLINTH, PLINTH_H), isoPt(PLINTH, 0, PLINTH_H)];
+  const a = 0.35, b = PLINTH - 0.35;
+  const rim = [isoPt(a, a, TOP), isoPt(b, a, TOP), isoPt(b, b, TOP), isoPt(a, b, TOP)];
+  const pts = list => list.map(p => n2(p[0]) + ',' + n2(p[1])).join(' ');
+  return '<polyline class="rim-light" points="' + pts(lip) + '"/>' +
+    '<polygon class="tint-light" points="' + pts(rim) + '"/>';
 }
 
 /* A crew member, standing on the platform's surface. Drawn upright in
@@ -2790,12 +3360,15 @@ function crewSvg(state){
 function platformSvg(b){
   const lm = LANDMARKS[b.theme] || [];
   return '<svg class="platform" viewBox="' + PLATFORM_VIEWBOX + '" aria-hidden="true" focusable="false">' +
+    /* The project in focus stands in a pool of light, under its shadow. */
+    (b.selected ? '<ellipse class="select-pool" cx="0" cy="6.3" rx="10.4" ry="5.1"/>' : '') +
     '<ellipse class="ground-shadow" cx="0" cy="6.3" rx="9.3" ry="4.2"/>' +
     (b.selected ? isoPoly([isoPt(-0.5, -0.5, 0), isoPt(10.5, -0.5, 0), isoPt(10.5, 10.5, 0),
                            isoPt(-0.5, 10.5, 0)], 'select-ring') : '') +
     isoBox(0, 0, 0, PLINTH, PLINTH, PLINTH_H, 'm-plinth') +
     isoBox(0.35, 0.35, PLINTH_H, PLINTH - 0.7, PLINTH - 0.7, TERRAIN_H, 'm-terrain') +
-    beaconSvg() +
+    lightSvg() +
+    beaconSvg(b) +
     lm.map(landmarkPart).join('') +
     crewSvg(b.workerState) +
   '</svg>';
@@ -2808,12 +3381,13 @@ function renderMissionControl(){
   const views = allViews();
   renderHub(views);
   renderLinksList(views);
+  renderRefreshButton();
 }
 
 function renderHub(given){
   const views = given || allViews();
   renderHud(views);
-  renderStateNote(views);
+  renderHubSummary(views);
   renderAttention(views);
   if(!Field.host) Field.mount(document.getElementById('projectField'));
   Field.draw(fieldScene(views));
@@ -2825,19 +3399,50 @@ function renderHub(given){
   }
 }
 
-/* The quiet line under the counts: how many projects have no recorded state,
-   and that the counts leave them out. Absent when every state is known. */
-function renderStateNote(views){
-  const el = document.getElementById('stateNote');
+/* One line under the counts, in place of a note, a heading and an empty
+   box. It says only what is known: "Nothing needs you" when every state is
+   known and none asks for you; while some are unknown, that nothing
+   RECORDED asks for you, and how many are unknown — which the counts above
+   leave out. Absent when attention buttons speak and every state is known. */
+function renderHubSummary(views){
+  const el = document.getElementById('hubSummary');
   if(!el) return;
-  const n = hudCounts(views).unrecorded;
-  if(!n){ el.innerHTML = ''; el.setAttribute('hidden', ''); return; }
-  const lead = n === views.length
-    ? 'No project has a recorded state yet.'
-    : n + ' of ' + views.length + (n === 1 ? ' project needs' : ' projects need') + ' a state update.';
-  el.innerHTML = signalIcon('unrecorded', 14) + '<span>' + escapeHtml(lead) +
-    ' Counts include recorded states only.</span>';
-  el.removeAttribute('hidden');
+  const c = hudCounts(views);
+  const asking = attentionQueue(views).length;
+  const n = c.unrecorded;
+  const unknown = n + ' of ' + c.projects + (n === 1 ? ' needs' : ' need') + ' an update';
+  let html = '', clear = false;
+  if(!asking && !n){
+    clear = true;
+    html = checkIcon(14) + '<span>Nothing needs you right now.</span>';
+  } else if(!asking){
+    html = signalIcon('unrecorded', 14) + '<span>No recorded attention items</span>' +
+      '<span class="sep" aria-hidden="true">·</span><span>' + escapeHtml(unknown) + '</span>';
+  } else if(n){
+    html = signalIcon('unrecorded', 14) + '<span>' + escapeHtml(unknown + ', not counted') + '</span>';
+  }
+  el.className = 'hub-summary' + (clear ? ' is-clear' : '');
+  if(html){ el.innerHTML = html; el.removeAttribute('hidden'); }
+  else { el.innerHTML = ''; el.setAttribute('hidden', ''); }
+}
+
+/* The Refresh button exists only when some project's repository can be
+   asked. While a check runs it turns and says so; at rest its name says
+   when the repositories were last checked. */
+function renderRefreshButton(){
+  const btn = document.getElementById('refreshBtn');
+  if(!btn) return;
+  const ids = PROJECT_REGISTRY.filter(p => statusUrlFor(p)).map(p => p.id);
+  if(!ids.length){ btn.setAttribute('hidden', ''); return; }
+  btn.removeAttribute('hidden');
+  const busy = ids.some(id => statusInFlight.has(id));
+  btn.classList.toggle('is-busy', busy);
+  btn.setAttribute('aria-busy', String(busy));
+  const last = ids.map(lastCheckOf).filter(t => t !== null);
+  btn.setAttribute('aria-label', busy ? 'Checking the repositories for project status' :
+    'Check the repositories for project status' +
+    (last.length ? ', last checked ' + ageText(new Date(Math.max.apply(null, last)).toISOString()) : ''));
+  if(!btn.innerHTML) btn.innerHTML = refreshIcon(18);
 }
 
 function renderHud(views){
@@ -2857,31 +3462,25 @@ function hudItemHtml(n, label, kind){
     '<span class="hud-label">' + escapeHtml(label) + '</span></div>';
 }
 
+/* One button per project that needs you, only while one does — each goes
+   straight to that brief. With none, the summary line says so. */
 function renderAttention(views){
   const el = document.getElementById('attentionList');
   if(!el) return;
   const queue = attentionQueue(views);
-  if(queue.length){
-    el.innerHTML = '<div class="list">' + queue.map(attentionRowHtml).join('') + '</div>';
-    return;
-  }
-  /* "Nothing needs you" is only true when every state is known. While some
-     are not, say only what is known: nothing recorded asks for you. */
-  el.innerHTML = hudCounts(views).unrecorded
-    ? '<div class="attention-clear is-partial">' + infoIcon(16) + '<span>No recorded attention items.</span></div>'
-    : '<div class="attention-clear">' + checkIcon(16) + '<span>Nothing needs you right now.</span></div>';
+  el.innerHTML = queue.map(attentionPillHtml).join('');
+  if(queue.length){ el.setAttribute('role', 'group'); el.setAttribute('aria-label', 'Needs attention'); }
+  else { el.removeAttribute('role'); el.removeAttribute('aria-label'); }
 }
-function attentionRowHtml(v){
+function attentionPillHtml(v){
   const kind = v.attention[0];
   const reasons = [kind === 'blocked' ? 'Blocked: ' + v.blocker : SIGNALS[kind].label]
     .concat(v.attention.slice(1).map(k => SIGNALS[k].label));
-  return '<button class="list-row attention-row sig-' + kind + '" onclick="openProjectBrief(\'' + escapeAttr(v.id) + '\')">' +
-    '<span class="attn-mark" aria-hidden="true">' + signalIcon(kind, 18) + '</span>' +
-    '<span class="list-row-main">' +
-      '<span class="list-row-title">' + escapeHtml(v.name) + '</span>' +
-      '<span class="list-row-desc">' + escapeHtml(reasons.join(' · ')) + '</span>' +
-    '</span>' +
-    '<span class="list-row-arrow" aria-hidden="true">' + chevronRight(15) + '</span>' +
+  return '<button class="attn-pill sig-' + kind + '" onclick="openProjectBrief(\'' + escapeAttr(v.id) + '\')">' +
+    '<span class="attn-mark" aria-hidden="true">' + signalIcon(kind, 16) + '</span>' +
+    '<span class="attn-name">' + escapeHtml(v.name) + '</span>' +
+    '<span class="attn-why">' + escapeHtml(reasons.join(' · ')) + '</span>' +
+    '<span class="attn-go" aria-hidden="true">' + chevronRight(14) + '</span>' +
   '</button>';
 }
 
@@ -2909,6 +3508,8 @@ function renderFocusBar(views){
       '<span class="chip-row">' + chipsHtml(v, false) + '</span>' +
       (v.nextAction ? '<span class="focus-next">Next: ' + escapeHtml(v.nextAction) + '</span>'
         : !v.recorded ? '<span class="focus-next">No state recorded yet</span>' : '') +
+      (v.connected && v.recorded ? '<span class="focus-source">' + svg(repoIconPaths(), 11) +
+        escapeHtml('From repository · updated ' + ageText(v.lastUpdated)) + '</span>' : '') +
     '</span>' +
     '<span class="focus-go">Brief' + chevronRight(15) + '</span>' +
   '</button>';
@@ -2924,7 +3525,7 @@ function briefHtml(v, docked){
     ['Phase', v.phase],
     ['Current work', v.currentTask, true],
     ['Next action', v.nextAction, true],
-    ['Last updated', v.lastUpdated ? formatDate(v.lastUpdated) : null]
+    ['Last updated', v.lastUpdated ? formatDate(v.lastUpdated) + (v.connected ? ' · ' + ageText(v.lastUpdated) : '') : null]
   ];
   return '<article class="brief">' +
     '<div class="brief-head">' +
@@ -2935,17 +3536,122 @@ function briefHtml(v, docked){
       '</div>' +
     '</div>' +
     '<div class="chip-row brief-chips">' + chipsHtml(v, false) + '</div>' +
-    (v.recorded ? '' : '<p class="brief-note">No state is recorded for this project yet. It counts as a project, ' +
-      'but not as active or as needing you, until you choose Update state.</p>') +
+    (v.recorded ? '' : '<p class="brief-note">' + (v.connected
+      ? 'No status has arrived from its repository yet. It counts as a project, but not as active or as needing you.'
+      : 'No state is recorded for this project yet. It counts as a project, ' +
+        'but not as active or as needing you, until you choose Update state.') + '</p>') +
+    sourcePanelHtml(v) +
     (v.blocker ? '<div class="notice notice-error"><span class="notice-mark" aria-hidden="true">' + signalIcon('blocked', 17) +
       '</span><span><strong>Blocked</strong>' + escapeHtml(v.blocker) + '</span></div>' : '') +
     (docked ? (anyTool(v) ? toolsHtml(v, true) : toolsEmptyHtml()) : (anyTool(v) ? '' : toolsEmptyHtml())) +
     '<div class="brief-rows">' + rows.map(r => briefRowHtml(r[0], r[1], r[2])).join('') + '</div>' +
-    '<div class="list">' +
-      manageRowHtml('Update state', v.recorded ? 'Status, what it needs, work and next step' : 'Record where this project really is', 'openStateForm', v.id) +
-      manageRowHtml('Tool links', linksSummary(v), 'openLinksForm', v.id) +
-    '</div>' +
+    '<div class="list">' + manageRowsHtml(v) + '</div>' +
   '</article>';
+}
+
+/* Where this project's state comes from, said quietly: a source is
+   provenance, not a status. Everything a repository wrote is escaped text. */
+function sourcePanelHtml(v){
+  if(!v.repo){
+    return '<div class="source-panel"><p class="source-detail">Kept by hand on this device. Its repository ' +
+      'is private, so Mission Control never asks it for anything.</p></div>';
+  }
+  const e = v.repo.entry;
+  const where = '<code>' + escapeHtml(v.repo.path + '/' + STATUS_FILE) + '</code>';
+  const checked = e && e.checkedAt ? 'Checked ' + escapeHtml(ageText(e.checkedAt)) + '.' : 'Not checked yet.';
+  const problem = checkProblemHtml(e);
+  const warn = text => '<p class="source-warn">' + warnIcon(13) + '<span>' + text + '</span></p>';
+  if(v.connected){
+    return '<div class="source-panel">' +
+      '<p class="source-line">' + svg(repoIconPaths(), 14) +
+        escapeHtml(v.recorded ? 'From repository · updated ' + ageText(v.lastUpdated) : 'From repository') + '</p>' +
+      '<p class="source-detail">Maintained in ' + where + '. ' + checked + '</p>' +
+      (problem ? warn(problem + (e.snapshot ? ' Showing the status fetched ' + escapeHtml(ageText(e.fetchedAt)) + '.' : '')) : '') +
+      (v.hasManual ? '<p class="source-detail">The state you recorded for it on this device is kept.</p>' : '') +
+    '</div>';
+  }
+  if(e && e.snapshot){
+    return '<div class="source-panel">' +
+      '<p class="source-line">' + svg(repoIconPaths(), 14) +
+        escapeHtml('Its repository publishes a status · updated ' + ageText(e.snapshot.updatedAt)) + '</p>' +
+      '<p class="source-detail">' + (v.hasManual ? 'Showing the state you recorded on this device.'
+                                                 : 'Set to your own state, which is not recorded yet.') +
+        ' Published in ' + where + '. ' + checked + '</p>' +
+      (problem ? warn(problem) : '') +
+    '</div>';
+  }
+  if(e && e.outcome === 'missing'){
+    return '<div class="source-panel"><p class="source-detail">Nothing is published at ' + where + ' yet. ' +
+      checked + '</p></div>';
+  }
+  return '<div class="source-panel"><p class="source-detail">Mission Control reads ' + where +
+    ' once it is published. ' + checked + '</p>' + (problem ? warn(problem) : '') + '</div>';
+}
+
+/* The last check, when it did not get a fresh answer, in words. */
+const CHECK_PROBLEMS = {
+  missing: 'The status file is no longer in the repository.',
+  offline: 'The last check was made offline.',
+  unreachable: 'The last check could not reach GitHub.',
+  timeout: 'The last check took too long and was stopped.',
+  http: 'The last check got an error from GitHub.',
+  'rate-limited': 'GitHub asked for fewer requests, so the next check waits an hour.',
+  invalid: 'The last status file could not be read.',
+  unsupported: 'The last status file uses a newer format than this version reads.',
+  'wrong-app': 'The last status file names a different project.',
+  'too-large': 'The last status file was too large to read.'
+};
+function checkProblemHtml(e){
+  if(!e || !e.outcome || !CHECK_PROBLEMS[e.outcome]) return '';
+  return escapeHtml(CHECK_PROBLEMS[e.outcome] + (e.detail && STATUS_UNREADABLE.indexOf(e.outcome) !== -1 ? ' ' + e.detail : ''));
+}
+
+/* What can be done from here. A connected project has no editor — editing
+   one would be a hidden override — so it offers the switch instead. */
+function manageRowsHtml(v){
+  const rows = [];
+  if(v.connected){
+    rows.push(manageRowHtml('Use my own state instead',
+      v.hasManual ? 'Show the state you recorded. Both are kept.' : 'Record it on this device. Both are kept.', 'useManualState', v.id));
+  } else {
+    if(v.repo && v.repo.entry && v.repo.entry.snapshot){
+      rows.push(manageRowHtml('Use repository updates',
+        v.hasManual ? 'Show its published status. Both are kept.' : 'Show its published status.', 'useRepositoryUpdates', v.id));
+    }
+    rows.push(manageRowHtml('Update state', v.recorded ? 'Status, what it needs, work and next step' : 'Record where this project really is', 'openStateForm', v.id));
+  }
+  if(v.repo) rows.push(manageRowHtml('Check its repository now', 'Ask for its latest published status', 'checkProjectNow', v.id));
+  rows.push(manageRowHtml('Tool links', linksSummary(v), 'openLinksForm', v.id));
+  return rows.join('');
+}
+
+function repoIconPaths(){ return TOOLS.find(t => t.key === 'github').icon; }
+function refreshIcon(s){ return svg('<path d="M14.6 3.2v3.6H11"/><path d="M13.1 9.8a5.4 5.4 0 1 1-1.27-5.62L14.6 6.8"/>', s); }
+
+/* ---------- choosing the source, on purpose ----------
+   Both are reached from the brief, and both replace the row that was
+   pressed with its opposite — so focus goes to the brief's name, which now
+   heads what changed, rather than falling to the page. */
+function useRepositoryUpdates(id){
+  const p = registryEntry(id);
+  if(!p || !statusUrlFor(p) || !(repoStatus[id] && repoStatus[id].snapshot)) return;
+  setSource(id, 'repository');
+  renderMissionControl();
+  focusBriefName();
+  toast(p.name + ' now shows its repository status' + (projectStates[id] ? '. Your own state is kept.' : ''), 'success');
+}
+function useManualState(id){
+  const p = registryEntry(id);
+  if(!p) return;
+  setSource(id, 'manual');
+  renderMissionControl();
+  focusBriefName();
+  toast(projectStates[id] ? p.name + ' shows your own state again. Its repository status is kept.'
+                          : p.name + ' now uses your own state. Record it with Update state.', 'success');
+}
+function focusBriefName(){
+  const name = document.getElementById(isOverlayOpen('briefOverlay') ? 'briefName' : 'dockedBriefName');
+  if(name && name.offsetParent !== null) try{ name.focus({ preventScroll: true }); }catch(e){}
 }
 
 function briefRowHtml(label, value, stacked){
@@ -3085,6 +3791,13 @@ function flushFormDrafts(){
 function openStateForm(id){
   const p = registryEntry(id);
   if(!p) return;
+  /* A connected project's state lives in its repository. An editor here
+     would write a record nobody sees — a hidden override — so it asks for
+     the switch first. */
+  if(sourceOf(id) === 'repository'){
+    toast(p.name + '\'s status comes from its repository. Choose "Use my own state instead" to record it here.', 'neutral');
+    return;
+  }
   editingStateId = id;
   const real = projectStates[id] || null;
   const draft = takeDraft(KEYS.stateDraft, id);
@@ -3183,6 +3896,8 @@ function saveStateForm(){
   projectStates[id] = record;
   projectStatesForeign = projectStatesForeign.filter(r => !(r && r.id === id));
   const saved = persistProjectStates();
+  /* Recording a state here is choosing your own state for this project. */
+  if(statusUrlFor(registryEntry(id))) setSource(id, 'manual');
   discardDraft(KEYS.stateDraft, editingStateId);
   finishStateForm();
   renderMissionControl();
@@ -3215,6 +3930,9 @@ async function clearProjectState(){
   if(!ok || !projectStates[id]) return;
   delete projectStates[id];
   persistProjectStates();
+  /* Needs update, as the confirmation promised — a repository status does
+     not quietly take its place. It stays one tap away in the brief. */
+  if(statusUrlFor(p)) setSource(id, 'manual');
   discardDraft(KEYS.stateDraft, editingStateId);
   finishStateForm();
   renderMissionControl();
@@ -3342,11 +4060,20 @@ async function removeProjectLinks(){
    record here is lossless storage; it is not permission to
    send that record anywhere.
 
+   So do the source choices (data.stateSources) and the fetched
+   repository status (cache.repoStatus): which record a project
+   shows is this device's choice, and a published status is
+   public, fetched fresh by every device — a copy in a file
+   would only be older. Neither is ever in a backup, and an
+   import never touches either.
+
    Reading one back is the mirror image: only project states
    are accepted, each rebuilt from the same allowlist, merged by
    id with the newer record winning. Tool links in a backup made
    by 0.1.0 are ignored — never restored, merged, or used to
    delete the links on this device — and the import says so.
+   An imported state for a project that shows its repository
+   status is kept, not shown, and the import says that too.
    ========================================================= */
 const BACKUP_FIELDS = ['id', 'status', 'needsQa', 'needsDecision', 'blocker', 'version', 'phase',
                        'currentTask', 'nextAction', 'updatedAt'];
@@ -3393,14 +4120,17 @@ function restoreMissionControl(data){
     if(Array.isArray(raw)) incoming = raw;
     else if(typeof raw === 'string'){ try{ incoming = JSON.parse(raw); }catch(e){ incoming = null; } }
   }
+  const behind = [];
   if(Array.isArray(incoming)){
     result.collections = 1;
     incoming.forEach(r => {
       const rec = backupRecord(r);
       if(!rec){ result.skipped++; return; }
       const cur = projectStates[rec.id];
-      if(!cur){ projectStates[rec.id] = rec; result.added++; }
-      else if((rec.updatedAt || '') > (cur.updatedAt || '')){ projectStates[rec.id] = rec; result.updated++; }
+      let took = false;
+      if(!cur){ projectStates[rec.id] = rec; result.added++; took = true; }
+      else if((rec.updatedAt || '') > (cur.updatedAt || '')){ projectStates[rec.id] = rec; result.updated++; took = true; }
+      if(took && sourceOf(rec.id) === 'repository' && behind.indexOf(rec.id) === -1) behind.push(rec.id);
     });
     if(result.added || result.updated) persistProjectStates();
   }
@@ -3408,6 +4138,11 @@ function restoreMissionControl(data){
   if(privateFound){
     result.notes.push('This file holds private tool links from an older version. They were not imported: ' +
                       'the ChatGPT and Claude links on this device are unchanged.');
+  }
+  if(behind.length){
+    const names = behind.map(id => registryEntry(id).name).join(', ');
+    result.notes.push(names + (behind.length === 1 ? ' shows its' : ' show their') + ' repository status, so the ' +
+      'imported state is kept on this device but not shown. Choose "Use my own state instead" in its brief to see it.');
   }
   if(result.skipped){
     result.notes.push(result.skipped + (result.skipped === 1 ? ' record in the file could not be read and was'
@@ -3432,11 +4167,18 @@ Domain.wire    = () => {
     ov.addEventListener('input', scheduleFormDraft);
     ov.addEventListener('change', scheduleFormDraft);
   });
+  /* Leaving saves drafts; coming back — from ChatGPT, Claude or anywhere —
+     asks the repositories that are due. */
   window.addEventListener('visibilitychange', () => {
     if(document.visibilityState === 'hidden') flushFormDrafts();
+    else refreshStatuses('front');
   });
   window.addEventListener('pagehide', flushFormDrafts);
+  window.addEventListener('pageshow', e => { if(e && e.persisted) refreshStatuses('front'); });
   watchLayout();
+  /* The first screen is already drawn from what is stored; the repositories
+     are asked after it, so the network never holds up the app. */
+  setTimeout(() => refreshStatuses('open'), 0);
 };
 
 /* =========================================================

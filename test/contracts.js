@@ -417,7 +417,12 @@ function testToast(){
   T('it is a live region', /id="toastHost"[^>]*aria-live="polite"/.test(src));
   T('it has a status role', /id="toastHost"[^>]*role="status"/.test(src));
   T('it never intercepts a tap', /\.toast-host\{[\s\S]{0,300}pointer-events: none/.test(css()));
-  T('the toast itself does accept one', /\.toast\{[\s\S]{0,400}pointer-events: auto/.test(css()));
+  /* A toast over an open editor took the tap meant for the field beneath it,
+     so typed words went nowhere. A toast has no controls to protect. */
+  T('the toast itself never takes a tap either: a field beneath it stays reachable',
+    /\.toast\{[\s\S]{0,700}pointer-events: none/.test(css()) && !/\.toast\{[^}]*pointer-events: auto/.test(css()));
+  const toastFn = (js().match(/function toast\(message, variant\)\{[\s\S]*?\n\}/) || [''])[0];
+  T('which is safe because a toast has no controls', toastFn.length > 100 && !/<(button|a)\b|onclick/.test(toastFn));
   T('it clears the tab bar and the home indicator',
     /\.toast-host\{[\s\S]{0,200}bottom: calc\(var\(--tabbar-h\)[\s\S]{0,60}var\(--inset-bottom\)\)/.test(css()));
 
@@ -708,7 +713,7 @@ function testMobile(){
     /The visible mark can be small; the target never is/.test(style));
 
   sub('the product\'s own targets meet the same floor');
-  ['.block', '.tool-link', '.focus-bar', '.status-option'].forEach(sel => {
+  ['.block', '.tool-link', '.focus-bar', '.status-option', '.attn-pill'].forEach(sel => {
     const re = new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\{[^}]*min-height:\\s*var\\(--touch-min\\)');
     T(sel + ' meets the floor', re.test(style));
   });
@@ -1290,9 +1295,28 @@ function testRegistry(){
   T('ids are safe slugs', reg.every(p => /^[a-z][a-z0-9-]*$/.test(p.id)));
 
   sub('every record has the same shape');
-  const FIELDS = ['defaultBranch', 'id', 'liveUrl', 'name', 'repositoryUrl', 'shortDescription', 'visualTheme'];
+  const FIELDS = ['defaultBranch', 'id', 'liveUrl', 'name', 'publicRepo', 'repositoryUrl', 'shortDescription', 'visualTheme'];
   T('every record carries exactly the identity fields',
     reg.every(p => Object.keys(p).sort().join() === FIELDS.join()));
+  T('every record says whether its repository is public, as true or false',
+    reg.every(p => typeof p.publicRepo === 'boolean'));
+
+  sub('a status is read only from a public repository, at one derived address');
+  T('Personal Savings is private: its repository is never asked, and its state stays manual',
+    reg.find(p => p.id === 'personal-savings').publicRepo === false &&
+    c.statusUrlFor(reg.find(p => p.id === 'personal-savings')) === null);
+  reg.filter(p => p.publicRepo).forEach(p => {
+    const m = /^https:\/\/github\.com\/([^/]+\/[^/]+)$/.exec(p.repositoryUrl);
+    T(p.id + ': its status address is built from its registry record, on GitHub\'s raw host',
+      !!m && c.statusUrlFor(p) === 'https://raw.githubusercontent.com/' + m[1] + '/' + p.defaultBranch + '/PROJECT-STATUS.json',
+      c.statusUrlFor(p));
+  });
+  T('a record without the flag is treated as private', c.statusUrlFor(Object.assign({}, reg[0], { publicRepo: undefined })) === null);
+  T('an address outside GitHub derives nothing',
+    c.statusUrlFor(Object.assign({}, reg[0], { repositoryUrl: 'https://gitlab.example.test/FAKE/x' })) === null);
+  T('a branch that climbs out of its path derives nothing',
+    c.statusUrlFor(Object.assign({}, reg[0], { defaultBranch: '../main' })) === null &&
+    c.statusUrlFor(Object.assign({}, reg[0], { defaultBranch: 'main?x=1' })) === null);
   T('every project has a name and a one-line purpose',
     reg.every(p => p.name && p.shortDescription && p.shortDescription.length <= 90));
   T('every look a record names exists',
@@ -1638,17 +1662,19 @@ function testHub(){
   T('every project counts as a project', /<span class="hud-value">6<\/span><span class="hud-label">Projects/.test(hud));
   T('but nothing is active or needs you', /<span class="hud-value">0<\/span><span class="hud-label">Active/.test(hud) &&
     (hud.match(/is-zero/g) || []).length === 4);
-  T('a quiet line says no state is recorded yet',
-    /No project has a recorded state yet\. Counts include recorded states only\./.test(text('stateNote')) &&
-    d.getElementById('stateNote').getAttribute('hidden') === null);
-  T('the attention area claims only what is known', /No recorded attention items\./.test(text('attentionList')));
-  T('it never promises that nothing needs you', !/Nothing needs you/.test(html('attentionList')));
+  T('one line says what is known and how much is not',
+    /No recorded attention items · 6 of 6 need an update/.test(text('hubSummary')) &&
+    d.getElementById('hubSummary').getAttribute('hidden') === null);
+  T('it is a single line: no separate note, heading or empty box',
+    !d.getElementById('stateNote') && html('attentionList') === '' && !/attention-clear/.test(H.readApp()));
+  T('it never promises that nothing needs you', !/Nothing needs you/.test(html('hubSummary')));
   const field = html('projectField');
   T('every platform says Needs update', (field.match(/class="block-unrecorded sig-unrecorded"/g) || []).length === 6);
   T('no platform shows a status chip, a marker or a crew',
     !/class="chip sig-/.test(field) && !/attn-marker/.test(field) && !/class="worker"/.test(field));
   T('no platform pulses', !/ pulse"/.test(field));
-  T('nothing anywhere calls itself a sample', !/[Ss]ample/.test(field + hud + html('attentionList') + html('focusBar')));
+  T('nothing anywhere calls itself a sample', !/[Ss]ample/.test(field + hud + html('hubSummary') + html('focusBar')));
+  T('no beacon is lit without a state: no glow, no core', !/beacon-(glow|halo|core)/.test(field));
 
   sub('the field is drawn from data');
   const n = c.PROJECT_REGISTRY.length;
@@ -1695,7 +1721,12 @@ function testHub(){
     attention.indexOf('Personal Savings') < attention.indexOf('Space Kindergarten'));
   T('a blocker is shown in words, not just a colour', /Blocked: Waiting on art/.test(attention));
   T('only recorded projects are listed', !/DayPlan|Daily Verse/.test(attention));
-  T('the quiet line counts the rest', /3 of 6 projects need a state update\./.test(text('stateNote')));
+  T('as a group named for assistive tech, only while something needs you', d.getElementById('attentionList').getAttribute('aria-label') === 'Needs attention' &&
+    d.getElementById('attentionList').getAttribute('role') === 'group');
+  T('each one a single line: a button straight to its brief', (attention.match(/<button class="attn-pill sig-/g) || []).length === 3);
+  T('the summary line counts the rest, and says the counts leave them out',
+    /3 of 6 need an update, not counted/.test(text('hubSummary')) && !/No recorded attention items/.test(text('hubSummary')));
+  T('a known state lights its beacon', /id="block-capybara-sushi"[\s\S]*?beacon-glow/.test(html('projectField')));
   T('an attention marker wears a shape and a word',
     /class="chip attn-marker sig-blocked"><svg[^>]*>[\s\S]*?<\/svg>Blocked</.test(html('projectField')));
   T('only projects that need you pulse', (html('projectField').match(/ pulse"/g) || []).length === 3);
@@ -1710,11 +1741,16 @@ function testHub(){
   record('personal-savings', () => { c.toggleSwitch('stateDecision'); });
   record('space-kindergarten', () => { c.toggleSwitch('stateQa'); });
   T('with some states unknown it still says only what is known',
-    /No recorded attention items\./.test(text('attentionList')) && !/Nothing needs you/.test(html('attentionList')));
+    /No recorded attention items · 3 of 6 need an update/.test(text('hubSummary')) && !/Nothing needs you/.test(html('hubSummary')));
+  T('and with nothing asking, no attention buttons or group are drawn', html('attentionList') === '' && d.getElementById('attentionList').getAttribute('aria-label') === null);
   ['loop', 'dayplan', 'daily-verse'].forEach(id => record(id, () => { c.pickStatus('stable'); }));
   T('with every state recorded and none asking, it says nothing needs you',
-    /Nothing needs you right now\./.test(text('attentionList')));
-  T('and the quiet line goes away', d.getElementById('stateNote').getAttribute('hidden') === '' && html('stateNote') === '');
+    /Nothing needs you right now\./.test(text('hubSummary')) && /hub-summary is-clear/.test(d.getElementById('hubSummary').className));
+  T('and says nothing about unknown states, because there are none', !/need an update|not counted/.test(text('hubSummary')));
+  record('loop', () => { c.toggleSwitch('stateQa'); });
+  T('with every state known and one asking, the rows speak and the line goes away',
+    d.getElementById('hubSummary').getAttribute('hidden') === '' && html('hubSummary') === '' && /class="attn-pill sig-needs_qa"/.test(html('attentionList')));
+  record('loop', () => { c.toggleSwitch('stateQa'); });
 
   sub('the focus is still there when you come back');
   c.tapProject('dayplan'); c.__flush();
@@ -1783,6 +1819,46 @@ function testFieldSeam(){
   T('every look has its ground and accent', Object.keys(c.LANDMARKS).every(t =>
     new RegExp('\\.theme-' + t + '\\{ --terrain: var\\(--terrain-' + t + '\\); --tint: var\\(--tint-' + t + '\\); \\}').test(css())));
   T('every look has a glyph', Object.keys(c.LANDMARKS).every(t => !!c.PROJECT_GLYPHS[t]));
+
+  sub('identity is strong, and never a status colour');
+  /* CIE76 in CIELAB: below about 20 two colours read as the same family at
+     a glance. 0.1.1 had Personal Savings' accent 3.8 from "Needs update". */
+  const hex = name => { const m = new RegExp('--' + name + ':\\s*(#[0-9A-Fa-f]{6})').exec(css()); return m ? m[1] : null; };
+  const lab = h => {
+    const n = parseInt(h.slice(1), 16);
+    const lin = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    const x = (lin[0] * 0.4124 + lin[1] * 0.3576 + lin[2] * 0.1805) / 0.95047;
+    const y = lin[0] * 0.2126 + lin[1] * 0.7152 + lin[2] * 0.0722;
+    const z = (lin[0] * 0.0193 + lin[1] * 0.1192 + lin[2] * 0.9505) / 1.08883;
+    const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+    return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+  };
+  const dE = (a, b) => { const p = lab(a), q = lab(b); return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]); };
+  const sigs = [...css().matchAll(/--(sig-[a-z]+):\s*#[0-9A-Fa-f]{6}/g)].map(m => m[1]);
+  T('the status hues are all read', sigs.length === 9, sigs.join(','));
+  Object.keys(c.LANDMARKS).forEach(t => {
+    const tint = hex('tint-' + t);
+    const near = sigs.map(s => [s, dE(tint, hex(s))]).sort((a, b) => a[1] - b[1])[0];
+    T(t + ': its accent is at least ΔE 20 from every status hue', !!tint && near[1] >= 20,
+      tint + ' is ' + near[1].toFixed(1) + ' from ' + near[0]);
+  });
+  T('every ground is dark, so a platform never glows with its identity',
+    Object.keys(c.LANDMARKS).every(t => lab(hex('terrain-' + t))[0] < 30));
+
+  sub('light belongs to the place; the beacon to the state');
+  const lit = c.platformSvg({ id: 'x', name: 'x', theme: 'track', status: 'building', signal: 'building', attention: [],
+    workerState: 'working', recorded: true, selected: true });
+  const dark = c.platformSvg({ id: 'x', name: 'x', theme: 'track', status: null, signal: 'unrecorded', attention: [],
+    workerState: 'unrecorded', recorded: false, selected: false });
+  T('every platform catches the light on its lip and rim', /class="rim-light"/.test(dark) && /class="tint-light"/.test(dark));
+  T('the rim wears the project\'s accent, the lip neutral light',
+    /\.platform \.tint-light\{[^}]*stroke: var\(--tint\)/.test(css()) && /\.platform \.rim-light\{[^}]*stroke: var\(--field-rim\)/.test(css()));
+  T('a known state lights its beacon: glow, halo and core', /beacon-glow/.test(lit) && /beacon-halo/.test(lit) && /beacon-core/.test(lit));
+  T('no state, no light: the lamp is a ring with no glow', !/beacon-(glow|halo|core)/.test(dark) &&
+    /\.block\.sig-unrecorded \.platform \.beacon-light\{[^}]*fill: var\(--field-floor\); stroke: var\(--sig\)/.test(css()));
+  T('only the project in focus stands in a pool of light', /select-pool/.test(lit) && !/select-pool/.test(dark));
+  T('the light is neutral tokens, never a status hue',
+    /--field-rim: rgba\(238,241,245/.test(css()) && /--field-pool: rgba\(238,241,245/.test(css()));
   const field = d.getElementById('projectField').innerHTML;
   T('the platform drawing is decorative to assistive tech',
     (field.match(/<svg class="platform" viewBox="[^"]+" aria-hidden="true" focusable="false">/g) || []).length ===
@@ -1887,6 +1963,26 @@ function testSecrets(){
     !/location\.(href|hash|search)\s*=|history\.(pushState|replaceState)\([^)]*[A-Za-z]/.test(stripComments(src).replace(/history\.pushState\(\{ appOverlay: true \}, ''\)/, '')));
   T('the moodboards are git-ignored, so they are never published',
     require('fs').readFileSync(require('path').join(H.ROOT, '.gitignore'), 'utf8').split(/\r?\n/).indexOf('references/visual/') !== -1);
+
+  sub('the public source shows every character it has');
+  /* A regex written with escapes once arrived in the file as the invisible
+     direction overrides it exists to refuse — and every test still passed.
+     The ranges are code points, so this check cannot suffer the same fate. */
+  const INVISIBLE = [[0x0, 0x8], [0xB, 0xC], [0xE, 0x1F], [0x7F, 0x9F], [0x200B, 0x200F], [0x202A, 0x202E],
+                     [0x2060, 0x2069], [0xFEFF, 0xFEFF]];
+  const fsx = require('fs'), px = require('path');
+  const sources = ['index.html', 'sw.js', 'manifest.webmanifest', 'package.json', 'README.md', 'ARCHITECTURE.md', 'CLAUDE.md',
+    'PRODUCT-DESIGN.md', 'test/contracts.js', 'test/harness.js', 'test/run.js', 'scripts/config.js',
+    'scripts/contamination.js', 'scripts/secrets.js'];
+  const hidden = [];
+  sources.forEach(f => {
+    const s = fsx.readFileSync(px.join(H.ROOT, f), 'utf8');
+    for(let i = 0; i < s.length; i++){
+      const code = s.charCodeAt(i);
+      if(INVISIBLE.some(r => code >= r[0] && code <= r[1])) hidden.push(f + ' at ' + i + ': U+' + code.toString(16).toUpperCase());
+    }
+  });
+  T('no invisible or direction-changing character in any public source file', hidden.length === 0, hidden.slice(0, 5).join(', '));
 }
 
 /* =========================================================
@@ -1927,11 +2023,19 @@ function testBackupBoundary(){
   const withForeign = JSON.parse(shared.get(statesKey)).concat([{ id: 'a-future-project', status: 'stable',
     chatgptUrl: CANARY.chat, updatedAt: '2026-01-01' }]);
   shared.set(statesKey, JSON.stringify(withForeign));
+  /* A fetched repository status and a source choice: this device's, and
+     never a backup's. */
+  shared.set(ns + c.KEYS.repoStatus, JSON.stringify([{ id: 'loop', sourceUrl: c.statusUrlFor(c.PROJECT_REGISTRY[0]),
+    snapshot: { id: 'loop', status: 'stable', needsQa: false, needsDecision: false, blocker: null, version: null, phase: null,
+      currentTask: null, nextAction: 'FAKE-CANARY-REPO-6', updatedAt: '2026-09-01T00:00:00.000Z' },
+    fetchedAt: '2026-09-02T00:00:00.000Z', checkedAt: '2026-09-02T00:00:00.000Z', outcome: 'ok', detail: null }]));
+  shared.set(ns + c.KEYS.stateSources, JSON.stringify([{ id: 'loop', source: 'repository', updatedAt: '2026-09-02T00:00:00.000Z' }]));
   const device = H.loadApp({ sharedStorage: shared });
   const x = device.ctx;
   T('the device holds links, drafts, a snapshot and an unreadable record before export',
     !!x.privateLinks.loop && shared.has(ns + x.KEYS.linksDraft) && shared.has(ns + x.KEYS.stateDraft) &&
     x.projectStatesForeign.length === 1);
+  T('and a repository status it shows, by its own choice', x.projectView('loop').connected === true);
 
   sub('an export carries recorded project states and nothing else');
   const before = new Map(shared);
@@ -1942,6 +2046,8 @@ function testBackupBoundary(){
     !/FAKE-CANARY/.test(file));
   T('no link field, draft, preference or snapshot key is in it',
     !/chatgptUrl|claudeUrl|privateLinks|draft\.|ui\.|sys\.backup/.test(file));
+  T('no source choice and no fetched repository status is in it — nothing falls through to a generic export',
+    !/stateSources|repoStatus|cache\.|FAKE-CANARY-REPO/.test(file));
   const out = JSON.parse(payload.data[x.KEYS.projectStates]);
   T('only readable records of known projects are exported', out.map(r => r.id).join() === 'dayplan');
   T('each rebuilt from the allowlist of fields', out.every(r => Object.keys(r).join() === x.BACKUP_FIELDS.join()));
@@ -2018,6 +2124,24 @@ function testBackupBoundary(){
   });
   T('an empty link list or a blank draft brings no warning', blank.notes.length === 0, blank.notes.join(' | '));
 
+  sub('an import never touches the source choices or the fetched status');
+  const choices = new Map();
+  const g = H.loadApp({ sharedStorage: choices });
+  const z = g.ctx;
+  z.setSource('dayplan', 'manual');
+  const sourcesBefore = choices.get(ns + z.KEYS.stateSources);
+  const crafted = JSON.stringify({ app: z.APP_CONFIG.id, data: {
+    'data.projectStates': JSON.stringify([{ id: 'loop', status: 'building', updatedAt: '2026-09-28T12:00:00.000Z' }]),
+    'data.stateSources': JSON.stringify([{ id: 'dayplan', source: 'repository', updatedAt: '2030-01-01T00:00:00.000Z' }]),
+    'cache.repoStatus': JSON.stringify([{ id: 'dayplan', snapshot: { id: 'dayplan', status: 'stable', nextAction: 'FAKE-CANARY-REPO-7',
+      updatedAt: '2030-01-01T00:00:00.000Z' }, outcome: 'ok' }]) } });
+  z.importData({ files: [{ _text: crafted }], value: '' });
+  T('the state in the file arrives', !!z.projectStates.loop);
+  T('a source choice in a file is ignored, even a newer-dated one', choices.get(ns + z.KEYS.stateSources) === sourcesBefore &&
+    z.sourceOf('dayplan') === 'manual');
+  T('a repository status in a file is never taken as fetched', !choices.has(ns + z.KEYS.repoStatus) &&
+    [...choices.values()].every(v => !/FAKE-CANARY-REPO/.test(v)));
+
   sub('records it cannot read are skipped, and counted');
   const odd = y.Domain.restoreData({ 'data.projectStates': JSON.stringify([
     { id: 'no-such-project', status: 'building', updatedAt: 'z' },
@@ -2029,6 +2153,570 @@ function testBackupBoundary(){
     [app, device, b, e, f].map(a => a.errors.join(' | ')).join(' | '));
 }
 
+/* =========================================================
+   REPOSITORY FIXTURES
+   A stand-in for GitHub's raw host: every request is recorded
+   with its options, and each project's answer is set by the
+   test. Status text says FAKE so no fixture can pass for a real
+   project's status.
+   ========================================================= */
+function statusFile(id, over){
+  return Object.assign({ schemaVersion: 1, appId: id, version: '9.9.9', phase: 'FAKE phase', status: 'building',
+    needsQa: false, needsDecision: false, currentTask: 'FAKE published work', nextAction: 'FAKE published next step',
+    blocker: null, updatedAt: '2026-09-20T10:00:00Z' }, over || {});
+}
+function answer(status, body, extra){
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  return url => Promise.resolve(Object.assign({
+    status: status, ok: status >= 200 && status < 300, url: url,
+    headers: { get: k => (k.toLowerCase() === 'content-length' ? String(text.length) : null) },
+    text: () => Promise.resolve(text)
+  }, extra || {}));
+}
+function mockRaw(c){
+  const calls = [];
+  const answers = {};
+  c.fetch = (url, opts) => {
+    calls.push({ url: url, opts: opts || {} });
+    const p = c.PROJECT_REGISTRY.find(r => c.statusUrlFor(r) === url);
+    const a = p && answers[p.id];
+    if(!a) return Promise.reject(new TypeError('Failed to fetch'));
+    return a(url, opts);
+  };
+  return { calls: calls, answers: answers, idsAsked: () => calls.map(x => (c.PROJECT_REGISTRY.find(r => c.statusUrlFor(r) === x.url) || {}).id) };
+}
+/* A clock the test moves. The app reads Date at call time, so replacing it
+   after load governs every "now" the checks use. */
+function clockOn(c, start){
+  const Real = Date;
+  let now = Real.parse(start);
+  class FakeDate extends Real {
+    constructor(...a){ if(a.length === 0) super(now); else super(...a); }
+    static now(){ return now; }
+  }
+  c.Date = FakeDate;
+  return { advance(ms){ now += ms; }, set(iso){ now = Real.parse(iso); }, now(){ return now; } };
+}
+function pending(){ let resolve; const p = new Promise(r => { resolve = r; }); return { p: p, resolve: resolve }; }
+
+/* =========================================================
+   CONTRACT 27 — THE STATUS FILE
+   What a public repository may publish, checked whole: one
+   version of one shape, the editor's own words and limits,
+   refused with a reason when anything is off.
+   ========================================================= */
+function testStatusContract(){
+  section('CONTRACT 27 — the status file: one shape, checked whole, refused with a reason');
+  const app = H.loadApp();
+  const c = app.ctx;
+  const NOW = Date.parse('2026-09-28T12:00:00Z');
+  const good = over => statusFile('dayplan', Object.assign({ updatedAt: '2026-09-28T10:00:00Z' }, over || {}));
+  const check = data => c.validateStatusFile(data, 'dayplan', NOW);
+
+  sub('the contract names every key, in one version');
+  T('schema version 1', c.STATUS_SCHEMA_VERSION === 1);
+  T('the keys the brief lists, and no others',
+    c.STATUS_KEYS.slice().sort().join() === 'appId,blocker,currentTask,needsDecision,needsQa,nextAction,phase,schemaVersion,status,updatedAt,version');
+  T('the file is PROJECT-STATUS.json on GitHub\'s raw host',
+    c.STATUS_FILE === 'PROJECT-STATUS.json' && c.STATUS_HOST === 'https://raw.githubusercontent.com/');
+
+  sub('a valid file becomes the same record a state saved here is');
+  const ok = check(good());
+  T('it is accepted', ok.ok === true, JSON.stringify(ok));
+  T('rebuilt with exactly the fields of a recorded state',
+    ok.ok && Object.keys(ok.record).sort().join() === Object.keys(c.normalizeState({ id: 'dayplan', status: 'stable' })).sort().join());
+  T('its time is kept as the instant the publisher wrote', ok.record.updatedAt === '2026-09-28T10:00:00.000Z');
+  T('an offset is read as the instant it names',
+    check(good({ updatedAt: '2026-09-28T12:00:00+02:00' })).record.updatedAt === '2026-09-28T10:00:00.000Z');
+  T('whitespace is only spacing, and empty text is unknown',
+    check(good({ currentTask: '  two\n\tlines  ' })).record.currentTask === 'two lines' &&
+    check(good({ nextAction: '   ' })).record.nextAction === null);
+  T('a key this version does not know is dropped, never kept',
+    check(good({ extra: 'x' })).ok && !('extra' in check(good({ extra: 'x' })).record) &&
+    !('chatgptUrl' in check(good({ chatgptUrl: 'https://chat.example.test/c/FAKE' })).record));
+  T('an old status is accepted as old — its time is never moved',
+    check(good({ updatedAt: '2020-01-01T00:00:00Z' })).record.updatedAt === '2020-01-01T00:00:00.000Z');
+  T('a publisher\'s clock a little ahead is forgiven', check(good({ updatedAt: '2026-09-28T20:00:00Z' })).ok);
+
+  sub('the words and limits are the editor\'s');
+  T('every lifecycle status is accepted', c.PROJECT_STATUSES.every(s => check(good({ status: s })).ok));
+  ['blocked', 'needs_qa', 'archived', 'Stable', '', null].forEach(s =>
+    T('refuses the status ' + JSON.stringify(s), check(good({ status: s })).outcome === 'invalid'));
+  T('blocked is not a status: a blocker is written, and blocked is derived from it',
+    c.attentionOf(check(good({ blocker: 'Waiting on keys' })).record)[0] === 'blocked' &&
+    c.attentionOf(check(good()).record).length === 0);
+  Object.keys(c.STATE_LIMITS).forEach(f => {
+    const max = c.STATE_LIMITS[f];
+    T(f + ': ' + max + ' characters are accepted, one more is refused',
+      check(good({ [f]: 'x'.repeat(max) })).ok && check(good({ [f]: 'x'.repeat(max + 1) })).outcome === 'invalid');
+  });
+
+  sub('anything else is refused whole, with its reason');
+  const without = k => { const g = good(); delete g[k]; return g; };
+  const refusals = {
+    'a newer schema, as unsupported': [good({ schemaVersion: 2 }), 'unsupported'],
+    'a schema written as text': [good({ schemaVersion: '1' }), 'invalid'],
+    'no schema at all': [without('schemaVersion'), 'invalid'],
+    'another project\'s file': [good({ appId: 'loop' }), 'wrong-app'],
+    'a missing key, even one that may be null': [without('phase'), 'invalid'],
+    'needsQa written as text': [good({ needsQa: 'true' }), 'invalid'],
+    'needsDecision with no value': [good({ needsDecision: null }), 'invalid'],
+    'a number where text belongs': [good({ version: 3 }), 'invalid'],
+    'a control character': [good({ currentTask: 'bell\u0007' }), 'invalid'],
+    'a direction override': [good({ nextAction: 'abc\u202Edef' }), 'invalid'],
+    'a date with no zone': [good({ updatedAt: '2026-09-28T10:00:00' }), 'invalid'],
+    'a date with no time': [good({ updatedAt: '2026-09-28' }), 'invalid'],
+    'a date that is not one': [good({ updatedAt: '2026-13-45T99:00:00Z' }), 'invalid'],
+    'a date more than a day ahead': [good({ updatedAt: '2026-09-30T12:00:00Z' }), 'invalid'],
+    'a list instead of a record': [[good()], 'invalid'],
+    'nothing': [null, 'invalid'],
+    'a bare string': ['{"schemaVersion":1}', 'invalid']
+  };
+  Object.keys(refusals).forEach(k => {
+    const r = check(refusals[k][0]);
+    T('refuses ' + k, r.ok === false && r.outcome === refusals[k][1] && typeof r.detail === 'string' && r.detail.length > 8,
+      JSON.stringify(r));
+  });
+  /* Refused for the right reason, not by a later check that happens to trip:
+     a mutation run found a missing key still refused, as "not text". */
+  T('a missing key is refused for being missing, and named', /missing phase/.test(check(without('phase')).detail || ''),
+    check(without('phase')).detail);
+  const twoMissing = without('version'); delete twoMissing.currentTask;
+  T('several missing keys are all named', /missing version, currentTask\./.test(check(twoMissing).detail || ''), check(twoMissing).detail);
+
+  sub('the answer itself is bounded, and every way it ends has a name');
+  const res = (status, text, extra) => Object.assign({ status: status, ok: status >= 200 && status < 300,
+    url: c.STATUS_HOST + 'FAKE/x/main/PROJECT-STATUS.json', headers: { get: () => null },
+    text: () => Promise.resolve(text) }, extra || {});
+  const read = r => Promise.resolve(c.readStatusAnswer(r));
+  return Promise.all([
+    read(res(200, 'x', { headers: { get: k => (k === 'content-length' ? String(c.STATUS_MAX_BYTES + 1) : null) } })),
+    read(res(200, JSON.stringify(good()) + ' '.repeat(c.STATUS_MAX_BYTES))),
+    read(res(200, '{not json')),
+    read(res(404, 'Not Found')),
+    read(res(429, '')), read(res(403, '')), read(res(503, '')),
+    read(res(200, JSON.stringify(good()), { url: 'https://elsewhere.example.test/PROJECT-STATUS.json' })),
+    read(res(200, JSON.stringify(good())))
+  ]).then(([declared, body, notJson, missing, limited, forbidden, down, elsewhere, fine]) => {
+    T('a declared size over the limit is refused unread', declared.outcome === 'too-large');
+    T('a body over the limit is refused', body.outcome === 'too-large');
+    T('text that is not JSON is refused', notJson.outcome === 'invalid');
+    T('no file is "missing", not an error to show as one', missing.outcome === 'missing');
+    T('GitHub asking for fewer requests is named as such', limited.outcome === 'rate-limited' && forbidden.outcome === 'rate-limited');
+    T('any other refusal is an HTTP failure, with its code', down.outcome === 'http' && /503/.test(down.detail));
+    T('an answer that came from somewhere else is refused', elsewhere.outcome === 'invalid');
+    T('a sound answer is passed on for checking', fine.outcome === 'received' && fine.data.appId === 'dayplan');
+    T('every outcome the checks can record is a named one', ['ok', 'older', 'missing', 'offline', 'unreachable', 'timeout',
+      'http', 'rate-limited', 'invalid', 'unsupported', 'wrong-app', 'too-large'].every(o => c.CHECK_OUTCOMES.indexOf(o) !== -1));
+    T('and each failure is said in words', Object.keys(c.CHECK_PROBLEMS).length >= 10 &&
+      c.CHECK_OUTCOMES.filter(o => o !== 'ok' && o !== 'older').every(o => typeof c.CHECK_PROBLEMS[o] === 'string'));
+    T('no errors', app.errors.length === 0, app.errors.join(' | '));
+  });
+}
+
+/* =========================================================
+   CONTRACT 28 — CONNECTED STATE
+   One effective state feeds everything; a manual record and a
+   repository snapshot are both kept, never blended; switching
+   is explicit, and editing never creates a hidden override.
+   ========================================================= */
+function testConnectedState(){
+  section('CONTRACT 28 — connected state: one effective state, both records kept, explicit switches');
+  const shared = new Map();
+  const ns = 'mission-control.';
+  /* A device that has used 0.1.1: one recorded state, one private link. */
+  shared.set(ns + 'sys.schemaVersion', '1');
+  shared.set(ns + 'data.projectStates', JSON.stringify([{ id: 'loop', status: 'paused', needsQa: false, needsDecision: false,
+    blocker: null, version: null, phase: null, currentTask: null, nextAction: 'My own next step',
+    updatedAt: '2026-09-27T09:00:00.000Z' }]));
+  shared.set(ns + 'data.privateLinks', JSON.stringify([{ id: 'loop', chatgptUrl: FIX.chat, claudeUrl: null, updatedAt: '2026-09-27' }]));
+  const app = H.loadApp({ sharedStorage: shared });
+  const c = app.ctx, d = app.dom.document;
+  const manualBefore = shared.get(ns + 'data.projectStates');
+  const linksBefore = shared.get(ns + 'data.privateLinks');
+  const html = id => d.getElementById(id).innerHTML;
+
+  return H.settle().then(() => {
+    sub('without a way to fetch, nothing is asked and nothing is written');
+    T('no status cache and no source choice appear on their own',
+      !shared.has(ns + c.KEYS.repoStatus) && !shared.has(ns + c.KEYS.stateSources));
+
+    const raw = mockRaw(c);
+    clockOn(c, '2026-09-28T12:00:00Z');
+    raw.answers.dayplan = answer(200, statusFile('dayplan', { needsQa: true,
+      currentTask: 'FAKE <img src=x onerror=alert(1)> task', nextAction: 'FAKE repository next step' }));
+    raw.answers.loop = answer(200, statusFile('loop', { status: 'stable', nextAction: 'FAKE repository step for the first project' }));
+    raw.answers['daily-verse'] = answer(200, statusFile('daily-verse', { status: 'stable' }));
+    raw.answers['space-kindergarten'] = answer(404, 'Not Found');
+    raw.answers['capybara-sushi'] = answer(200, statusFile('capybara-sushi', { blocker: 'FAKE blocker from the repository' }));
+    return c.refreshStatuses('open').then(() => {
+      sub('an unrecorded project adopts its repository status, and the choice is saved');
+      const dp = c.projectView('dayplan');
+      T('DayPlan now shows the published status', dp.connected && dp.recorded && dp.status === 'building' && dp.signal === 'needs_qa');
+      T('its crew follows the effective state', dp.workerState === 'inspecting');
+      T('the adoption is stored as the choice, so an import cannot flip it',
+        JSON.parse(shared.get(ns + c.KEYS.stateSources)).some(s => s.id === 'dayplan' && s.source === 'repository'));
+      T('the snapshot is cached with where and when it was fetched', (() => {
+        const e = JSON.parse(shared.get(ns + c.KEYS.repoStatus)).find(r => r.id === 'dayplan');
+        return e && e.sourceUrl === c.statusUrlFor(c.PROJECT_REGISTRY[1]) && e.fetchedAt && e.checkedAt && e.outcome === 'ok' &&
+          e.snapshot.updatedAt === '2026-09-20T10:00:00.000Z';
+      })());
+
+      sub('a project with a state recorded here is never switched without you');
+      const lp = c.projectView('loop');
+      T('the first project still shows your own state', !lp.connected && lp.status === 'paused' && lp.nextAction === 'My own next step');
+      T('no choice was written for it', !JSON.parse(shared.get(ns + c.KEYS.stateSources)).some(s => s.id === 'loop'));
+      T('your record is byte for byte as it was', shared.get(ns + 'data.projectStates') === manualBefore);
+      c.tapProject('loop'); c.tapProject('loop'); c.__flush();
+      T('its brief offers the switch, and still offers Update state',
+        /Use repository updates/.test(html('briefBody')) && /Update state/.test(html('briefBody')) &&
+        /Its repository publishes a status/.test(html('briefBody')));
+      c.closeBrief(); c.__flush();
+
+      sub('a missing file invents nothing');
+      const sk = c.projectView('space-kindergarten');
+      T('a project whose repository has no file stays as it was: Needs update', !sk.recorded && !sk.connected && sk.signal === 'unrecorded');
+      c.openProjectBrief('space-kindergarten'); c.__flush();
+      T('and its brief says nothing is published yet', /Nothing is published at <code>[^<]+\/PROJECT-STATUS\.json<\/code> yet/.test(html('briefBody')));
+      c.closeBrief(); c.__flush();
+
+      sub('the counts, the attention and the field read the effective states');
+      const counts = c.hudCounts(c.allViews());
+      T('QA and Blocked count the repositories\' states', counts.needsQa === 1 && counts.blocked === 1, JSON.stringify(counts));
+      T('only projects with no state are unknown', counts.unrecorded === 2, String(counts.unrecorded));
+      T('the attention list includes connected projects', /Capy Sushi/.test(html('attentionList')) && /DayPlan/.test(html('attentionList')));
+      T('the private project was never asked', raw.calls.every(x => !/personal-savings/.test(x.url)) && raw.calls.length === 5);
+
+      sub('a repository\'s words are plain text');
+      c.openProjectBrief('dayplan'); c.__flush();
+      const brief = html('briefBody');
+      T('markup in a status is shown as text, never run', /&lt;img src=x onerror=alert\(1\)&gt;/.test(brief) && !/<img/.test(brief));
+      T('a connected brief says where its status comes from, and how old it is',
+        /From repository · updated 8 days ago/.test(brief) && /Maintained in <code>morecobrax-dot\/dayplan\/PROJECT-STATUS\.json<\/code>/.test(brief) &&
+        /Checked just now/.test(brief));
+      T('it offers the switch to your own state, and no editor',
+        /Use my own state instead/.test(brief) && !/>Update state</.test(brief));
+      T('the focus bar says so too, quietly', /From repository · updated 8 days ago/.test(html('focusBar')));
+      c.closeBrief(); c.__flush();
+
+      sub('editing a connected project never makes a hidden override');
+      c.openStateForm('dayplan'); c.__flush();
+      T('no editor opens', !d.getElementById('stateOverlay').classList.contains('open') && c.editingStateId === null);
+      T('the reason is said', /comes from its repository/.test(d.getElementById('toastHost').children.map(t => t.innerHTML).join('')));
+      T('and nothing was written as a manual record', !c.projectStates.dayplan);
+
+      sub('switching is explicit, and keeps both records');
+      c.useRepositoryUpdates('loop'); c.__flush();
+      const lr = c.projectView('loop');
+      T('the first project now shows its repository status', lr.connected && lr.status === 'stable');
+      T('with the repository\'s words, never blended with yours',
+        lr.nextAction === 'FAKE repository step for the first project' && lr.phase === 'FAKE phase');
+      T('your own record is untouched', shared.get(ns + 'data.projectStates') === manualBefore && !!c.projectStates.loop);
+      c.openProjectBrief('loop'); c.__flush();
+      T('its brief says your own state is kept', /The state you recorded for it on this device is kept/.test(html('briefBody')));
+      c.closeBrief(); c.__flush();
+      const snapBefore = JSON.stringify(JSON.parse(shared.get(ns + c.KEYS.repoStatus)).find(r => r.id === 'loop').snapshot);
+      c.useManualState('loop'); c.__flush();
+      const lm = c.projectView('loop');
+      T('switching back shows your own state again, exactly', !lm.connected && lm.status === 'paused' && lm.nextAction === 'My own next step');
+      T('and the repository snapshot is still kept',
+        JSON.stringify(JSON.parse(shared.get(ns + c.KEYS.repoStatus)).find(r => r.id === 'loop').snapshot) === snapBefore);
+      T('your private link was never touched', shared.get(ns + 'data.privateLinks') === linksBefore);
+
+      sub('recording or clearing a state here is choosing your own');
+      c.openStateForm('daily-verse'); c.__flush();
+      T('Daily Verse adopted its repository status, so it has no editor', !d.getElementById('stateOverlay').classList.contains('open'));
+      c.useManualState('daily-verse'); c.__flush();
+      T('once switched, its editor opens, empty', (c.openStateForm('daily-verse'), c.__flush(),
+        d.getElementById('stateOverlay').classList.contains('open')));
+      c.pickStatus('building'); c.saveStateForm(); c.__flush();
+      T('saving it keeps it on your own state', c.sourceOf('daily-verse') === 'manual' && c.projectView('daily-verse').status === 'building');
+      c.openStateForm('daily-verse'); c.__flush();
+      const cleared = c.clearProjectState(); c.__flush();
+      c.acceptConfirm(); c.__flush();
+      return cleared.then(() => {
+        const dv = c.projectView('daily-verse');
+        T('clearing it shows Needs update, as the confirmation promised — the repository does not take its place',
+          !dv.recorded && !dv.connected && c.sourceOf('daily-verse') === 'manual');
+        T('the repository status stays one tap away', /Use repository updates/.test(c.briefHtml(dv, false)));
+
+        sub('a private repository never shows a repository status');
+        shared.set(ns + c.KEYS.repoStatus, JSON.stringify(JSON.parse(shared.get(ns + c.KEYS.repoStatus)).concat([{ id: 'personal-savings',
+          snapshot: statusFile('personal-savings', { updatedAt: '2026-09-01T00:00:00.000Z' }), outcome: 'ok',
+          checkedAt: '2026-09-01T00:00:00.000Z', fetchedAt: '2026-09-01T00:00:00.000Z' }])));
+        shared.set(ns + c.KEYS.stateSources, JSON.stringify(JSON.parse(shared.get(ns + c.KEYS.stateSources))
+          .concat([{ id: 'personal-savings', source: 'repository', updatedAt: '2026-09-01T00:00:00.000Z' }])));
+        const later = H.loadApp({ sharedStorage: shared });
+        const ps = later.ctx.projectView('personal-savings');
+        T('even with a planted snapshot and choice, it stays manual', !ps.connected && !ps.recorded && ps.repo === null);
+        T('its brief says why', /Its repository is private, so Mission Control never asks it/.test(later.ctx.briefHtml(ps, false)));
+
+        sub('the effective state survives a relaunch, offline');
+        const again = later.ctx.projectView('dayplan');
+        T('DayPlan still shows the cached repository status, with nothing fetched', again.connected && again.status === 'building' &&
+          again.nextAction === 'FAKE repository next step');
+
+        sub('an import leaves the source alone, and says where the state went');
+        const file = JSON.stringify({ app: 'mission-control', data: { 'data.projectStates': JSON.stringify([
+          { id: 'dayplan', status: 'paused', updatedAt: '2026-09-28T11:00:00.000Z' }]) } });
+        later.ctx.importData({ files: [{ _text: file }], value: '' });
+        const dpi = later.ctx.projectView('dayplan');
+        T('DayPlan still shows its repository status', dpi.connected && dpi.status === 'building');
+        T('the imported state is kept', later.ctx.projectStates.dayplan && later.ctx.projectStates.dayplan.status === 'paused');
+        T('and the import says it is kept but not shown',
+          /DayPlan shows its repository status, so the imported state is kept on this device but not shown/.test(
+            later.dom.document.getElementById('importNotes').innerHTML));
+
+        sub('unreadable choices and cache entries are kept, not deleted');
+        shared.set(ns + c.KEYS.stateSources, JSON.stringify([{ id: 'loop', source: 'automatic', updatedAt: 'z' },
+          { id: 'dayplan', source: 'repository', updatedAt: '2026-09-28T00:00:00.000Z' }]));
+        shared.set(ns + c.KEYS.repoStatus, JSON.stringify([{ id: 'loop', snapshot: { status: 'archived', updatedAt: 'z' } }]));
+        const third = H.loadApp({ sharedStorage: shared });
+        T('an unknown source value is not guessed at', third.ctx.sourceOf('loop') === 'manual' && third.ctx.stateSourcesForeign.length === 1);
+        T('an unreadable snapshot is not shown', !third.ctx.repoStatus.loop && third.ctx.repoStatusForeign.length === 1);
+        third.ctx.setSource('daily-verse', 'manual');
+        T('writing a choice writes the unreadable one back untouched',
+          /"source":"automatic"/.test(shared.get(ns + c.KEYS.stateSources)));
+        third.ctx.settleCheck('dayplan', third.ctx.statusUrlFor(third.ctx.PROJECT_REGISTRY[1]), { outcome: 'offline' });
+        T('a check writes an unreadable cache entry back untouched too',
+          /"status":"archived"/.test(shared.get(ns + c.KEYS.repoStatus)) && /"id":"dayplan"/.test(shared.get(ns + c.KEYS.repoStatus)));
+
+        sub('clearing a state recorded before 0.2.0 shows Needs update, even with a status published');
+        const old = new Map();
+        old.set(ns + 'data.projectStates', JSON.stringify([{ id: 'dayplan', status: 'building', updatedAt: '2026-09-27T09:00:00.000Z' }]));
+        old.set(ns + c.KEYS.repoStatus, JSON.stringify([{ id: 'dayplan', snapshot: statusFile('dayplan', { updatedAt: '2026-09-20T10:00:00.000Z' }),
+          sourceUrl: c.statusUrlFor(c.PROJECT_REGISTRY[1]), fetchedAt: '2026-09-28T00:00:00.000Z', checkedAt: '2026-09-28T00:00:00.000Z', outcome: 'ok' }]));
+        const pre = H.loadApp({ sharedStorage: old });
+        const o = pre.ctx;
+        T('with no choice made, the record of your own is shown', o.sourceOf('dayplan') === 'manual' && o.projectView('dayplan').status === 'building');
+        o.openStateForm('dayplan'); o.__flush();
+        const clearing = o.clearProjectState(); o.__flush();
+        o.acceptConfirm(); o.__flush();
+        return clearing.then(() => {
+          T('cleared, it says Needs update, as the confirmation promised',
+            !o.projectView('dayplan').recorded && !o.projectView('dayplan').connected);
+
+          sub('a status that arrives while its editor is open is adopted, and saving there chooses your own');
+          const fresh = H.loadApp({ sharedStorage: new Map() });
+          const f = fresh.ctx;
+          return H.settle().then(() => {
+            const r = mockRaw(f);
+            r.answers['space-kindergarten'] = answer(200, statusFile('space-kindergarten'));
+            f.openStateForm('space-kindergarten'); f.__flush();
+            return f.refreshStatuses('manual', ['space-kindergarten']).then(() => {
+              T('the status is adopted at once, and the choice saved', f.sourceOf('space-kindergarten') === 'repository' &&
+                !!f.stateSources['space-kindergarten']);
+              T('the editor stays open', fresh.dom.document.getElementById('stateOverlay').classList.contains('open'));
+              f.pickStatus('paused'); f.saveStateForm(); f.__flush();
+              T('saving it shows the state you just recorded, as your own',
+                f.sourceOf('space-kindergarten') === 'manual' && f.projectView('space-kindergarten').status === 'paused');
+              T('no errors', [app, later, third, pre, fresh].every(a => a.errors.length === 0),
+                [app, later, third, pre, fresh].map(a => a.errors.join(' | ')).join(' | '));
+            });
+          });
+        });
+      });
+    });
+  });
+}
+
+/* =========================================================
+   CONTRACT 29 — CHECKING THE REPOSITORIES
+   Asked after the first screen, when due, once per project at
+   a time, with nothing attached; every failure named and kept
+   apart; the last valid status never lost or made to look new.
+   ========================================================= */
+function testRefresh(){
+  section('CONTRACT 29 — checking the repositories: due, deduplicated, failures kept apart');
+  const shared = new Map();
+  const app = H.loadApp({ sharedStorage: shared });
+  const c = app.ctx, d = app.dom.document;
+  const ns = c.STORAGE_NAMESPACE;
+  const raw = mockRaw(c);                  // set before the open check runs
+  const held = {};
+  c.PROJECT_REGISTRY.forEach(p => { held[p.id] = pending(); raw.answers[p.id] = () => held[p.id].p; });
+  const html = id => d.getElementById(id).innerHTML;
+  const toasts = () => d.getElementById('toastHost').children.map(t => t.innerHTML).join(' | ');
+  const entry = id => (JSON.parse(shared.get(ns + c.KEYS.repoStatus) || '[]').find(r => r.id === id)) || null;
+
+  sub('the first screen never waits for the network');
+  T('the hub is drawn before anything is asked', (html('projectField').match(/<button class="block /g) || []).length === 6 &&
+    raw.calls.length === 0);
+  return H.settle().then(() => {
+    sub('opening the app asks each public repository once');
+    const publicIds = c.PROJECT_REGISTRY.filter(p => p.publicRepo).map(p => p.id);
+    T('one request per public repository', raw.calls.length === publicIds.length && raw.idsAsked().sort().join() === publicIds.slice().sort().join(),
+      raw.idsAsked().join());
+    T('none to the private repository', raw.idsAsked().indexOf('personal-savings') === -1);
+    T('each to its derived address on GitHub\'s raw host', raw.calls.every(x => x.url.indexOf(c.STATUS_HOST) === 0 && /\/PROJECT-STATUS\.json$/.test(x.url)));
+    T('with nothing attached: no cookies, no referrer, no token, a plain GET',
+      raw.calls.every(x => x.opts.method === 'GET' && x.opts.credentials === 'omit' && x.opts.referrerPolicy === 'no-referrer' &&
+        !x.opts.headers && x.opts.mode === 'cors'));
+    T('revalidated, so an unchanged file is not downloaded again', raw.calls.every(x => x.opts.cache === 'no-cache'));
+    T('while it runs, the screen is whole and Refresh says it is checking',
+      /Needs update/.test(html('projectField')) && d.getElementById('refreshBtn').classList.contains('is-busy') &&
+      d.getElementById('refreshBtn').getAttribute('aria-busy') === 'true');
+
+    sub('asking again while a check runs joins it');
+    c.refreshStatuses('manual'); c.refreshStatuses('front'); c.refreshNow();
+    T('no second request for any project', raw.calls.length === publicIds.length, String(raw.calls.length));
+
+    const clock = clockOn(c, '2026-09-28T12:00:00Z');
+    held.loop.resolve(answer(200, statusFile('loop', { updatedAt: '2026-09-27T08:00:00Z', nextAction: 'FAKE first' }))(raw.calls[0].url));
+    held.dayplan.resolve(answer(200, statusFile('dayplan'))(c.statusUrlFor(c.PROJECT_REGISTRY[1])));
+    held['daily-verse'].resolve(answer(404, 'Not Found')(''));
+    held['space-kindergarten'].resolve(answer(200, statusFile('space-kindergarten'))(c.statusUrlFor(c.PROJECT_REGISTRY[4])));
+    held['capybara-sushi'].resolve(answer(200, statusFile('capybara-sushi', { needsQa: true }))(c.statusUrlFor(c.PROJECT_REGISTRY[5])));
+    return H.settle().then(() => {
+      T('when the answers land, Refresh is at rest', !d.getElementById('refreshBtn').classList.contains('is-busy'));
+      T('and its name says when it last checked', /last checked just now/.test(d.getElementById('refreshBtn').getAttribute('aria-label')));
+      T('each answer is kept on its own', entry('loop').outcome === 'ok' && entry('daily-verse').outcome === 'missing' &&
+        entry('capybara-sushi').outcome === 'ok');
+
+      sub('two times, never confused');
+      const first = entry('loop');
+      T('the publisher\'s time is the snapshot\'s; the check\'s time is the device\'s',
+        first.snapshot.updatedAt === '2026-09-27T08:00:00.000Z' && first.checkedAt === '2026-09-28T12:00:00.000Z' &&
+        first.fetchedAt === '2026-09-28T12:00:00.000Z');
+      raw.answers.loop = answer(200, statusFile('loop', { updatedAt: '2026-09-27T08:00:00Z', nextAction: 'FAKE first' }));
+      clock.advance(20 * 60 * 1000);
+      return c.refreshStatuses('front');
+    }).then(() => {
+      const again = entry('loop');
+      T('asking again moves the check\'s time, never the status\'s',
+        again.checkedAt === '2026-09-28T12:20:00.000Z' && again.snapshot.updatedAt === '2026-09-27T08:00:00.000Z');
+      T('so the brief still says when the project was updated, not when it was asked',
+        /From repository · updated 1 day ago/.test(c.briefHtml(c.projectView('loop'), false)) &&
+        /Checked just now/.test(c.briefHtml(c.projectView('loop'), false)));
+
+      sub('asked only when due');
+      const before = raw.calls.length;
+      clock.advance(10 * 60 * 1000);
+      return c.refreshStatuses('front').then(() => {
+        T('ten minutes after an answer, coming back asks nothing', raw.calls.length === before);
+        clock.advance(6 * 60 * 1000);
+        return c.refreshStatuses('front');
+      }).then(() => {
+        T('fifteen minutes after, it asks again', raw.calls.length === before + 5, String(raw.calls.length - before));
+        const n = raw.calls.length;
+        return c.refreshNow().then(() => {
+          T('Refresh asks now, whatever the schedule', raw.calls.length === n + 5);
+          T('and says what it found', /Repository status is up to date|updated from the repositories/.test(toasts()));
+        });
+      });
+    }).then(() => {
+      sub('coming back to the app asks, when due');
+      clock.advance(16 * 60 * 1000);
+      const n = raw.calls.length;
+      d.visibilityState = 'hidden';
+      c.window.dispatch('visibilitychange');
+      T('leaving asks nothing', raw.calls.length === n);
+      d.visibilityState = 'visible';
+      c.window.dispatch('visibilitychange');
+      return H.settle().then(() => T('returning asks the due repositories', raw.calls.length === n + 5, String(raw.calls.length - n)));
+    }).then(() => {
+      sub('every failure is kept apart, and the last valid status is kept');
+      const good = entry('capybara-sushi');
+      const failures = [
+        ['an HTTP error', answer(503, ''), 'http'],
+        ['text that is not JSON', answer(200, '{oops'), 'invalid'],
+        ['another project\'s file', answer(200, statusFile('loop')), 'wrong-app'],
+        ['a newer schema', answer(200, statusFile('capybara-sushi', { schemaVersion: 2 })), 'unsupported'],
+        ['a file too large', answer(200, JSON.stringify(statusFile('capybara-sushi')) + ' '.repeat(9000)), 'too-large'],
+        ['GitHub unreachable', () => Promise.reject(new TypeError('Failed to fetch')), 'unreachable'],
+        ['the file removed', answer(404, 'Not Found'), 'missing']
+      ];
+      let chain = Promise.resolve();
+      failures.forEach(f => {
+        chain = chain.then(() => {
+          raw.answers['capybara-sushi'] = f[1];
+          raw.answers.loop = answer(200, statusFile('loop', { updatedAt: '2026-09-27T08:00:00Z', nextAction: 'FAKE first' }));
+          clock.advance(1000);
+          return c.checkProjectNow('capybara-sushi').then(() => {
+            const e = entry('capybara-sushi');
+            T(f[0] + ': named "' + f[2] + '", snapshot and its fetch time kept',
+              e.outcome === f[2] && JSON.stringify(e.snapshot) === JSON.stringify(good.snapshot) && e.fetchedAt === good.fetchedAt,
+              JSON.stringify(e));
+          });
+        });
+      });
+      return chain.then(() => {
+        const v = c.projectView('capybara-sushi');
+        T('the project still shows the last status it published', v.connected && v.recorded && v.signal === 'needs_qa');
+        T('its brief says what went wrong and what is shown',
+          /The status file is no longer in the repository\. Showing the status fetched/.test(c.briefHtml(v, false)));
+        T('other projects are untouched by one project\'s failures', entry('loop').outcome === 'ok');
+      });
+    }).then(() => {
+      sub('offline: nothing is asked, nothing is lost');
+      c.navigator.onLine = false;
+      const n = raw.calls.length;
+      clock.advance(2 * 60 * 60 * 1000);
+      return c.refreshNow().then(() => {
+        T('no request leaves the device', raw.calls.length === n);
+        T('each check is recorded as offline, with the snapshot kept',
+          entry('loop').outcome === 'offline' && entry('loop').snapshot.nextAction === 'FAKE first');
+        T('the toast says the last status is still shown', /Offline\. The last status each repository published is still shown/.test(toasts()));
+        T('the brief says the last check was offline',
+          /The last check was made offline\. Showing the status fetched 2 hours ago/.test(c.briefHtml(c.projectView('loop'), false)));
+        clock.advance(30 * 1000);
+        T('a failure that may pass is not retried at once', c.statusDue('loop', clock.now()) === false);
+        clock.advance(31 * 1000);
+        T('it is retried after a minute', c.statusDue('loop', clock.now()) === true);
+        c.navigator.onLine = true;
+      });
+    }).then(() => {
+      sub('a timeout ends the request and keeps the last status');
+      const realTimeout = c.setTimeout;
+      c.setTimeout = (fn, ms) => realTimeout(fn, ms === c.STATUS_TIMEOUT_MS ? 1 : ms);
+      raw.answers.loop = () => new Promise(() => {});
+      return c.checkProjectNow('loop').then(() => {
+        c.setTimeout = realTimeout;
+        T('named "timeout", snapshot kept', entry('loop').outcome === 'timeout' && entry('loop').snapshot.nextAction === 'FAKE first');
+      });
+    }).then(() => {
+      sub('GitHub asking for fewer requests is honoured for an hour');
+      raw.answers.loop = answer(429, '');
+      return c.checkProjectNow('loop').then(() => {
+        T('named "rate-limited", snapshot kept', entry('loop').outcome === 'rate-limited' && !!entry('loop').snapshot);
+        T('opening or coming back waits the hour, not a minute', c.statusDue('loop', clock.now() + 20 * 60 * 1000) === false);
+        const n = raw.calls.length;
+        clock.advance(20 * 60 * 1000);
+        return c.refreshNow().then(() => {
+          T('even Refresh leaves that repository alone while it waits',
+            raw.calls.slice(n).every(x => x.url !== c.statusUrlFor(c.PROJECT_REGISTRY[0])));
+          T('and says why', /GitHub asked for fewer requests/.test(toasts()));
+          clock.advance(41 * 60 * 1000);
+          T('after the hour it is due again', c.statusDue('loop', clock.now()) === true);
+        });
+      });
+    }).then(() => {
+      sub('an older copy never undoes a newer status');
+      raw.answers.loop = answer(200, statusFile('loop', { updatedAt: '2026-09-28T09:00:00Z', nextAction: 'FAKE newer' }));
+      return c.checkProjectNow('loop').then(() => {
+        T('a newer status replaces the snapshot', entry('loop').snapshot.nextAction === 'FAKE newer');
+        raw.answers.loop = answer(200, statusFile('loop', { updatedAt: '2026-09-27T08:00:00Z', nextAction: 'FAKE stale copy' }));
+        return c.checkProjectNow('loop');
+      }).then(() => {
+        T('an older one is recorded as older and ignored',
+          entry('loop').outcome === 'older' && entry('loop').snapshot.nextAction === 'FAKE newer');
+      });
+    }).then(() => {
+      sub('the shell cache never holds a status');
+      const sw = H.readSW();
+      T('the status host is another origin, which the worker leaves alone',
+        c.STATUS_HOST.indexOf('https://raw.githubusercontent.com/') === 0 && /new URL\(req\.url\)\.origin !== location\.origin/.test(sw));
+      T('the worker names no status file and no GitHub host', !/PROJECT-STATUS|githubusercontent/.test(sw));
+      /* The harness does not model generated elements, so the real focus
+         behaviour is exercised in a browser; this keeps the wiring. */
+      T('a check finishing in the background redraws without taking keyboard focus',
+        /statusInFlight\.delete\(p\.id\);\s*try\{ keepFocusAcross\(renderMissionControl\); \}/.test(js()));
+      T('no timer keeps asking: nothing polls', !/setInterval\(/.test(stripComments(js())));
+      T('no errors', app.errors.length === 0, app.errors.join(' | '));
+    });
+  });
+}
+
 module.exports = {
   T, section, sub, results, reset, testPortability,
   testBoot, testConfig, testStorage, testCollision, testMigration,
@@ -2036,5 +2724,5 @@ module.exports = {
   testMobile, testDesignSystem, testPWA, testRelease, testStress,
   testAccessibility, testContamination, testSourcesOfTruth,
   testRegistry, testStatusModel, testPrivateLinks, testHub, testFieldSeam, testSecrets,
-  testBackupBoundary
+  testBackupBoundary, testStatusContract, testConnectedState, testRefresh
 };

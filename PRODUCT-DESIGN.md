@@ -78,6 +78,9 @@ status shows a word and a shape as well as a hue. *(enforced)*
   missing leaves a screen nothing can recover. *(enforced)*
 - The same tap gives the same result. A tab opens at its top rather than
   wherever it was left. *(enforced)*
+- A toast is read, never touched. It has no controls, so it takes no taps:
+  one that did sat over the state editor's lower fields for three seconds,
+  and the words typed there went nowhere. *(enforced)*
 - Motion respects `prefers-reduced-motion`, everywhere, not on the animations
   someone remembered. *(enforced)*
 
@@ -158,9 +161,13 @@ The product's own rules, on top of everything above.
   never become a beautiful interface that hides the information you actually
   need: every platform also says its name, its status in words, and what it
   needs from you.
-- **Attention first.** The hub answers "what needs me?" before anything else:
-  quiet counts, then a list of what is blocked, waiting on a decision or
-  ready for QA, in that order. Everything else is below it.
+- **Attention first, then the world.** The hub answers "what needs me?"
+  before anything else: quiet counts, then one line — what is blocked,
+  waiting on a decision or ready for QA, in that order, each a one-line
+  button to its brief, and how many states are unknown. The world follows at
+  once and is the focus: the top stays compact so every platform and label
+  is on the first screen of a phone, a phone on its side and an iPad, above
+  the tab bar.
 - **One focus.** One tap focuses a project, a second opens its brief. The
   focus is remembered, because it is what you come back to.
 - **Unknown is not a status.** A project with no recorded state says "Needs
@@ -171,8 +178,24 @@ The product's own rules, on top of everything above.
 - **Say only what is known.** "Nothing needs you right now" is a claim about
   every project; while any state is unknown, the hub says "No recorded
   attention items" instead.
+- **One record at a time.** A project shows the state you recorded or the
+  one its repository published — never a blend of the two. A published
+  status is adopted only by a project nobody had recorded; otherwise
+  switching is a visible choice in the brief, and it keeps both.
+- **A source is provenance, not a status.** A connected project says "From
+  repository · updated 3 days ago", quietly and with no signal colour, and
+  its brief says which file it came from. A failed check is said in words
+  beside what is still shown.
+- **Two times, never confused.** "Updated" is when the project's status was
+  written; "Checked" is when this device last asked. Asking again never
+  makes old news look new.
+- **No state, no light.** A beacon is lit only by a known state; an unknown
+  project's lamp is a ring. Identity light — the lit lip, the accent rim, the
+  pool under the project in focus — belongs to the place, and every accent
+  stays at least ΔE 20 from every status colour. *(enforced)*
 - **A backup is yours, and only yours.** It carries recorded project states,
-  never private links, and the Backup page says exactly that.
+  never private links, source choices or fetched status, and the Backup page
+  says exactly that.
 - **Private stays off the screen.** A tool shows where it goes (its host),
   never the conversation or session it opens.
 - **Actions appear only when they work.** A tool that is not set up is not

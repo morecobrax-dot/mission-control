@@ -1,7 +1,7 @@
 # Architecture
 
 How Mission Control fits together: the foundation it was built on, and the
-product that sits on the foundation's four seams.
+product that sits on the foundation's six seams.
 
 ---
 
@@ -100,13 +100,19 @@ mission-control.ui.lastSeenUpdate      What's new read state
 mission-control.ui.selectedProject     the project in focus
 mission-control.data.projectStates     the states you recorded — one record per project
 mission-control.data.privateLinks      your ChatGPT and Claude links — one record per project
+mission-control.data.stateSources      which record each project shows: 'manual' or 'repository'
+mission-control.cache.repoStatus       each repository's last valid status, where and when it was
+                                       fetched, and how the last check went
 mission-control.draft.projectState     an unsaved state edit
 mission-control.draft.projectLinks     an unsaved links edit
 ```
 
 `set()` returns a real boolean. `getJSON()` returns the fallback on corrupt data
 rather than throwing. A missing key reads `null` and is never repaired with a
-default. A first launch writes exactly one key, the schema version.
+default. A first launch writes the schema version; once the repositories have
+answered it adds `cache.repoStatus`, and `data.stateSources` for each project
+that adopted a published status. Nothing is invented: no manual record is
+ever written for you.
 
 Records carry an `id` (the project's) and an `updatedAt`. A stored record this
 version cannot read (an unknown project, an unknown status) is kept aside and
@@ -126,32 +132,39 @@ Export is an allowlist by construction. The foundation builds the file from
 readable records of registry projects, each rebuilt field by field from
 `BACKUP_FIELDS`. Nothing else can reach the file: not `data.privateLinks`, not
 the editor drafts, not `ui.*` preferences, not `sys.backup.*` recovery
-snapshots, not unreadable records, and not any field a record carries beyond
-the allowlist.
+snapshots, not unreadable records, not any field a record carries beyond
+the allowlist — and not `data.stateSources` or `cache.repoStatus`: which record
+a project shows is this device's choice, and a published status is public and
+fetched fresh by every device, so a copy in a file could only be older.
 
 Import mirrors it. `Domain.restoreData()` (`restoreMissionControl`) accepts
 only `data.projectStates`, rebuilds each incoming record from the same
 allowlist, and merges by id with the newer `updatedAt` winning. Anything else
-in the file is ignored. Private links or link drafts in a backup made by 0.1.0
-are never restored, merged or used to delete the links on this device; the
-import reports it in a note on the Backup page, and reports records it could
-not read. Without the two hooks the foundation falls back to its generic
+in the file is ignored — a source choice or a repository status in a file is
+never taken. Private links or link drafts in a backup made by 0.1.0 are never
+restored, merged or used to delete the links on this device; the import
+reports it in a note on the Backup page, reports records it could not read,
+and names any project whose imported state is kept behind its repository's
+status. Without the two hooks the foundation falls back to its generic
 behaviour: every key except recovery snapshots out, every collection of
 records merged back in.
 
 ## Mission Control — the product model
 
 ```
-PROJECT_REGISTRY (source, public)          data.projectStates (device)
-  id, name, shortDescription,                 status, needsQa, needsDecision,
-  repositoryUrl, liveUrl,                     blocker, version, phase,
-  defaultBranch, visualTheme                  currentTask, nextAction, updatedAt
-            │                                           │  (or no record at all)
-            ▼                                           ▼
-                         projectView(id)  — derived on read, never stored
-        recorded · attention · signal · workerState · tools · theme · claudeFallback
+PROJECT_REGISTRY (source, public)     data.projectStates (device)      cache.repoStatus (device)
+  id, name, shortDescription,           the state you recorded:          the last valid PROJECT-STATUS.json
+  repositoryUrl, liveUrl,               status, needsQa, needsDecision,  of a public repository — the same
+  defaultBranch, visualTheme,           blocker, version, phase,         record shape — plus sourceUrl,
+  publicRepo                            currentTask, nextAction,         fetchedAt, checkedAt, outcome
+            │                           updatedAt                                  │
+            │                                     └──── sourceOf(id) ─────────────┘
+            │                                     (data.stateSources, device: exactly one)
+            ▼                                                 ▼
+                     projectView(id) — the effective state, derived on read, never stored
+        recorded · attention · signal · workerState · source · repo · tools · theme
                                   │
-            hub counts · attention queue · field scene · quick brief
+            hub counts · attention · field scene · quick brief
 ```
 
 - **Identity** is public and never changes at runtime.
@@ -180,6 +193,63 @@ PROJECT_REGISTRY (source, public)          data.projectStates (device)
 `SIGNALS` is the visual language: every status, every attention and
 `unrecorded` has a word, a short word, a shape and a crew state, and its hue is
 a `.sig-*` class onto a layer-4 token. None of them relies on colour.
+
+## Connected status
+
+A public repository may publish its project's state as `PROJECT-STATUS.json`
+on its default branch. Everything below lives in the product section of the
+script; the foundation knows nothing of it.
+
+**The contract** (`STATUS_KEYS`, `validateStatusFile`). Schema 1, every key
+present: `schemaVersion`, `appId`, `version`, `phase`, `status`, `needsQa`,
+`needsDecision`, `currentTask`, `nextAction`, `blocker`, `updatedAt`. The
+words and limits are the editor's (`PROJECT_STATUSES`, `STATE_LIMITS`), so a
+repository cannot say anything the app could not show; blocked is still
+derived from `blocker`. `appId` must be the registry id the address was built
+from. Text is plain: control characters and direction overrides are refused,
+whitespace collapses, and everything is escaped when drawn. `updatedAt` must be
+ISO 8601 with a zone and no more than a day ahead of this device's clock. The
+answer is capped at 8 KB. A file that breaks any rule is refused whole with its
+reason; a newer `schemaVersion` is `unsupported`, never half-read. A valid file
+is rebuilt field by field into exactly the record a state saved here is.
+
+**The address** (`statusUrlFor`) is derived from the registry alone —
+`repositoryUrl` and `defaultBranch` — and only for `publicRepo: true`:
+`https://raw.githubusercontent.com/<owner>/<repo>/<branch>/PROJECT-STATUS.json`.
+GitHub's raw host answers any origin (`Access-Control-Allow-Origin: *`, on a
+404 too), caches for 300 seconds and revalidates by ETag. The request carries
+nothing: `credentials: 'omit'`, `referrerPolicy: 'no-referrer'`, no headers,
+no token. A private repository is never asked. It is another origin, so the
+service worker leaves it alone and a status never enters the shell cache.
+
+**Ownership** (`sourceOf`, `effectiveState`). A project shows exactly one
+record: your choice in `data.stateSources` if you made one; otherwise your
+manual record if there is one; otherwise its repository snapshot. The
+snapshot of a project nobody had recorded is adopted when it arrives, and the
+choice is saved then, so importing a manual record later cannot flip it. A
+project with a manual record switches only when you choose *Use repository
+updates*; *Use my own state instead* switches back. Neither deletes the other
+record. A connected project has no editor — editing it would be a hidden
+override — saving in the editor chooses your own state, and clearing it shows
+*Needs update* rather than letting the repository take its place.
+
+**Checking** (`refreshStatuses`, `checkProject`, `settleCheck`). Asked on open
+(after the first render), on return to the foreground, and by Refresh — each
+project only when due: `STATUS_FRESH_MS` (15 minutes) after an answer,
+`STATUS_RETRY_MS` (1 minute) after a failure that may pass, and
+`STATUS_BACKOFF_MS` (1 hour) after a 403 or 429, which Refresh honours too.
+One request per project in flight; asking again joins it. `STATUS_TIMEOUT_MS`
+(8 seconds) ends a request that never answers. Offline, nothing is sent. No
+timer polls. Every way a check ends is a named outcome — `ok`, `older`,
+`missing`, `offline`, `unreachable`, `timeout`, `http`, `rate-limited`,
+`invalid`, `unsupported`, `wrong-app`, `too-large` — said in words in the
+brief. Only `ok` replaces the snapshot, and only with one that is not older
+than the snapshot kept.
+
+**Two times.** `snapshot.updatedAt` is when the publisher wrote the status;
+`fetchedAt` is when this device last received a valid copy; `checkedAt` is
+when it last asked. The screen says "updated" only of the first, so asking
+again never makes old news look new.
 
 ## Private links
 
@@ -220,26 +290,55 @@ attention, worker states, whether a state is recorded, and the selection — a r
 description. The renderer never reads storage, never decides a status and
 never owns the selection; a contract checks all three.
 
-**Phase 1 ships `IsoField`:** one `<button>` per project containing an inline
-isometric SVG platform — a plinth, a terrain layer, the project's landmark,
-a status beacon and a placeholder crew. Landmarks are data (`LANDMARKS`): lists
-of boxes, cylinders, cones and face discs in platform units, drawn back to
-front. The only motion is CSS — the beacon breathes when a project needs you,
-a working crew bobs — and the global reduced-motion rule stops both.
+**Today the field is `IsoField`:** one `<button>` per project containing an
+inline isometric SVG platform — a plinth, a terrain layer, the project's
+landmark, a status beacon and a placeholder crew. Landmarks are data
+(`LANDMARKS`): lists of boxes, cylinders, cones and face discs in platform
+units, drawn back to front. The only motion is CSS — the beacon breathes when
+a project needs you, a working crew bobs, Refresh turns while it checks — and
+the global reduced-motion rule stops all of it.
 
-**Phase 2 swaps in WebGL** by implementing the same three calls: one
-canvas, one scene, a group per project, shared geometry and materials,
-`LANDMARKS` rebuilt as meshes, and a button per project kept as the hit and
-accessibility layer. Three.js is the intended library, vendored locally for
-offline use. Nothing outside the field section changes. Three.js was left
-out of Phase 1 on purpose: it adds a large library outside the tested script
-block, the harness cannot run WebGL or canvas, and the workflow did not need
-it to prove itself first.
+**Light has two owners.** Identity light belongs to the place: the plinth's
+front lip in neutral light (`--field-rim`), the ground's rim in the project's
+own accent (`--tint-*`), and a pool of light under the project in focus
+(`--field-pool`). Every accent is at least ΔE 20 (CIELAB) from every status hue
+— contract 24 measures it — so identity is strong without reading as status.
+Status light belongs to the beacon alone, and it is lit only by a known state:
+glow, halo and core in the signal's hue. With no state the lamp is off, drawn
+as a ring, so an unknown project can be attractive without looking active,
+healthy or in need.
+
+**The next 3D direction** keeps the same three calls. A WebGL renderer
+(Three.js, vendored for offline use) replaces `IsoField`, with:
+
+- **One shared world**, not six dioramas in a grid: the platforms stand on
+  one continuous ground, arranged by the same data, with room between them.
+- **A constrained camera**: a fixed three-quarter view that can pan and zoom
+  within bounds and ease to the project in focus — never free orbit, never a
+  view that hides a label.
+- **Product-specific structures** built in more detail from the same
+  `LANDMARKS` data, one coherent material language across all of them — not
+  six unrelated art styles, and no extra levels or buildings that would
+  suggest progress no state supports.
+- **State-driven workers**: the crew's pose and motion come from
+  `workerState` alone, so what moves always means something, and Reduce
+  Motion stills it.
+- **A button per project kept** as the hit and accessibility layer, so
+  touch, keyboard and screen readers behave exactly as today.
+
+Three.js is still out of this build on purpose: it is a large library outside
+the tested script block, the harness cannot run WebGL or canvas, and the
+product's data flow had to prove itself first.
 
 ## Layout
 
-Mobile first. On a phone the hub is one column and the Quick Brief is a page;
-on a phone on its side the field becomes rows of six. At
+Mobile first. The top of the hub is compact — a small header with Refresh,
+tight counts, and one wrapping line of attention buttons and the unknown
+count — so the field starts in the first screen. On a phone the hub is one
+column and the Quick Brief is a page; on a phone on its side the field
+becomes rows of six, held to a width whose platforms fit above the tab bar.
+In the wide layout the field is sized by the height it has as well as the
+width. At
 `(min-width: 900px) and (min-height: 600px)` — `WIDE_QUERY` in the script and
 the same media query in the stylesheet, kept equal by a contract — the hub
 widens and the brief docks beside the field. Rotating into the wide layout
@@ -250,8 +349,10 @@ project.
 
 Every path is relative, so the app works from any deployment sub-path. The
 service worker is network-first with a cache fallback, precaches only the app
-shell, ignores other origins (so an opened ChatGPT or Claude link is never
-cached), and on activate deletes only its own older caches.
+shell, ignores other origins (so an opened ChatGPT or Claude link, or a
+repository's status file, is never cached), and on activate deletes only its
+own older caches. Offline, the app opens from the shell cache and shows each
+project's last valid status from `cache.repoStatus`.
 
 ## Testing
 
@@ -260,27 +361,34 @@ block, and evaluates it in a Node `vm` against a DOM stub and an in-memory
 `localStorage`. Top-level `const`/`let` a test needs must be listed in
 `BRIDGE`.
 
-Contracts 1–19 defend the foundation; 20–26 defend Mission Control: the
-registry (six required projects, one shape, nothing private, no ceiling), the
-status model (separate, derived, never stored twice; no record is no state),
-private links (validated, local, never shown in full), the hub (truthful
-counts, attention first, one focus, remembered), the field seam (including a
-seventh project), secret safety, and the backup boundary (allowlist out,
-allowlist in, private links never leave or return). `npm run verify` also
-runs the config check, the residue scan and the secret scan.
+Contracts 1–19 defend the foundation; 20–29 defend Mission Control: the
+registry (six required projects, one shape, nothing private, no ceiling, a
+status address only for a public repository), the status model (separate,
+derived, never stored twice; no record is no state), private links
+(validated, local, never shown in full), the hub (truthful counts, one line on
+what needs you, one focus, remembered), the field seam (including a seventh
+project, identity light and ΔE), secret safety, the backup boundary (allowlist
+out, allowlist in, private links, source choices and fetched status never
+leave or return), the status file (27), connected state (28) and checking the
+repositories (29), the last two against a stand-in for GitHub's raw host and a
+clock the test moves. `npm run verify` also runs the config check, the residue
+scan and the secret scan. The runner fails a run that never reaches its end:
+a contract whose promise never settles would otherwise let Node exit 0.
 
-The harness cannot see hit-testing, layout or the service worker. Those are
-checked in a real browser: real touch, real typing, reloads, offline, reduced
-motion and rotation, at phone, iPad and desktop sizes.
+The harness cannot see hit-testing, layout, the network or the service
+worker. Those are checked in a real browser: real touch, real typing,
+reloads, offline, reduced motion and rotation, at phone, iPad and desktop
+sizes, against the real published status files — with failures injected on
+the wire.
 
 ## The foundation → domain seam
 
 The foundation reaches the product through six points:
 
 ```js
-Domain.hydrate      // hydrateMissionControl: states, links, selection
-Domain.render       // renderMissionControl: hub and the Settings links list
-Domain.wire         // editor drafts, pagehide flush, the layout watcher
+Domain.hydrate      // hydrateMissionControl: states, links, sources, fetched status, selection
+Domain.render       // renderMissionControl: hub, the Settings links list, Refresh
+Domain.wire         // editor drafts, pagehide flush, the layout watcher, checks on open and return
 Domain.tabIcons     // { home, settings }
 Domain.backupData   // backupMissionControl: what a backup file may carry
 Domain.restoreData  // restoreMissionControl: what an import may accept
@@ -296,7 +404,10 @@ foundation expects them.
 | You are changing | Change it here |
 |---|---|
 | A project's name, purpose, repository or live URL | `PROJECT_REGISTRY` |
-| A new project | one record in `PROJECT_REGISTRY`, after the six required ones |
+| A new project | one record in `PROJECT_REGISTRY`, after the six required ones; `publicRepo: true` only if its repository is public |
+| A project's published status | `PROJECT-STATUS.json` in that project's repository — never in this one |
+| The status file's contract | `STATUS_KEYS`, `validateStatusFile` — and contract 27; a new shape is a new `schemaVersion` |
+| How often repositories are asked | `STATUS_FRESH_MS`, `STATUS_RETRY_MS`, `STATUS_BACKOFF_MS` — and contract 29 |
 | A project's look | its `visualTheme`, the `--terrain-*`/`--tint-*` tokens, and `LANDMARKS` |
 | What a backup may carry | `BACKUP_FIELDS` — and contract 26 |
 | The status vocabulary | `PROJECT_STATUSES`, `SIGNALS`, and the `--sig-*` tokens |

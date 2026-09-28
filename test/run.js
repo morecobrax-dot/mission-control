@@ -49,8 +49,23 @@ const SUITES = [
   C.testHub,
   C.testFieldSeam,
   C.testSecrets,
-  C.testBackupBoundary
+  C.testBackupBoundary,
+  C.testStatusContract,
+  C.testConnectedState,
+  C.testRefresh
 ];
+
+/* A contract whose promise never settles lets the event loop drain, and Node
+   then exits 0 without a word: a hung contract passing in silence (a
+   mutation run found exactly that). Only a run that reached its end may
+   pass. */
+let finished = false;
+process.on('exit', code => {
+  if(!finished && code === 0){
+    console.log('\n  RUNNER ERROR — a contract never finished: a promise that never settles');
+    process.exitCode = 1;
+  }
+});
 
 async function main(){
   const started = Date.now();
@@ -95,6 +110,7 @@ async function main(){
   console.log('\n  This suite loaded index.html as text and ran it against an in-memory');
   console.log('  store. No real user data was read or written.\n');
 
+  finished = true;
   process.exit(r.fail ? 1 : 0);
 }
 
