@@ -48,7 +48,8 @@ const SUITES = [
   C.testPrivateLinks,
   C.testHub,
   C.testFieldSeam,
-  C.testSecrets
+  C.testSecrets,
+  C.testBackupBoundary
 ];
 
 async function main(){

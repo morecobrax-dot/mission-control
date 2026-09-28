@@ -108,11 +108,36 @@ mission-control.draft.projectLinks     an unsaved links edit
 rather than throwing. A missing key reads `null` and is never repaired with a
 default. A first launch writes exactly one key, the schema version.
 
-Records carry an `id` (the project's) and an `updatedAt`, so backup import —
-which merges any collection of records by id, newest winning — works for both
-collections without knowing what they are. A stored record this version
-cannot read (an unknown project, an unknown status) is kept aside and written
-back untouched; saving a new state for that project replaces it.
+Records carry an `id` (the project's) and an `updatedAt`. A stored record this
+version cannot read (an unknown project, an unknown status) is kept aside and
+written back untouched; saving a new state for that project replaces it.
+Keeping it is lossless storage — it is never exported (see *Backups*).
+
+**The prefix is a name, not a wall.** Browser storage belongs to the origin,
+and every app served from `morecobrax-dot.github.io` shares that origin. The
+`mission-control.` prefix keeps Mission Control's keys from colliding with
+another app's; it does not stop any script on that origin from reading them.
+
+## Backups
+
+Export is an allowlist by construction. The foundation builds the file from
+`Domain.backupData()` when the product declares it; Mission Control's
+(`backupMissionControl`) returns one key, `data.projectStates`, holding the
+readable records of registry projects, each rebuilt field by field from
+`BACKUP_FIELDS`. Nothing else can reach the file: not `data.privateLinks`, not
+the editor drafts, not `ui.*` preferences, not `sys.backup.*` recovery
+snapshots, not unreadable records, and not any field a record carries beyond
+the allowlist.
+
+Import mirrors it. `Domain.restoreData()` (`restoreMissionControl`) accepts
+only `data.projectStates`, rebuilds each incoming record from the same
+allowlist, and merges by id with the newer `updatedAt` winning. Anything else
+in the file is ignored. Private links or link drafts in a backup made by 0.1.0
+are never restored, merged or used to delete the links on this device; the
+import reports it in a note on the Backup page, and reports records it could
+not read. Without the two hooks the foundation falls back to its generic
+behaviour: every key except recovery snapshots out, every collection of
+records merged back in.
 
 ## Mission Control — the product model
 
@@ -121,11 +146,10 @@ PROJECT_REGISTRY (source, public)          data.projectStates (device)
   id, name, shortDescription,                 status, needsQa, needsDecision,
   repositoryUrl, liveUrl,                     blocker, version, phase,
   defaultBranch, visualTheme                  currentTask, nextAction, updatedAt
-            │                                           │
-            │         SAMPLE_STATE (source) ◄── used only while no record exists
+            │                                           │  (or no record at all)
             ▼                                           ▼
                          projectView(id)  — derived on read, never stored
-          attention · signal · workerState · tools · isSample · claudeFallback
+        recorded · attention · signal · workerState · tools · theme · claudeFallback
                                   │
             hub counts · attention queue · field scene · quick brief
 ```
@@ -140,14 +164,22 @@ PROJECT_REGISTRY (source, public)          data.projectStates (device)
   severe first. The **signal** is the first of those, otherwise the
   lifecycle status; it drives the beacon's colour and the crew's pose
   (`workerState`). **Active** means planning, building or release ready.
-- **Sample state** is shown until you record a real one. It has no version
-  and no phase, its text says "Example:", and every place that shows it says
-  "sample". A project on sample state opens the editor *empty*, so one tap on
-  Save can never turn an example into a fact.
+- **No record is no state.** A project nobody has recorded has
+  `recorded: false`, a `null` status, no attention and the signal
+  `unrecorded`, shown as **Needs update**. It counts toward Projects and toward
+  nothing else — not Active, QA, Decision or Blocked — and the hub says how
+  many projects need an update. While any state is unknown the attention area
+  says "No recorded attention items"; "Nothing needs you right now" appears
+  only when every state is recorded and none asks for you. Its editor opens
+  empty with no status chosen. (0.1.0 showed invented example states instead;
+  they were only ever computed, never stored, so there was nothing to migrate.)
+- **Any number of projects.** The six required projects come first in the
+  registry; nothing assumes six is the maximum. A record whose `visualTheme`
+  has no landmark yet is drawn in the `generic` look (`themeOf`).
 
-`SIGNALS` is the visual language: every status and attention has a word, a
-short word, a shape and a crew state, and its hue is a `.sig-*` class onto a
-layer-4 token. None of them relies on colour.
+`SIGNALS` is the visual language: every status, every attention and
+`unrecorded` has a word, a short word, a shape and a crew state, and its hue is
+a `.sig-*` class onto a layer-4 token. None of them relies on colour.
 
 ## Private links
 
@@ -184,7 +216,7 @@ Field.focus(id)      // bring one project forward
 ```
 
 `scene` is `fieldScene(views)`: ids, names, themes, statuses, signals,
-attention, worker states, the sample flag and the selection — a render-only
+attention, worker states, whether a state is recorded, and the selection — a render-only
 description. The renderer never reads storage, never decides a status and
 never owns the selection; a contract checks all three.
 
@@ -207,7 +239,7 @@ it to prove itself first.
 ## Layout
 
 Mobile first. On a phone the hub is one column and the Quick Brief is a page;
-on a phone on its side the field becomes one row of six. At
+on a phone on its side the field becomes rows of six. At
 `(min-width: 900px) and (min-height: 600px)` — `WIDE_QUERY` in the script and
 the same media query in the stylesheet, kept equal by a contract — the hub
 widens and the brief docks beside the field. Rotating into the wide layout
@@ -228,12 +260,14 @@ block, and evaluates it in a Node `vm` against a DOM stub and an in-memory
 `localStorage`. Top-level `const`/`let` a test needs must be listed in
 `BRIDGE`.
 
-Contracts 1–19 defend the foundation; 20–25 defend Mission Control: the
-registry (six projects, one shape, nothing private), the status model
-(separate, derived, never stored twice), private links (validated, local,
-never shown in full), the hub (attention first, one focus, remembered), the
-field seam, and secret safety. `npm run verify` also runs the config check,
-the residue scan and the secret scan.
+Contracts 1–19 defend the foundation; 20–26 defend Mission Control: the
+registry (six required projects, one shape, nothing private, no ceiling), the
+status model (separate, derived, never stored twice; no record is no state),
+private links (validated, local, never shown in full), the hub (truthful
+counts, attention first, one focus, remembered), the field seam (including a
+seventh project), secret safety, and the backup boundary (allowlist out,
+allowlist in, private links never leave or return). `npm run verify` also
+runs the config check, the residue scan and the secret scan.
 
 The harness cannot see hit-testing, layout or the service worker. Those are
 checked in a real browser: real touch, real typing, reloads, offline, reduced
@@ -241,16 +275,18 @@ motion and rotation, at phone, iPad and desktop sizes.
 
 ## The foundation → domain seam
 
-The foundation reaches the product through exactly four points:
+The foundation reaches the product through six points:
 
 ```js
-Domain.hydrate   // hydrateMissionControl: states, links, selection
-Domain.render    // renderMissionControl: hub and the Settings links list
-Domain.wire      // editor drafts, pagehide flush, the layout watcher
-Domain.tabIcons  // { home, settings }
+Domain.hydrate      // hydrateMissionControl: states, links, selection
+Domain.render       // renderMissionControl: hub and the Settings links list
+Domain.wire         // editor drafts, pagehide flush, the layout watcher
+Domain.tabIcons     // { home, settings }
+Domain.backupData   // backupMissionControl: what a backup file may carry
+Domain.restoreData  // restoreMissionControl: what an import may accept
 ```
 
-`boot()` and `renderAll()` call only these. A contract asserts that no
+`boot()`, `renderAll()`, export and import call only these. A contract asserts that no
 foundation code names anything the product defines; the key table,
 `APP_CONFIG` and `APP_UPDATES` are the product's words declared where the
 foundation expects them.
@@ -260,7 +296,9 @@ foundation expects them.
 | You are changing | Change it here |
 |---|---|
 | A project's name, purpose, repository or live URL | `PROJECT_REGISTRY` |
+| A new project | one record in `PROJECT_REGISTRY`, after the six required ones |
 | A project's look | its `visualTheme`, the `--terrain-*`/`--tint-*` tokens, and `LANDMARKS` |
+| What a backup may carry | `BACKUP_FIELDS` — and contract 26 |
 | The status vocabulary | `PROJECT_STATUSES`, `SIGNALS`, and the `--sig-*` tokens |
 | What counts as active | `ACTIVE_STATUSES` |
 | The link rule | `parseToolLink` — and contract 22 |

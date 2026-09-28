@@ -163,9 +163,16 @@ The product's own rules, on top of everything above.
   ready for QA, in that order. Everything else is below it.
 - **One focus.** One tap focuses a project, a second opens its brief. The
   focus is remembered, because it is what you come back to.
-- **Sample is not fact.** Placeholder state says so wherever it appears and
-  invents nothing a person could mistake for real — no version, no phase.
+- **Unknown is not a status.** A project with no recorded state says "Needs
+  update" — in words, with its own shape, never as a status chip — and is
+  counted as a project, not as active or as needing you. Nothing is invented
+  to fill the gap.
 - **Unknown says "Not recorded".** It is never filled with a plausible guess.
+- **Say only what is known.** "Nothing needs you right now" is a claim about
+  every project; while any state is unknown, the hub says "No recorded
+  attention items" instead.
+- **A backup is yours, and only yours.** It carries recorded project states,
+  never private links, and the Backup page says exactly that.
 - **Private stays off the screen.** A tool shows where it goes (its host),
   never the conversation or session it opens.
 - **Actions appear only when they work.** A tool that is not set up is not

@@ -529,7 +529,7 @@ function testConfirmation(){
 
 /* =========================================================
    CONTRACT 10 — RECORDING A PROJECT'S STATE
-   Validate before saving, never promote a sample to a fact,
+   Validate before saving, never save an assumption as a fact,
    and never lose an edit to a page torn down underneath it.
    ========================================================= */
 function testForms(){
@@ -539,16 +539,17 @@ function testForms(){
   const c = app.ctx, d = app.dom.document;
   const ns = c.STORAGE_NAMESPACE;
 
-  sub('a project on sample state opens the editor empty');
+  sub('a project with no recorded state opens the editor empty');
   c.openStateForm('dayplan'); c.__flush();
   T('the editor opens', d.getElementById('stateOverlay').classList.contains('open'));
   T('no status is pre-chosen', c.formState.status === null);
-  T('no sample text is pre-filled — one tap on Save must not turn an example into a fact',
+  T('nothing is pre-filled — one tap on Save must not record an assumption',
     ['stateBlocker', 'stateVersion', 'statePhase', 'stateTask', 'stateNext']
       .every(id => d.getElementById(id).value === ''));
   T('the switches start off', d.getElementById('stateQa').getAttribute('aria-checked') === 'false' &&
     d.getElementById('stateDecision').getAttribute('aria-checked') === 'false');
-  T('the editor says it replaces sample state', /sample state/.test(d.getElementById('stateFormIntro').textContent));
+  T('the editor says no state is recorded yet',
+    /No state is recorded for DayPlan yet/.test(d.getElementById('stateFormIntro').textContent));
 
   sub('validation refuses to save without a status');
   d.getElementById('stateNext').value = 'Ship it';
@@ -580,11 +581,11 @@ function testForms(){
   T('the editor closed', !d.getElementById('stateOverlay').classList.contains('open'));
   T('it was persisted', !!H.loadApp({ sharedStorage: shared }).ctx.projectStates.dayplan);
   const v = c.projectView('dayplan');
-  T('the project is no longer a sample', v.isSample === false);
+  T('the project now has a recorded state', v.recorded === true);
   T('its last update is the record\'s own date', !!rec && v.lastUpdated === rec.updatedAt);
   T('what it needs is derived from the record', v.signal === 'needs_qa' && v.status === 'building');
 
-  sub('editing starts from the record, not the sample');
+  sub('editing starts from the record');
   c.openStateForm('dayplan'); c.__flush();
   T('the form is pre-filled from the record',
     c.formState.status === 'building' && d.getElementById('stateVersion').value === '0.4.0');
@@ -643,7 +644,8 @@ function testForms(){
     c.acceptConfirm(); c.__flush();
     return p2.then(() => {
       T('confirming clears it', !c.projectStates.loop);
-      T('the project is back on sample state', c.projectView('loop').isSample === true);
+      T('the project has no recorded state again', c.projectView('loop').recorded === false &&
+        c.projectView('loop').signal === 'unrecorded');
       T('the editor closed', !d.getElementById('stateOverlay').classList.contains('open'));
       T('the removal was persisted', !H.loadApp({ sharedStorage: shared }).ctx.projectStates.loop);
       T('no errors along the way', app.errors.length === 0, app.errors.join(' | '));
@@ -1162,6 +1164,12 @@ function testPortability(){
     /Domain\.render\(\);/.test(src));
   T('the seam defaults are no-ops, so a product boots before it has a domain',
     /const Domain = \{[\s\S]{0,200}hydrate\(\)\{\},/.test(src));
+  T('backups are a seam too, declared empty in the foundation',
+    /backupData: null,/.test(src) && /restoreData: null/.test(src));
+  T('export defers to the product\'s allowlist when there is one',
+    /typeof Domain\.backupData === 'function' \? Domain\.backupData\(\)/.test(src));
+  T('import defers to the product\'s restore when there is one',
+    /typeof Domain\.restoreData === 'function'[\s\S]{0,80}Domain\.restoreData\(payload\.data\)/.test(src));
 
   sub('no foundation function names the product');
   /* The boundary is the MISSION CONTROL banner. Everything above it, plus the
@@ -1263,19 +1271,21 @@ function testPortability(){
 
 /* =========================================================
    CONTRACT 20 — THE PROJECT REGISTRY
-   Six projects, one shape, drawn from data — and nothing
-   private in a file that is public.
+   The six required projects, one shape, drawn from data — with
+   no ceiling on how many — and nothing private in a public file.
    ========================================================= */
+const REQUIRED_PROJECTS = ['loop', 'dayplan', 'daily-verse', 'personal-savings', 'space-kindergarten', 'capybara-sushi'];
+
 function testRegistry(){
-  section('CONTRACT 20 — six projects, one shape, nothing private');
+  section('CONTRACT 20 — the registry: six required projects, one shape, nothing private');
   const app = H.loadApp();
   const c = app.ctx;
   const reg = c.PROJECT_REGISTRY;
 
-  sub('the six projects the brief names');
-  T('there are six', reg.length === 6, String(reg.length));
-  T('in the brief\'s order', reg.map(p => p.id).join() ===
-    'loop,dayplan,daily-verse,personal-savings,space-kindergarten,capybara-sushi');
+  sub('the six projects the brief requires');
+  T('all six are present, first, in the brief\'s order',
+    reg.slice(0, REQUIRED_PROJECTS.length).map(p => p.id).join() === REQUIRED_PROJECTS.join(),
+    reg.map(p => p.id).join());
   T('ids are unique', new Set(reg.map(p => p.id)).size === reg.length);
   T('ids are safe slugs', reg.every(p => /^[a-z][a-z0-9-]*$/.test(p.id)));
 
@@ -1285,9 +1295,10 @@ function testRegistry(){
     reg.every(p => Object.keys(p).sort().join() === FIELDS.join()));
   T('every project has a name and a one-line purpose',
     reg.every(p => p.name && p.shortDescription && p.shortDescription.length <= 90));
-  T('every theme has a landmark and a glyph',
+  T('every look a record names exists',
     reg.every(p => c.LANDMARKS[p.visualTheme] && c.PROJECT_GLYPHS[p.visualTheme]));
-  T('no two projects share a look', new Set(reg.map(p => p.visualTheme)).size === reg.length);
+  const looks = reg.map(p => p.visualTheme).filter(t => t !== 'generic');
+  T('no two projects share a look of their own', new Set(looks).size === looks.length);
   T('every project names its default branch', reg.every(p => /^[A-Za-z0-9._/-]+$/.test(p.defaultBranch || '')));
 
   sub('public links are real https links that pass the link rule');
@@ -1297,8 +1308,8 @@ function testRegistry(){
     T(p.id + ': live app, or absent', p.liveUrl === null ||
       (c.parseToolLink(p.liveUrl, 'https').ok && /^https:\/\/morecobrax-dot\.github\.io\/[A-Za-z0-9._-]+\/$/.test(p.liveUrl)));
   });
-  T('a project with no live app says so with null, not a guess',
-    reg.filter(p => p.liveUrl === null).map(p => p.id).join() === 'personal-savings');
+  T('Personal Savings has no Pages site, so its live app is absent — null, not a guess',
+    reg.find(p => p.id === 'personal-savings').liveUrl === null);
 
   sub('nothing private and no state in the public registry');
   const regSrc = (js().match(/const PROJECT_REGISTRY = \[[\s\S]*?\n\];/) || [''])[0];
@@ -1308,28 +1319,22 @@ function testRegistry(){
   T('no status, version or phase lives in identity',
     !/\b(status|version|phase|currentTask|nextAction|blocker|needsQa|needsDecision)\s*:/.test(regSrc));
 
-  sub('sample state is labelled, and invents nothing');
-  T('every project has a sample state', reg.every(p => c.SAMPLE_STATE[p.id]));
-  T('every sample status is a real status',
-    reg.every(p => c.PROJECT_STATUSES.indexOf(c.SAMPLE_STATE[p.id].status) !== -1));
-  const sampleSrc = (js().match(/const SAMPLE_STATE = \{[\s\S]*?\n\};/) || [''])[0];
-  T('the samples are found', sampleSrc.length > 100);
-  T('no sample invents a version or a phase', !/\b(version|phase)\s*:/.test(sampleSrc));
-  T('sample text says it is an example',
-    /^Example:/.test(c.SAMPLE_TEXT.currentTask) && /^Example:/.test(c.SAMPLE_TEXT.nextAction));
-  T('a sample blocker says it is an example too',
-    reg.map(p => c.SAMPLE_STATE[p.id].blocker).filter(Boolean).every(b => /^Example:/.test(b)));
+  sub('no project starts with a state it was never given');
+  T('there is no example state anywhere in the app', !/SAMPLE_STATE|SAMPLE_TEXT|sampleStateFor/.test(stripComments(js())));
   const views = c.allViews();
-  T('every project starts as a sample', views.every(v => v.isSample));
-  T('the samples show every kind of attention',
-    c.ATTENTION_KINDS.every(k => views.some(v => v.attention.indexOf(k) !== -1)));
-  T('a sample has no last-updated date — nobody recorded it', views.every(v => v.lastUpdated === null));
+  T('every project starts unrecorded', views.every(v => v.recorded === false));
+  T('with no status, no attention and no crew',
+    views.every(v => v.status === null && v.attention.length === 0 && v.signal === 'unrecorded' && v.workerState === 'unrecorded'));
+  T('and nothing that could read as a fact',
+    views.every(v => [v.version, v.phase, v.currentTask, v.nextAction, v.blocker, v.lastUpdated,
+      v.needsQa, v.needsDecision].every(x => x === null)));
 }
 
 /* =========================================================
    CONTRACT 21 — STATUS AND ATTENTION
    Two separate facts, one owner each, and everything else
-   derived — so nothing can disagree with its source.
+   derived — so nothing can disagree with its source. And no
+   record is no state: never a status, never counted as one.
    ========================================================= */
 function testStatusModel(){
   section('CONTRACT 21 — status and attention: separate, derived, never stored twice');
@@ -1340,15 +1345,27 @@ function testStatusModel(){
   sub('the vocabulary');
   T('five lifecycle statuses', c.PROJECT_STATUSES.join() === 'planning,building,release_ready,stable,paused');
   T('three kinds of attention, most severe first', c.ATTENTION_KINDS.join() === 'blocked,needs_decision,needs_qa');
-  const keys = c.PROJECT_STATUSES.concat(c.ATTENTION_KINDS);
-  T('every status and attention has a word, a short word, a shape and a crew',
+  const keys = c.PROJECT_STATUSES.concat(c.ATTENTION_KINDS, ['unrecorded']);
+  T('every status, attention and "Needs update" has a word, a short word, a shape and a crew',
     keys.every(k => c.SIGNALS[k] && c.SIGNALS[k].label && c.SIGNALS[k].short && c.SIGNALS[k].icon && c.SIGNALS[k].worker));
   T('and nothing else', Object.keys(c.SIGNALS).sort().join() === keys.slice().sort().join());
   T('every shape is different, so colour is never the only difference',
     new Set(keys.map(k => c.SIGNALS[k].icon)).size === keys.length);
   T('every one has its own hue class', keys.every(k =>
     new RegExp('\\.sig-' + k + '\\{ --sig: var\\(--sig-[a-z]+\\); \\}').test(css())));
-  T('the hues are tokens in the domain layer', /4 · DOMAIN[\s\S]*--sig-blocked: #/.test(css()));
+  T('the hues are tokens in the domain layer', /4 · DOMAIN[\s\S]*--sig-unrecorded: #/.test(css()));
+  T('"Needs update" is neither a status nor an attention kind',
+    c.PROJECT_STATUSES.indexOf('unrecorded') === -1 && c.ATTENTION_KINDS.indexOf('unrecorded') === -1);
+
+  sub('no record is no state');
+  const blank = c.projectView('loop');
+  T('an unrecorded project has no status', blank.status === null && blank.recorded === false);
+  T('it is not planning, paused or stable', ['planning', 'paused', 'stable'].indexOf(blank.status) === -1);
+  T('it says so: Needs update', blank.signal === 'unrecorded' && c.SIGNALS.unrecorded.label === 'Needs update');
+  const fresh = c.hudCounts(c.allViews());
+  T('it counts as a project', fresh.projects === 6);
+  T('and as nothing else', fresh.active === 0 && fresh.needsQa === 0 && fresh.needsDecision === 0 && fresh.blocked === 0);
+  T('it is counted apart, as needing an update', fresh.unrecorded === 6);
 
   sub('blocked means exactly "a blocker is written down"');
   const base = { status: 'building', needsQa: false, needsDecision: false, blocker: null };
@@ -1362,10 +1379,16 @@ function testStatusModel(){
   const all = { status: 'building', needsQa: true, needsDecision: true, blocker: 'x' };
   T('all three at once', c.attentionOf(all).join() === 'blocked,needs_decision,needs_qa');
 
-  sub('the headline signal and the crew');
+  sub('counts with some states unknown');
   const put = (id, s) => { c.projectStates[id] = c.normalizeState(Object.assign({ id: id, updatedAt: '2026-01-01' }, s)); };
   put('dayplan', { status: 'building', needsQa: true });
   put('loop', { status: 'paused' });
+  const partial = c.hudCounts(c.allViews());
+  T('only the recorded project that is building counts as active', partial.active === 1, String(partial.active));
+  T('only recorded attention is counted', partial.needsQa === 1 && partial.needsDecision === 0 && partial.blocked === 0);
+  T('the other four are counted as needing an update', partial.unrecorded === 4, String(partial.unrecorded));
+
+  sub('the headline signal and the crew');
   put('daily-verse', { status: 'release_ready' });
   put('personal-savings', { status: 'planning', needsDecision: true, needsQa: true });
   put('space-kindergarten', { status: 'stable' });
@@ -1385,6 +1408,7 @@ function testStatusModel(){
   T('a project needing two things counts in both', counts.needsQa === 2 && counts.needsDecision === 2,
     counts.needsQa + '/' + counts.needsDecision);
   T('blocked', counts.blocked === 1);
+  T('with every state recorded, nothing needs an update', counts.unrecorded === 0);
 
   sub('the queue');
   const q = c.attentionQueue(c.allViews()).map(x => x.id).join();
@@ -1396,8 +1420,27 @@ function testStatusModel(){
   const stored = JSON.parse(shared.get(c.STORAGE_NAMESPACE + c.KEYS.projectStates));
   const FIELDS = 'blocker,currentTask,id,needsDecision,needsQa,nextAction,phase,status,updatedAt,version';
   T('a stored record holds exactly the recorded facts', stored.every(r => Object.keys(r).sort().join() === FIELDS));
-  T('no attention, signal, crew or sample flag was written',
-    !/attention|signal|workerState|isSample/.test(shared.get(c.STORAGE_NAMESPACE + c.KEYS.projectStates)));
+  T('no attention, signal, crew or recorded flag was written',
+    !/attention|signal|workerState|recorded/.test(shared.get(c.STORAGE_NAMESPACE + c.KEYS.projectStates)));
+
+  sub('a 0.1.0 record is a real record, whatever its words');
+  /* 0.1.0 never stored an example state, so a stored record is always
+     something a person entered — even one whose words match the old
+     example text. It is never treated as a sample. */
+  const legacy = new Map();
+  const ns = c.STORAGE_NAMESPACE;
+  legacy.set(ns + c.KEYS.projectStates, JSON.stringify([
+    { id: 'loop', status: 'stable', needsQa: false, needsDecision: false, blocker: null, version: null, phase: null,
+      currentTask: 'Example: what is being worked on right now.', nextAction: 'Example: the next concrete step.',
+      updatedAt: '2026-09-28T12:00:00.000Z' }
+  ]));
+  const kept = H.loadApp({ sharedStorage: legacy });
+  const lv = kept.ctx.projectView('loop');
+  T('it loads as recorded', lv.recorded === true && lv.status === 'stable');
+  T('its words are kept exactly', lv.nextAction === 'Example: the next concrete step.');
+  T('and nothing about it was rewritten on load',
+    legacy.get(ns + c.KEYS.projectStates).indexOf('Example: what is being worked on right now.') !== -1 &&
+    JSON.parse(legacy.get(ns + c.KEYS.projectStates)).length === 1);
 
   sub('a record this version cannot read is kept, not deleted');
   shared.set(c.STORAGE_NAMESPACE + c.KEYS.projectStates, JSON.stringify([
@@ -1407,8 +1450,8 @@ function testStatusModel(){
   ]));
   const later = H.loadApp({ sharedStorage: shared });
   T('the readable record loads', !!later.ctx.projectStates.loop);
-  T('an unknown status is not guessed at: that project shows sample state',
-    later.ctx.projectView('dayplan').isSample === true);
+  T('an unknown status is not guessed at: that project shows Needs update',
+    later.ctx.projectView('dayplan').recorded === false && later.ctx.projectView('dayplan').signal === 'unrecorded');
   later.ctx.openStateForm('space-kindergarten'); later.ctx.pickStatus('building'); later.ctx.saveStateForm();
   const after = JSON.parse(shared.get(c.STORAGE_NAMESPACE + c.KEYS.projectStates));
   T('saving another project writes the unreadable records back untouched',
@@ -1417,7 +1460,8 @@ function testStatusModel(){
   const replaced = JSON.parse(shared.get(c.STORAGE_NAMESPACE + c.KEYS.projectStates));
   T('saving that project replaces its unreadable record', replaced.filter(r => r.id === 'dayplan').length === 1 &&
     replaced.find(r => r.id === 'dayplan').status === 'building');
-  T('no errors', app.errors.length === 0 && later.errors.length === 0, app.errors.concat(later.errors).join(' | '));
+  T('no errors', app.errors.length === 0 && later.errors.length === 0 && kept.errors.length === 0,
+    app.errors.concat(later.errors, kept.errors).join(' | '));
 }
 
 /* =========================================================
@@ -1483,6 +1527,11 @@ function testPrivateLinks(){
   sub('saving, on this device, through the adapter');
   c.openLinksForm('dayplan'); c.__flush();
   T('the editor states where links live', /Only on this device/.test(d.getElementById('linksPrivacy').innerHTML));
+  T('that no backup file ever carries them',
+    /never written into the code, the repository, the offline cache or a backup file/.test(d.getElementById('linksPrivacy').innerHTML));
+  T('and plainly, that the shared origin can read them: a prefix keeps names apart, not access',
+    /Other web apps served from example\.github\.io can read this browser storage too/.test(d.getElementById('linksPrivacy').innerHTML) &&
+    /keeps names apart, not access/.test(d.getElementById('linksPrivacy').innerHTML));
   T('and designs the Claude fallback from public facts only',
     /morecobrax-dot\/dayplan<\/code> at <code>main/.test(d.getElementById('linksFallback').innerHTML));
   d.getElementById('linkChatgpt').value = 'http://chat.example.test/c/FAKE';
@@ -1567,55 +1616,58 @@ function testPrivateLinks(){
 
 /* =========================================================
    CONTRACT 23 — THE HUB
-   Attention first, one focus, a second tap for the brief —
-   and the focus is still there when you come back.
+   The truth first: what is recorded as needing you, what is not
+   yet known, one focus — remembered when you come back.
    ========================================================= */
 function testHub(){
-  section('CONTRACT 23 — the hub: attention first, one focus, remembered');
+  section('CONTRACT 23 — the hub: truthful counts, attention first, one focus, remembered');
   const shared = new Map();
   const app = H.loadApp({ sharedStorage: shared });
   const c = app.ctx, d = app.dom.document;
   const ns = c.STORAGE_NAMESPACE;
   const html = id => d.getElementById(id).innerHTML;
+  const text = id => html(id).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 
-  sub('first launch');
+  sub('a fresh install fabricates nothing');
   T('nothing is selected until you choose', c.selectedId === null);
   T('and nothing was written to say so', !shared.has(ns + c.KEYS.selectedProject));
   T('the focus bar says how to begin', /Tap a project to focus it/.test(html('focusBar')));
   const hud = html('hud');
   T('the HUD reads projects, active, QA, decisions, blocked — in that order',
     ['Projects', 'Active', 'QA', 'Decision', 'Blocked'].map(w => hud.indexOf('>' + w + '<')).every((at, i, a) => at > 0 && (i === 0 || at > a[i - 1])));
-  T('its counts come from the projects', /<span class="hud-value">6<\/span><span class="hud-label">Projects/.test(hud));
-  const attention = html('attentionList');
-  T('the attention list puts the blocked project first',
-    attention.indexOf('Capy Sushi') < attention.indexOf('Personal Savings') &&
-    attention.indexOf('Personal Savings') < attention.indexOf('Space Kindergarten') &&
-    attention.indexOf('Capy Sushi') > 0);
-  T('a blocker is shown in words, not just a colour', /Blocked: Example: what is stopping the work\./.test(attention));
-  T('sample state is announced', /Sample state/.test(html('sampleNotice')));
-  T('every sample row says so', (attention.match(/class="sample-tag"/g) || []).length === 3);
+  T('every project counts as a project', /<span class="hud-value">6<\/span><span class="hud-label">Projects/.test(hud));
+  T('but nothing is active or needs you', /<span class="hud-value">0<\/span><span class="hud-label">Active/.test(hud) &&
+    (hud.match(/is-zero/g) || []).length === 4);
+  T('a quiet line says no state is recorded yet',
+    /No project has a recorded state yet\. Counts include recorded states only\./.test(text('stateNote')) &&
+    d.getElementById('stateNote').getAttribute('hidden') === null);
+  T('the attention area claims only what is known', /No recorded attention items\./.test(text('attentionList')));
+  T('it never promises that nothing needs you', !/Nothing needs you/.test(html('attentionList')));
+  const field = html('projectField');
+  T('every platform says Needs update', (field.match(/class="block-unrecorded sig-unrecorded"/g) || []).length === 6);
+  T('no platform shows a status chip, a marker or a crew',
+    !/class="chip sig-/.test(field) && !/attn-marker/.test(field) && !/class="worker"/.test(field));
+  T('no platform pulses', !/ pulse"/.test(field));
+  T('nothing anywhere calls itself a sample', !/[Ss]ample/.test(field + hud + html('attentionList') + html('focusBar')));
 
   sub('the field is drawn from data');
-  const field = html('projectField');
-  T('one platform per project', (field.match(/<button class="block /g) || []).length === 6);
-  T('each is a real button with a spoken name', (field.match(/<button class="block [^>]*aria-label="[^"]+"/g) || []).length === 6);
+  const n = c.PROJECT_REGISTRY.length;
+  T('one platform per project', (field.match(/<button class="block /g) || []).length === n);
+  T('each is a real button with a spoken name', (field.match(/<button class="block [^>]*aria-label="[^"]+"/g) || []).length === n);
+  T('an unrecorded platform says so to a screen reader', /aria-label="DayPlan\. Needs update: no state recorded"/.test(field));
   T('names come from the registry', c.PROJECT_REGISTRY.every(p => field.indexOf('>' + p.name + '<') !== -1));
   T('no platform is written into the markup',
     !/class="block /.test(H.bodyBlock(H.readApp()).replace(/<script>[\s\S]*<\/script>/, '')));
-  T('each platform shows its status word', c.allViews().every(v => field.indexOf(c.SIGNALS[v.status].short) !== -1));
-  T('an attention marker wears a shape and a word',
-    /class="chip attn-marker sig-blocked"><svg[^>]*>[\s\S]*?<\/svg>Blocked</.test(field));
 
-  sub('one tap focuses');
+  sub('one tap focuses, a second opens an honest brief');
   c.tapProject('dayplan'); c.__flush();
   T('the project is selected', c.selectedId === 'dayplan');
   T('its platform reports it', /id="block-dayplan" aria-pressed="true"/.test(html('projectField')));
   T('only one platform is pressed', (html('projectField').match(/aria-pressed="true"/g) || []).length === 1);
-  T('the focus bar shows it', /DayPlan/.test(html('focusBar')) && /class="focus-bar sig-paused"/.test(html('focusBar')));
+  T('the focus bar shows it, as Needs update', /DayPlan/.test(html('focusBar')) &&
+    /class="focus-bar sig-unrecorded"/.test(html('focusBar')) && /No state recorded yet/.test(html('focusBar')));
   T('no brief opened yet', !d.getElementById('briefOverlay').classList.contains('open'));
   T('the choice is saved', shared.get(ns + c.KEYS.selectedProject) === 'dayplan');
-
-  sub('a second tap opens the brief');
   c.tapProject('dayplan'); c.__flush();
   T('the brief page opens', d.getElementById('briefOverlay').classList.contains('open'));
   T('its title is the project', d.getElementById('briefTitle').textContent === 'DayPlan');
@@ -1623,15 +1675,49 @@ function testHub(){
   T('it carries every field the brief asks for',
     ['Status', 'Version', 'Phase', 'Current work', 'Next action', 'Last updated'].every(l => brief.indexOf('>' + l + '<') !== -1) &&
     brief.indexOf('Visual daily planner') !== -1);
-  T('an unknown value says so instead of inventing one', /is-unknown">Not recorded/.test(brief));
-  T('a sample brief says it is a sample', /Sample state: none of this is real yet/.test(brief));
+  T('every one of them says Not recorded', (brief.match(/is-unknown">Not recorded/g) || []).length === 6);
+  T('and it says the project counts as nothing more', /No state is recorded for this project yet/.test(brief));
+  T('its chip says Needs update, not a status', /class="chip sig-unrecorded"/.test(brief) &&
+    !/class="chip sig-(planning|building|release_ready|stable|paused)"/.test(brief));
   T('configured tools sit in the thumb-reach action bar',
     /tool-github/.test(html('briefTools')) && /tool-live/.test(html('briefTools')) && !/tool-chatgpt/.test(html('briefTools')));
-  T('and the bar is shown because it has something in it', d.getElementById('briefTools').getAttribute('hidden') === null);
   c.closeBrief(); c.__flush();
   T('Back closes it', !d.getElementById('briefOverlay').classList.contains('open'));
 
+  sub('recorded attention appears; unknown stays apart');
+  const record = (id, fill) => { c.openStateForm(id); fill(); c.saveStateForm(); c.__flush(); };
+  record('capybara-sushi', () => { c.pickStatus('building'); d.getElementById('stateBlocker').value = 'Waiting on art'; });
+  record('personal-savings', () => { c.pickStatus('planning'); c.toggleSwitch('stateDecision'); });
+  record('space-kindergarten', () => { c.pickStatus('building'); c.toggleSwitch('stateQa'); });
+  const attention = html('attentionList');
+  T('the attention list puts the blocked project first',
+    attention.indexOf('Capy Sushi') > 0 && attention.indexOf('Capy Sushi') < attention.indexOf('Personal Savings') &&
+    attention.indexOf('Personal Savings') < attention.indexOf('Space Kindergarten'));
+  T('a blocker is shown in words, not just a colour', /Blocked: Waiting on art/.test(attention));
+  T('only recorded projects are listed', !/DayPlan|Daily Verse/.test(attention));
+  T('the quiet line counts the rest', /3 of 6 projects need a state update\./.test(text('stateNote')));
+  T('an attention marker wears a shape and a word',
+    /class="chip attn-marker sig-blocked"><svg[^>]*>[\s\S]*?<\/svg>Blocked</.test(html('projectField')));
+  T('only projects that need you pulse', (html('projectField').match(/ pulse"/g) || []).length === 3);
+  c.openProjectBrief('capybara-sushi'); c.__flush();
+  T('a row opens that project\'s brief',
+    c.selectedId === 'capybara-sushi' && d.getElementById('briefOverlay').classList.contains('open'));
+  T('with its blocker in words', /notice-error[\s\S]*<strong>Blocked<\/strong>Waiting on art/.test(html('briefBody')));
+  c.closeBrief(); c.__flush();
+
+  sub('"Nothing needs you" only when it is true');
+  record('capybara-sushi', () => { d.getElementById('stateBlocker').value = ''; });
+  record('personal-savings', () => { c.toggleSwitch('stateDecision'); });
+  record('space-kindergarten', () => { c.toggleSwitch('stateQa'); });
+  T('with some states unknown it still says only what is known',
+    /No recorded attention items\./.test(text('attentionList')) && !/Nothing needs you/.test(html('attentionList')));
+  ['loop', 'dayplan', 'daily-verse'].forEach(id => record(id, () => { c.pickStatus('stable'); }));
+  T('with every state recorded and none asking, it says nothing needs you',
+    /Nothing needs you right now\./.test(text('attentionList')));
+  T('and the quiet line goes away', d.getElementById('stateNote').getAttribute('hidden') === '' && html('stateNote') === '');
+
   sub('the focus is still there when you come back');
+  c.tapProject('dayplan'); c.__flush();
   const again = H.loadApp({ sharedStorage: shared });
   T('it is restored after a relaunch', again.ctx.selectedId === 'dayplan');
   T('and drawn', /id="block-dayplan" aria-pressed="true"/.test(again.dom.document.getElementById('projectField').innerHTML));
@@ -1640,16 +1726,9 @@ function testHub(){
   T('an unknown stored id selects nothing', third.ctx.selectedId === null);
   T('and is left as it was, not repaired', shared.get(ns + c.KEYS.selectedProject) === 'no-such-project');
 
-  sub('from the attention list straight to the brief');
-  c.openProjectBrief('capybara-sushi'); c.__flush();
-  T('the row opens that project\'s brief',
-    c.selectedId === 'capybara-sushi' && d.getElementById('briefOverlay').classList.contains('open'));
-  T('with its blocker in words', /notice-error[\s\S]*<strong>Blocked<\/strong>Example: what is stopping the work\./.test(html('briefBody')));
-  c.closeBrief(); c.__flush();
-
   sub('a tap on nothing does nothing');
   c.tapProject('no-such-project'); c.__flush();
-  T('the selection is unchanged', c.selectedId === 'capybara-sushi');
+  T('the selection is unchanged', c.selectedId === 'dayplan');
   T('no brief opened', !d.getElementById('briefOverlay').classList.contains('open'));
   c.closeBrief(); c.__flush();
   T('closing a closed brief is harmless', c._historyDepth === 0 && c._openSheetStack.length === 0);
@@ -1669,10 +1748,11 @@ function testHub(){
 /* =========================================================
    CONTRACT 24 — THE FIELD AND ITS 3D SEAM
    One renderer, three calls, a render-only scene — so Phase 2
-   can swap in WebGL without touching anything else.
+   can swap in WebGL without touching anything else — and any
+   number of projects, drawn from data.
    ========================================================= */
 function testFieldSeam(){
-  section('CONTRACT 24 — the field: one renderer behind a 3D-ready seam');
+  section('CONTRACT 24 — the field: one renderer behind a 3D-ready seam, any number of projects');
   const app = H.loadApp();
   const c = app.ctx, d = app.dom.document;
   const src = js();
@@ -1687,7 +1767,7 @@ function testFieldSeam(){
   T('the renderer never changes the selection', !/selectedId\s*=(?!=)/.test(stripComments(renderer)));
   const scene = c.fieldScene(c.allViews());
   T('the scene carries only what drawing needs', Object.keys(scene[0]).sort().join() ===
-    'attention,id,isSample,name,selected,signal,status,theme,workerState');
+    'attention,id,name,recorded,selected,signal,status,theme,workerState');
   T('no canvas and no dependency in Phase 1',
     !/<canvas/.test(H.readApp()) && !/<script[^>]*\bsrc=/.test(H.readApp()) &&
     Object.keys(H.readPkg().dependencies || {}).length === 0);
@@ -1700,20 +1780,24 @@ function testFieldSeam(){
   ['m-plinth', 'm-terrain', 'm-crate', 'm-signal'].forEach(m => mats.add(m));
   T('every material has a colour token', [...mats].every(m =>
     new RegExp('\\.' + m + '\\{ --c: var\\(--').test(css())), [...mats].join(','));
-  T('every theme has its ground and accent', Object.keys(c.LANDMARKS).every(t =>
+  T('every look has its ground and accent', Object.keys(c.LANDMARKS).every(t =>
     new RegExp('\\.theme-' + t + '\\{ --terrain: var\\(--terrain-' + t + '\\); --tint: var\\(--tint-' + t + '\\); \\}').test(css())));
+  T('every look has a glyph', Object.keys(c.LANDMARKS).every(t => !!c.PROJECT_GLYPHS[t]));
   const field = d.getElementById('projectField').innerHTML;
   T('the platform drawing is decorative to assistive tech',
-    (field.match(/<svg class="platform" viewBox="[^"]+" aria-hidden="true" focusable="false">/g) || []).length === 6);
+    (field.match(/<svg class="platform" viewBox="[^"]+" aria-hidden="true" focusable="false">/g) || []).length ===
+    c.PROJECT_REGISTRY.length);
   T('no broken number reaches the geometry', !/NaN|Infinity|undefined/.test(field));
   T('drawing is deterministic', c.platformSvg(scene[0]) === c.platformSvg(scene[0]));
 
   sub('the crew');
   const workers = [...new Set(Object.keys(c.SIGNALS).map(k => c.SIGNALS[k].worker))];
-  T('eight worker states, one per signal', workers.length === 8, workers.join(','));
-  T('every state but "quiet" has a picture', workers.filter(w => w !== 'quiet').every(w => c.crewSvg(w).length > 50));
+  T('nine worker states, one per signal', workers.length === 9, workers.join(','));
+  T('every state but paused and unrecorded has a picture',
+    workers.filter(w => w !== 'quiet' && w !== 'unrecorded').every(w => c.crewSvg(w).length > 50));
   T('a paused platform has no crew and is dimmed',
     c.crewSvg('quiet') === '' && /\.block\.worker-quiet \.platform\{ opacity: /.test(css()));
+  T('an unrecorded platform has no crew: nothing is known to be happening there', c.crewSvg('unrecorded') === '');
 
   sub('motion is status-driven and can be switched off');
   T('only projects that need you pulse', scene.every(b => {
@@ -1726,6 +1810,34 @@ function testFieldSeam(){
   T('which the global reduced-motion rule switches off',
     /@media \(prefers-reduced-motion: reduce\)\{[\s\S]{0,200}animation: none !important/.test(css()));
   T('no script-driven animation loop', !/requestAnimationFrame\(|setInterval\(/.test(stripComments(src)));
+
+  sub('a seventh project needs no new code');
+  const more = H.loadApp();
+  const m = more.ctx, md = more.dom.document;
+  m.PROJECT_REGISTRY.push({
+    id: 'synthetic-seventh', name: 'Synthetic Seventh',
+    shortDescription: 'A test project that exists only inside this contract.',
+    repositoryUrl: 'https://github.com/morecobrax-dot/synthetic-seventh', liveUrl: null,
+    defaultBranch: 'main', visualTheme: 'not-a-theme-yet'
+  });
+  m.renderMissionControl();
+  const f7 = md.getElementById('projectField').innerHTML;
+  T('it is drawn as a seventh platform', (f7.match(/<button class="block /g) || []).length === 7);
+  T('a look it does not have yet falls back to the generic one',
+    /<button class="block theme-generic [^"]*" id="block-synthetic-seventh"/.test(f7));
+  T('its drawing is whole', !/NaN|Infinity|undefined/.test(f7));
+  T('it counts as a project, and as nothing else until recorded',
+    m.hudCounts(m.allViews()).projects === 7 && m.hudCounts(m.allViews()).unrecorded === 7);
+  m.tapProject('synthetic-seventh'); m.__flush();
+  T('it can be focused', m.selectedId === 'synthetic-seventh');
+  T('and is remembered', m.Store.get(m.KEYS.selectedProject) === 'synthetic-seventh');
+  m.openStateForm('synthetic-seventh'); m.pickStatus('building'); m.toggleSwitch('stateQa'); m.saveStateForm(); m.__flush();
+  T('its state is recorded like any other', m.projectView('synthetic-seventh').signal === 'needs_qa');
+  T('it joins the attention queue', m.attentionQueue(m.allViews()).some(v => v.id === 'synthetic-seventh'));
+  T('and the Settings list', /Synthetic Seventh/.test(md.getElementById('linksList').innerHTML));
+  T('its GitHub tool comes from its own record', m.projectView('synthetic-seventh').tools.github ===
+    'https://github.com/morecobrax-dot/synthetic-seventh');
+  T('no errors', more.errors.length === 0 && app.errors.length === 0, more.errors.concat(app.errors).join(' | '));
 }
 
 /* =========================================================
@@ -1777,11 +1889,152 @@ function testSecrets(){
     require('fs').readFileSync(require('path').join(H.ROOT, '.gitignore'), 'utf8').split(/\r?\n/).indexOf('references/visual/') !== -1);
 }
 
+/* =========================================================
+   CONTRACT 26 — THE BACKUP BOUNDARY
+   A backup file carries recorded project states and nothing
+   else, by construction. Reading one back never touches the
+   private links on this device, and says when it ignored some.
+   ========================================================= */
+function testBackupBoundary(){
+  section('CONTRACT 26 — backups carry project states only; private links never leave or return');
+  /* Canary links: fake, and distinct from every other fixture, so a single
+     search proves each one stayed where it belongs. */
+  const CANARY = {
+    chat:  'https://chat.example.test/c/FAKE-CANARY-LINK-1',
+    claude: 'https://claude.example.test/code/FAKE-CANARY-LINK-2',
+    draft: 'https://chat.example.test/c/FAKE-CANARY-DRAFT-3',
+    legacy: 'https://chat.example.test/c/FAKE-CANARY-LEGACY-4',
+    legacyDraft: 'https://claude.example.test/code/FAKE-CANARY-LEGACY-5'
+  };
+  const shared = new Map();
+  const app = H.loadApp({ sharedStorage: shared });
+  const c = app.ctx, d = app.dom.document;
+  const ns = c.STORAGE_NAMESPACE;
+
+  /* A device with everything a backup must leave behind. */
+  c.openStateForm('dayplan'); c.pickStatus('building'); d.getElementById('stateNext').value = 'Recorded step'; c.saveStateForm();
+  c.privateLinks.loop = { id: 'loop', chatgptUrl: CANARY.chat, claudeUrl: CANARY.claude, updatedAt: '2026-01-01' };
+  c.persistPrivateLinks();
+  /* finish*, not close*: leave the editors the way a torn-down page does,
+     with their drafts still on the device. */
+  c.openLinksForm('dayplan'); d.getElementById('linkChatgpt').value = CANARY.draft; c.flushFormDrafts();
+  c.finishLinksForm();
+  c.openStateForm('loop'); c.pickStatus('paused'); d.getElementById('stateNext').value = 'Unsaved edit'; c.flushFormDrafts();
+  c.finishStateForm();
+  c.tapProject('dayplan');
+  shared.set(ns + c.KEYS.backupPrefix + '1.' + c.KEYS.privateLinks, JSON.stringify([{ id: 'loop', chatgptUrl: CANARY.chat }]));
+  const statesKey = ns + c.KEYS.projectStates;
+  const withForeign = JSON.parse(shared.get(statesKey)).concat([{ id: 'a-future-project', status: 'stable',
+    chatgptUrl: CANARY.chat, updatedAt: '2026-01-01' }]);
+  shared.set(statesKey, JSON.stringify(withForeign));
+  const device = H.loadApp({ sharedStorage: shared });
+  const x = device.ctx;
+  T('the device holds links, drafts, a snapshot and an unreadable record before export',
+    !!x.privateLinks.loop && shared.has(ns + x.KEYS.linksDraft) && shared.has(ns + x.KEYS.stateDraft) &&
+    x.projectStatesForeign.length === 1);
+
+  sub('an export carries recorded project states and nothing else');
+  const before = new Map(shared);
+  const payload = x.buildBackup();
+  const file = JSON.stringify(payload);
+  T('it holds exactly one collection: project states', Object.keys(payload.data).join() === x.KEYS.projectStates);
+  T('no private link reaches the file, not even from a draft, a snapshot or an unreadable record',
+    !/FAKE-CANARY/.test(file));
+  T('no link field, draft, preference or snapshot key is in it',
+    !/chatgptUrl|claudeUrl|privateLinks|draft\.|ui\.|sys\.backup/.test(file));
+  const out = JSON.parse(payload.data[x.KEYS.projectStates]);
+  T('only readable records of known projects are exported', out.map(r => r.id).join() === 'dayplan');
+  T('each rebuilt from the allowlist of fields', out.every(r => Object.keys(r).join() === x.BACKUP_FIELDS.join()));
+  T('the file still says which app and version made it', payload.app === x.APP_CONFIG.id && payload.version === x.APP_VERSION);
+  T('an injected field is dropped from a record',
+    !('chatgptUrl' in x.backupRecord({ id: 'loop', status: 'stable', chatgptUrl: CANARY.chat })));
+  T('exporting changes nothing on the device',
+    [...before.keys()].every(k => shared.get(k) === before.get(k)) && shared.size === before.size);
+  T('the export path is built from the product\'s allowlist',
+    /const data = typeof Domain\.backupData === 'function' \? Domain\.backupData\(\) : allStoredData\(\);/.test(js()) &&
+    x.Domain.backupData === x.backupMissionControl);
+
+  sub('an ordinary backup imports states and leaves this device\'s links alone');
+  T('the product declares its own restore — the generic merge would bring private links back',
+    typeof x.Domain.restoreData === 'function' && x.Domain.restoreData === x.restoreMissionControl);
+  const other = new Map();
+  const b = H.loadApp({ sharedStorage: other });
+  const y = b.ctx;
+  y.privateLinks.loop = { id: 'loop', chatgptUrl: FIX.chat, claudeUrl: null, updatedAt: '2026-01-01' };
+  y.persistPrivateLinks();
+  const linksBefore = other.get(ns + y.KEYS.privateLinks);
+  y.importData({ files: [{ _text: file }], value: '' });
+  T('the recorded state arrives', !!y.projectStates.dayplan && y.projectStates.dayplan.nextAction === 'Recorded step');
+  T('this device\'s links are untouched', other.get(ns + y.KEYS.privateLinks) === linksBefore);
+  T('no note about private links, because there were none', b.dom.document.getElementById('importNotes').innerHTML === '');
+  const again = y.Domain.restoreData(payload.data);
+  T('importing the same file again changes nothing', again.added === 0 && again.updated === 0);
+
+  sub('a 0.1.0 backup with private links: links ignored, and said so');
+  const legacyFile = JSON.stringify({ app: y.APP_CONFIG.id, version: '0.1.0', schema: 1, exportedAt: '2026-09-28T12:00:00.000Z',
+    data: {
+      'sys.schemaVersion': '1',
+      'ui.selectedProject': 'loop',
+      'data.projectStates': JSON.stringify([{ id: 'space-kindergarten', status: 'building', needsQa: true,
+        chatgptUrl: CANARY.legacy, updatedAt: '2026-09-28T12:00:00.000Z' }]),
+      'data.privateLinks': JSON.stringify([{ id: 'loop', chatgptUrl: CANARY.legacy, claudeUrl: CANARY.legacyDraft,
+        updatedAt: '2030-01-01T00:00:00.000Z' }]),
+      'draft.projectLinks': JSON.stringify({ id: 'dayplan', values: { chatgptUrl: CANARY.legacyDraft, claudeUrl: '' } })
+    } });
+  y.importData({ files: [{ _text: legacyFile }], value: '' });
+  T('its project state is imported', !!y.projectStates['space-kindergarten']);
+  T('but a link smuggled inside a state record is dropped', !('chatgptUrl' in y.projectStates['space-kindergarten']));
+  T('the links on this device are unchanged, even against a newer-dated link',
+    other.get(ns + y.KEYS.privateLinks) === linksBefore && y.privateLinks.loop.chatgptUrl === FIX.chat);
+  T('no legacy link or draft reached any key on this device',
+    [...other.values()].every(v => !/FAKE-CANARY/.test(v)));
+  T('no device preference was taken from the file', other.get(ns + y.KEYS.selectedProject) !== 'loop');
+  const notes = b.dom.document.getElementById('importNotes').innerHTML;
+  T('the import says the links were not imported, where it stays on screen',
+    /private tool links from an older version\. They were not imported/.test(notes) && /links on this device are unchanged/.test(notes));
+
+  sub('into a device with no links, an old backup still restores none');
+  const empty = new Map();
+  const e = H.loadApp({ sharedStorage: empty });
+  e.ctx.importData({ files: [{ _text: legacyFile }], value: '' });
+  T('no links appear', Object.keys(e.ctx.privateLinks).length === 0 && !empty.has(ns + e.ctx.KEYS.privateLinks));
+  T('and no draft either', !empty.has(ns + e.ctx.KEYS.linksDraft));
+  T('it still reports what it ignored', /were not imported/.test(e.dom.document.getElementById('importNotes').innerHTML));
+
+  sub('a file with only private links imports nothing, and says both');
+  const onlyLinks = JSON.stringify({ app: y.APP_CONFIG.id, data: {
+    'data.privateLinks': JSON.stringify([{ id: 'loop', chatgptUrl: CANARY.legacy }]) } });
+  const f = H.loadApp({ sharedStorage: new Map() });
+  f.ctx.importData({ files: [{ _text: onlyLinks }], value: '' });
+  T('nothing is imported', Object.keys(f.ctx.privateLinks).length === 0 && Object.keys(f.ctx.projectStates).length === 0);
+  T('the toast says there were no records it recognises',
+    /no records this app recognises/.test(f.dom.document.getElementById('toastHost').children.map(t => t.innerHTML).join('')));
+  T('and the note says the links were ignored', /were not imported/.test(f.dom.document.getElementById('importNotes').innerHTML));
+
+  sub('the note is exact: it speaks only of links that are really there');
+  const blank = y.Domain.restoreData({
+    'data.privateLinks': '[]',
+    'draft.projectLinks': JSON.stringify({ id: 'loop', values: { chatgptUrl: '', claudeUrl: '' } })
+  });
+  T('an empty link list or a blank draft brings no warning', blank.notes.length === 0, blank.notes.join(' | '));
+
+  sub('records it cannot read are skipped, and counted');
+  const odd = y.Domain.restoreData({ 'data.projectStates': JSON.stringify([
+    { id: 'no-such-project', status: 'building', updatedAt: 'z' },
+    { id: 'loop', status: 'archived', updatedAt: 'z' }
+  ]) });
+  T('neither is imported', odd.added === 0 && odd.updated === 0 && !y.projectStates['no-such-project']);
+  T('and the import says how many', odd.skipped === 2 && /2 records in the file could not be read/.test(odd.notes.join(' ')));
+  T('no errors', [app, device, b, e, f].every(a => a.errors.length === 0),
+    [app, device, b, e, f].map(a => a.errors.join(' | ')).join(' | '));
+}
+
 module.exports = {
   T, section, sub, results, reset, testPortability,
   testBoot, testConfig, testStorage, testCollision, testMigration,
   testNavigation, testOverlays, testToast, testConfirmation, testForms,
   testMobile, testDesignSystem, testPWA, testRelease, testStress,
   testAccessibility, testContamination, testSourcesOfTruth,
-  testRegistry, testStatusModel, testPrivateLinks, testHub, testFieldSeam, testSecrets
+  testRegistry, testStatusModel, testPrivateLinks, testHub, testFieldSeam, testSecrets,
+  testBackupBoundary
 };

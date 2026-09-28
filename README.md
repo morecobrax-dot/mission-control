@@ -20,7 +20,8 @@ and works offline.
 - **Hub.** Quiet counts across the top (projects, active, needs QA, needs a
   decision, blocked), then a *Needs attention* list — blocked first, then
   decisions, then QA — then the project field.
-- **Project field.** Six projects as isometric platforms, drawn from data.
+- **Project field.** Every project in the registry — six to start, and a new
+  record needs no other change — as isometric platforms, drawn from data.
   Each shows its name, a landmark, its lifecycle status, a beacon lit in its
   signal colour, a floating marker when it needs you, and a small crew whose
   pose follows its state. Tap once to focus a project; tap again (or press
@@ -30,7 +31,9 @@ and works offline.
   that are actually set up. On a phone it is a page; on an iPad in landscape
   or a desktop it docks beside the field.
 - **Update state.** Record a project's real state on this device. Until you
-  do, it shows sample state, labelled as a sample everywhere it appears.
+  do, it has no state: it says **Needs update**, counts as a project, and is
+  left out of the active and attention counts. Nothing is ever filled in for
+  you.
 - **Private tool links.** A ChatGPT conversation link and a Claude Code
   session link per project, kept only on this device.
 - The project you focused on is still focused when you come back.
@@ -46,17 +49,37 @@ This repository and its GitHub Pages site are **public**.
 | ChatGPT and Claude links | `data.privateLinks` on your device | No |
 | The project in focus | `ui.selectedProject` on your device | No |
 
-Private links are never written into source, a test, a log or the offline
-cache, and the screens show only a link's host, never its path.
+Private links are never written into source, a test, a log, the offline cache
+or a backup file, and the screens show only a link's host, never its path.
 `npm run verify` includes a secret scan that fails on anything that looks like
 a real conversation or session link, an API key or token, or a local machine
-path. A backup file exported from Settings *does* include your links, because
-it is your data; keep that file to yourself.
+path.
 
-All of your apps on `github.io` share one browser origin. Mission Control's
-storage is namespaced (`mission-control.`), so they cannot collide, but any
-page on that origin could read it. Prefer ChatGPT conversation links over
-public share links.
+**Backups** carry recorded project states and nothing else. The file is built
+from an allowlist of fields, so private links, unsaved edits, device
+preferences and recovery snapshots cannot end up in it. Importing a backup
+never touches the links on this device; a backup made by 0.1.0 may contain
+links, and those are ignored — the import says so.
+
+**The shared origin.** Every app served from `morecobrax-dot.github.io` runs
+on the same browser origin, and browser storage belongs to the origin, not to
+the app. Mission Control's `mission-control.` prefix keeps its names apart from
+the other apps' — it does not keep them out. Any script running on that
+origin can read what Mission Control stores, private links included. Prefer
+ChatGPT conversation links, which need your sign-in to open, over public share
+links. A separate origin (a custom domain) is the only real isolation; this
+release does not change hosting.
+
+## What has not been verified
+
+- **Opening the ChatGPT or Claude app.** Tools are ordinary links. Whether
+  iOS hands one to the ChatGPT or Claude app, or opens it in Safari, is
+  decided by iOS and has not been tested on a device; browser tests only show
+  that the link opens in a new context.
+- **Storage on iPhone and iPad.** Whether a Safari tab and the Home Screen
+  app see the same storage, and how long iOS keeps it, has not been checked
+  on this app. Treat each as possibly separate, and export a backup of your
+  states if they matter.
 
 ## The status model
 

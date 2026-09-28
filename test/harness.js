@@ -333,7 +333,7 @@ const BRIDGE = [
   'STORAGE_NAMESPACE', 'CACHE_NAMESPACE', 'KEYS',
   'Store', 'DATA_SCHEMA_VERSION', 'MIGRATIONS', 'migrationWarning', 'Domain',
   'PROJECT_STATUSES', 'ATTENTION_KINDS', 'ACTIVE_STATUSES', 'SIGNALS',
-  'PROJECT_REGISTRY', 'SAMPLE_TEXT', 'SAMPLE_STATE', 'PROJECT_GLYPHS', 'TOOLS',
+  'PROJECT_REGISTRY', 'PROJECT_GLYPHS', 'TOOLS', 'BACKUP_FIELDS', 'PRIVATE_BACKUP_KEYS',
   'LINK_MAX', 'LINK_SCHEMES', 'STATE_LIMITS', 'WIDE_QUERY', 'LANDMARKS', 'PLATFORM_VIEWBOX',
   'projectStates', 'privateLinks', 'projectStatesForeign', 'privateLinksForeign', 'selectedId',
   'editingStateId', 'editingLinksId', 'formState', 'Field', 'IsoField',

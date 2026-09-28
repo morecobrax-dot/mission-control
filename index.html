@@ -156,6 +156,8 @@
   --sig-qa: #F0B43F;
   --sig-decision: #B28BFF;
   --sig-blocked: #FF6464;
+  /* No recorded state: deliberately the quietest hue in the set. */
+  --sig-unrecorded: #8390A3;
 
   /* The project field: a quiet floor under platforms built from
      dark materials, so a project's identity can never be read as
@@ -186,6 +188,7 @@
   --terrain-vault: #213428;     --tint-vault: #8C96A4;
   --terrain-rocket: #22264A;    --tint-rocket: #7F95D8;
   --terrain-sushi: #3A2A2A;     --tint-sushi: #C9765F;
+  --terrain-generic: #262F3F;   --tint-generic: #7C8BA1;
 
   /* The hub goes wide only where a docked brief fits beside the
      field. The same query is WIDE_QUERY in the script. */
@@ -546,6 +549,8 @@ input.field-error, textarea.field-error{ border-color: var(--danger); box-shadow
 .notice-warning{ border-left-color: var(--warning); background: var(--warning-soft); }
 .notice-error{ border-left-color: var(--danger); background: var(--danger-soft); }
 .notice strong{ color: var(--text); display: block; margin-bottom: 2px; }
+/* An import's result sits under the hint text it follows, not against it. */
+.import-notes .notice{ margin: var(--space-md) 0 0; }
 
 .loading{
   display: flex; align-items: center; justify-content: center; gap: var(--space-md);
@@ -723,8 +728,10 @@ body.scroll-locked{
 .sig-needs_qa{ --sig: var(--sig-qa); }
 .sig-needs_decision{ --sig: var(--sig-decision); }
 .sig-blocked{ --sig: var(--sig-blocked); }
+.sig-unrecorded{ --sig: var(--sig-unrecorded); }
 
 /* ---- Project identity: the ground and accent a project is drawn in. */
+.theme-generic{ --terrain: var(--terrain-generic); --tint: var(--tint-generic); }
 .theme-track{ --terrain: var(--terrain-track); --tint: var(--tint-track); }
 .theme-calendar{ --terrain: var(--terrain-calendar); --tint: var(--tint-calendar); }
 .theme-book{ --terrain: var(--terrain-book); --tint: var(--tint-book); }
@@ -741,14 +748,8 @@ body.scroll-locked{
   border: 1px solid var(--border);
 }
 .chip svg{ flex-shrink: 0; }
-/* Sample state is a fact about the data, not a status, so it wears no hue. */
-.sample-tag{
-  display: inline-flex; align-items: center;
-  padding: 1px var(--space-xs); border: 1px dashed var(--border); border-radius: var(--radius-sm);
-  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
-  letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint);
-  vertical-align: middle; white-space: nowrap;
-}
+/* No recorded state wears a dashed edge: present, but not a status. */
+.chip.sig-unrecorded{ border-style: dashed; }
 
 .glyph-tile{
   flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
@@ -796,6 +797,17 @@ body.scroll-locked{
   color: var(--text-dim); font-size: var(--fs-support);
 }
 .attention-clear svg{ color: var(--sig-stable); flex-shrink: 0; }
+/* Not "all clear": only nothing recorded asks for you. No green tick. */
+.attention-clear.is-partial svg{ color: var(--text-faint); }
+
+/* ---- The quiet line under the counts, while some states are unknown ---- */
+.state-note{
+  display: flex; align-items: center; gap: var(--space-sm);
+  margin: 0 0 var(--space-xs); padding: 0 var(--space-xs);
+  color: var(--text-faint); font-size: var(--fs-meta);
+}
+.state-note[hidden]{ display: none; }
+.state-note svg{ flex-shrink: 0; color: var(--sig-unrecorded); }
 
 /* ---- The project field ----
    Named .project-field, never .field: that is the foundation's form-field
@@ -848,7 +860,11 @@ body.scroll-locked{
   border-radius: var(--radius-pill); background: var(--field-select);
 }
 .block .chip{ padding: 1px 6px; }
-.block-sample{ font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-faint); letter-spacing: 0.06em; text-transform: uppercase; }
+/* Said in words, quietly, and never as a chip: a chip would read as a status. */
+.block-unrecorded{
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--fs-micro); color: var(--sig); white-space: nowrap;
+}
 .attn-marker{
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   box-shadow: var(--shadow-md); background: var(--surface);
@@ -940,7 +956,7 @@ body.scroll-locked{
 .brief-name:focus{ outline: none; }
 .brief-purpose{ margin-top: 2px; color: var(--text-dim); font-size: var(--fs-support); }
 .brief-chips{ margin-bottom: var(--space-md); }
-.brief-sample-note{ margin-bottom: var(--space-md); color: var(--text-faint); font-size: var(--fs-meta); }
+.brief-note{ margin-bottom: var(--space-md); color: var(--text-faint); font-size: var(--fs-meta); }
 .brief-rows{ margin: var(--space-sm) 0 var(--space-lg); }
 .detail-value.is-unknown{ color: var(--text-faint); }
 /* Sentences read as a paragraph under their label, not squeezed to the right. */
@@ -1013,8 +1029,9 @@ body.scroll-locked{
 .editor-footer{ margin-top: var(--space-xl); }
 
 /* ---- A phone on its side ----
-   Width to spare and no height: one row of six keeps the whole field on
-   screen instead of two rows that need scrolling. */
+   Width to spare and no height: rows of six keep the field short — the
+   first six projects share one row instead of two that need scrolling, and
+   any more wrap onto the next. */
 @media (orientation: landscape) and (max-height: 500px){
   .field-grid{ grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .field-grid .block:nth-child(3n+2){ margin-top: 0; }
@@ -1077,11 +1094,11 @@ body.scroll-locked{
        On a wide screen the quick brief docks beside the field. -->
   <main class="view active" id="view-home">
     <div id="storageNotice"></div>
-    <div id="sampleNotice"></div>
     <div class="hub">
       <section class="hub-main" aria-labelledby="hubHeading">
         <h2 class="sr-only" id="hubHeading">Projects</h2>
         <div class="hud" id="hud" role="group" aria-label="Summary"></div>
+        <p class="state-note" id="stateNote" hidden></p>
         <div class="section-label" id="attentionHeading">Needs attention</div>
         <div id="attentionList"></div>
         <div class="section-label" id="fieldHeading">All projects</div>
@@ -1095,7 +1112,7 @@ body.scroll-locked{
   <!-- SETTINGS — private links, data ownership, about -->
   <main class="view" id="view-settings">
     <div class="section-label">Private tool links</div>
-    <p class="page-intro">ChatGPT and Claude links are kept only on this device. They are never written into the code, the repository or the offline cache.</p>
+    <p class="page-intro">ChatGPT and Claude links are kept only on this device. They are never written into the code, the repository, the offline cache or a backup file.</p>
     <div class="list" id="linksList"></div>
     <div class="section-label">Data</div>
     <div class="list">
@@ -1145,7 +1162,7 @@ body.scroll-locked{
   </div>
 </div>
 
-<!-- UPDATE STATE — what you record here replaces the sample state -->
+<!-- UPDATE STATE — a project's state exists only once it is recorded here -->
 <div class="overlay overlay-page" id="stateOverlay">
   <div class="sheet">
     <div class="page-topbar">
@@ -1264,28 +1281,29 @@ body.scroll-locked{
       <span class="topbar-spacer"></span>
     </div>
     <div class="sheet-scroll">
-      <p class="page-intro">Everything this app stores lives on this device, under its own namespace. Export a copy you control.</p>
+      <p class="page-intro">Everything this app stores lives in this browser on this device, under its own name prefix. A backup is a copy of your recorded project states that you control.</p>
       <div class="stat-grid" id="dataStats"></div>
       <div class="section-label">Backup</div>
       <div class="list">
         <button class="list-row" onclick="exportData()">
           <span class="list-row-main">
             <span class="list-row-title">Export backup</span>
-            <span class="list-row-desc">Save everything to a file</span>
+            <span class="list-row-desc">Save your recorded project states to a file</span>
           </span>
           <span class="list-row-arrow" aria-hidden="true"></span>
         </button>
         <button class="list-row" onclick="document.getElementById('importInput').click()">
           <span class="list-row-main">
             <span class="list-row-title">Import backup</span>
-            <span class="list-row-desc">Merge a backup in — nothing is overwritten</span>
+            <span class="list-row-desc">Merge recorded states in — the newer record wins</span>
           </span>
           <span class="list-row-arrow" aria-hidden="true"></span>
         </button>
       </div>
       <input type="file" id="importInput" accept="application/json,.json" class="sr-only" onchange="importData(this)">
       <div class="field-hint" style="margin-top:var(--space-md)">Importing merges by id, so re-importing the same file changes nothing and an older backup can never delete newer records.</div>
-      <div class="field-hint" style="margin-top:var(--space-sm)">A backup includes your private ChatGPT and Claude links. Keep the file to yourself.</div>
+      <div class="field-hint" style="margin-top:var(--space-sm)">A backup carries recorded project states only. Your private ChatGPT and Claude links, unsaved edits and this device's preferences stay on this device: they are never written to the file, and importing never changes them.</div>
+      <div class="import-notes" id="importNotes" role="status"></div>
       <div class="section-label">Danger zone</div>
       <div class="field-hint" style="margin-bottom:var(--space-md)">This permanently erases everything this app has stored. It cannot be undone.</div>
       <button class="btn-secondary btn-danger btn-block" onclick="resetAllData()">Reset all data</button>
@@ -1370,6 +1388,23 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-1-1',
+    version: '0.1.1',
+    title: 'Truthful state',
+    date: '2026-09-28',
+    summary: 'A project you have not updated says so, and a backup never carries your private tool links.',
+    newFeatures: [],
+    improvements: [
+      'A project with no recorded state says Needs update instead of showing an example, and is left out of the active and attention counts',
+      'While some states are unknown, the hub says "No recorded attention items" rather than promising that nothing needs you',
+      'A new project added to the registry appears in the hub and the field with no other change'
+    ],
+    fixes: [
+      'Backups now carry recorded project states only: private ChatGPT and Claude links and unsaved edits stay on this device',
+      'Importing an older backup that holds tool links leaves the links on this device alone, and says so'
+    ]
+  },
   {
     id: 'v0-1-0',
     version: '0.1.0',
@@ -1961,7 +1996,14 @@ const Domain = {
   hydrate(){},   // read your state out of Store
   render(){},    // paint your screens
   wire(){},      // attach your own listeners, once, at boot
-  tabIcons: {}   // { <data-tab value>: '<svg path markup>' } for your tabs
+  tabIcons: {},  // { <data-tab value>: '<svg path markup>' } for your tabs
+  /* Backups. A product that keeps anything private declares exactly what a
+     backup file may carry (backupData) and how one is read back
+     (restoreData), so export is an allowlist by construction. Left null,
+     the generic behaviour applies: every key except recovery snapshots out,
+     every collection of records merged back in by id. */
+  backupData: null,    // () => { '<key>': '<stored string>' }
+  restoreData: null    // (data) => { added, updated, collections, notes: [] }
 };
 
 /* Foundation-owned. Renders the product's screens plus the parts of the
@@ -1977,7 +2019,7 @@ function renderAll(){
    ---------------------------------------------------------
    Everything from here down to SETTINGS is Mission Control's
    own domain. The foundation above reaches it only through the
-   four Domain seams, and nothing above reads anything below.
+   Domain seams, and nothing above reads anything below.
 
    THE MODEL
    - IDENTITY is public and lives in source: PROJECT_REGISTRY.
@@ -1986,13 +2028,13 @@ function renderAll(){
      data.projectStates: status, what it needs from you,
      version, phase, current work, next step, and when you last
      said so.
-   - Until you record a state, a project shows SAMPLE_STATE:
-     examples, labelled "sample" wherever they appear, with no
-     version and no phase, because an invented "v0.7" would read
-     as fact.
+   - A project with no recorded state has NO state. It says
+     "Needs update", counts as a project and as nothing else, and
+     is never shown as planning, paused, stable or anything a
+     person could mistake for a fact.
    - PRIVATE LINKS (ChatGPT, Claude) live only in
      data.privateLinks on this device: never in source, a test,
-     a log or the service-worker cache.
+     a log, the service-worker cache or a backup file.
    - Everything else — attention, the headline signal, the crew
      on each platform, the counts — is derived when it is read
      and never stored, so it cannot disagree with its source.
@@ -2032,7 +2074,12 @@ const SIGNALS = {
   needs_decision: { label: 'Needs decision', short: 'Decision', worker: 'waiting',
                     icon: '<path d="M8 1.8 14.2 8 8 14.2 1.8 8Z"/><path d="M6.6 6.6a1.45 1.45 0 1 1 2 1.35c-.45.2-.6.55-.6 1"/><circle cx="8" cy="10.9" r=".6" fill="currentColor" stroke="none"/>' },
   blocked:        { label: 'Blocked', short: 'Blocked', worker: 'warning',
-                    icon: '<path d="M5.5 2h5L14 5.5v5L10.5 14h-5L2 10.5v-5Z"/><path d="M5.2 8h5.6"/>' }
+                    icon: '<path d="M5.5 2h5L14 5.5v5L10.5 14h-5L2 10.5v-5Z"/><path d="M5.2 8h5.6"/>' },
+  /* Not a status and not attention: the absence of a record. It has a word
+     and a shape like everything else, and no crew — nothing is known to be
+     happening there. */
+  unrecorded:     { label: 'Needs update', short: 'Needs update', worker: 'unrecorded',
+                    icon: '<circle cx="8" cy="8" r="5.8"/><path d="M6.5 6.4a1.5 1.5 0 1 1 2.1 1.37c-.43.2-.6.55-.6.98"/><circle cx="8" cy="10.9" r=".6" fill="currentColor" stroke="none"/>' }
 };
 
 /* =========================================================
@@ -2104,27 +2151,16 @@ const PROJECT_REGISTRY = [
   }
 ];
 
-/* Placeholder state, shown until you record a real one. It exists so the
-   status system can be seen working on the first day, and it says "sample"
-   everywhere it appears. The spread is chosen to show every kind of
-   attention and three lifecycles; it describes nothing true about any of
-   these projects. */
-const SAMPLE_TEXT = {
-  currentTask: 'Example: what is being worked on right now.',
-  nextAction: 'Example: the next concrete step.'
-};
-const SAMPLE_STATE = {
-  'loop':               { status: 'stable' },
-  'dayplan':            { status: 'paused' },
-  'daily-verse':        { status: 'building' },
-  'personal-savings':   { status: 'building', needsDecision: true },
-  'space-kindergarten': { status: 'building', needsQa: true },
-  'capybara-sushi':     { status: 'building', blocker: 'Example: what is stopping the work.' }
-};
+/* 0.1.0 showed invented example states until a real one was recorded.
+   They were only ever computed on read — nothing wrote one to storage, and
+   the editor opened empty — so every stored record is something a person
+   entered, and is kept exactly as it is. There is nothing to convert. */
 
 /* Each project's mark for lists and the brief. Its platform in the field
-   carries the same identity as a landmark (LANDMARKS below). */
+   carries the same identity as a landmark (LANDMARKS below). `generic` is
+   the look of a project added to the registry before it has its own. */
 const PROJECT_GLYPHS = {
+  generic:  '<path d="M8 1.8 13.6 5v6L8 14.2 2.4 11V5Z"/><path d="M2.4 5 8 8.2 13.6 5M8 8.2v6"/>',
   track:    '<ellipse cx="8" cy="8" rx="6" ry="3.8"/><ellipse cx="8" cy="8" rx="2.9" ry="1.4"/>',
   calendar: '<rect x="2.6" y="3.4" width="10.8" height="10" rx="1.4"/><path d="M2.6 6.6h10.8M5.4 2v2.6M10.6 2v2.6"/>',
   book:     '<path d="M8 4.2C6.6 3.2 4.6 2.9 2.4 3.2v9.2c2.2-.3 4.2 0 5.6 1 1.4-1 3.4-1.3 5.6-1V3.2c-2.2-.3-4.2 0-5.6 1Z"/><path d="M8 4.2v9.2"/>',
@@ -2340,13 +2376,10 @@ function hydrateMissionControl(){
 /* =========================================================
    DERIVED VIEW — computed on read, never stored
    ========================================================= */
-function sampleStateFor(id){
-  const s = SAMPLE_STATE[id] || {};
-  return {
-    id: id, status: s.status, needsQa: s.needsQa === true, needsDecision: s.needsDecision === true,
-    blocker: s.blocker || null, version: null, phase: null,
-    currentTask: SAMPLE_TEXT.currentTask, nextAction: SAMPLE_TEXT.nextAction, updatedAt: null
-  };
+/* A project's look, falling back to `generic` for one added to the registry
+   before it has its own landmark — so a new record needs no new code. */
+function themeOf(p){
+  return (p && LANDMARKS[p.visualTheme] && PROJECT_GLYPHS[p.visualTheme]) ? p.visualTheme : 'generic';
 }
 
 function attentionOf(state){
@@ -2357,13 +2390,15 @@ function attentionOf(state){
   return out;
 }
 
+/* No record means no state. The view says so (`recorded: false`, signal
+   `unrecorded`) and carries nulls rather than any plausible default, so the
+   counts, the queue and the crew cannot mistake unknown for quiet. */
 function projectView(id){
   const p = registryEntry(id);
   if(!p) return null;
-  const real = projectStates[id] || null;
-  const state = real || sampleStateFor(id);
-  const attention = attentionOf(state);
-  const signal = attention.length ? attention[0] : state.status;
+  const state = projectStates[id] || null;
+  const attention = state ? attentionOf(state) : [];
+  const signal = !state ? 'unrecorded' : (attention.length ? attention[0] : state.status);
   const links = privateLinks[id] || null;
   const tools = {
     chatgpt: links ? usableLink(links.chatgptUrl, 'chatgpt') : null,
@@ -2372,13 +2407,18 @@ function projectView(id){
     live:    usableLink(p.liveUrl, 'https')
   };
   return {
-    id: p.id, name: p.name, shortDescription: p.shortDescription, visualTheme: p.visualTheme,
-    isSample: !real,
-    status: state.status, attention: attention, signal: signal, workerState: SIGNALS[signal].worker,
-    needsQa: state.needsQa, needsDecision: state.needsDecision, blocker: state.blocker,
-    version: state.version, phase: state.phase,
-    currentTask: state.currentTask, nextAction: state.nextAction,
-    lastUpdated: real ? real.updatedAt : null,
+    id: p.id, name: p.name, shortDescription: p.shortDescription, theme: themeOf(p),
+    recorded: !!state,
+    status: state ? state.status : null,
+    attention: attention, signal: signal, workerState: SIGNALS[signal].worker,
+    needsQa: state ? state.needsQa : null,
+    needsDecision: state ? state.needsDecision : null,
+    blocker: state ? state.blocker : null,
+    version: state ? state.version : null,
+    phase: state ? state.phase : null,
+    currentTask: state ? state.currentTask : null,
+    nextAction: state ? state.nextAction : null,
+    lastUpdated: state ? state.updatedAt : null,
     tools: tools,
     brokenLinks: links ? ['chatgpt', 'claude'].filter(k => links[k + 'Url'] && !tools[k]) : [],
     claudeFallback: claudeFallbackFor(p)
@@ -2386,14 +2426,19 @@ function projectView(id){
 }
 function allViews(){ return PROJECT_REGISTRY.map(p => projectView(p.id)); }
 
+/* Every project counts as a project. Only a recorded state counts as
+   active or as needing you: an unknown one is counted separately, as
+   needing an update, and never folded into the operational numbers. */
 function hudCounts(views){
-  const needing = kind => views.filter(v => v.attention.indexOf(kind) !== -1).length;
+  const recorded = views.filter(v => v.recorded);
+  const needing = kind => recorded.filter(v => v.attention.indexOf(kind) !== -1).length;
   return {
     projects: views.length,
-    active: views.filter(v => ACTIVE_STATUSES.indexOf(v.status) !== -1).length,
+    active: recorded.filter(v => ACTIVE_STATUSES.indexOf(v.status) !== -1).length,
     needsQa: needing('needs_qa'),
     needsDecision: needing('needs_decision'),
-    blocked: needing('blocked')
+    blocked: needing('blocked'),
+    unrecorded: views.length - recorded.length
   };
 }
 
@@ -2511,9 +2556,9 @@ function watchLayout(){
    ========================================================= */
 function fieldScene(views){
   return views.map(v => ({
-    id: v.id, name: v.name, theme: v.visualTheme,
+    id: v.id, name: v.name, theme: v.theme,
     status: v.status, signal: v.signal, attention: v.attention.slice(),
-    workerState: v.workerState, isSample: v.isSample,
+    workerState: v.workerState, recorded: v.recorded,
     selected: v.id === selectedId
   }));
 }
@@ -2534,9 +2579,9 @@ let Field = IsoField;
 
 function isoBlockHtml(b){
   const pulse = ATTENTION_KINDS.indexOf(b.signal) !== -1;
-  const spoken = [b.name, SIGNALS[b.status].label]
-    .concat(b.attention.map(k => SIGNALS[k].label))
-    .concat(b.isSample ? ['sample state'] : []).join('. ');
+  const spoken = (b.recorded
+    ? [b.name, SIGNALS[b.status].label].concat(b.attention.map(k => SIGNALS[k].label))
+    : [b.name, SIGNALS.unrecorded.label + ': no state recorded']).join('. ');
   const marker = b.attention.length
     ? '<span class="chip attn-marker sig-' + b.attention[0] + '">' + signalIcon(b.attention[0], 11) +
       escapeHtml(SIGNALS[b.attention[0]].short) +
@@ -2549,8 +2594,11 @@ function isoBlockHtml(b){
     platformSvg(b) + marker +
     '<span class="block-label">' +
       '<span class="block-name">' + escapeHtml(b.name) + '</span>' +
-      statusChipHtml(b.status, true) +
-      (b.isSample ? '<span class="block-sample">Sample</span>' : '') +
+      /* Unknown wears no status chip: a chip would read as a status. It is
+         said quietly, in words, with its own shape. */
+      (b.recorded ? statusChipHtml(b.status, true)
+        : '<span class="block-unrecorded sig-unrecorded">' + signalIcon('unrecorded', 11) +
+          escapeHtml(SIGNALS.unrecorded.label) + '</span>') +
     '</span>' +
   '</button>';
 }
@@ -2621,6 +2669,11 @@ function isoDiscY(cx, yPlane, cz, r, mat){
    measured from the platform's surface, drawn in the order listed (back
    to front). The same lists can become meshes in Phase 2. */
 const LANDMARKS = {
+  /* A project added before it has a landmark of its own. */
+  generic: [
+    ['box', 3.6, 3.6, 0, 2.8, 2.8, 1.6, 'm-stone'],
+    ['box', 4.1, 4.1, 1.6, 1.8, 1.8, 0.5, 'm-tint']
+  ],
   track: [
     ['cyl', 5, 5, 0, 3.4, 0.28, 'm-tint'],
     ['cyl', 5, 5, 0.28, 2.3, 0.01, 'm-terrain'],
@@ -2759,8 +2812,8 @@ function renderMissionControl(){
 
 function renderHub(given){
   const views = given || allViews();
-  renderSampleNotice(views);
   renderHud(views);
+  renderStateNote(views);
   renderAttention(views);
   if(!Field.host) Field.mount(document.getElementById('projectField'));
   Field.draw(fieldScene(views));
@@ -2772,16 +2825,19 @@ function renderHub(given){
   }
 }
 
-function renderSampleNotice(views){
-  const el = document.getElementById('sampleNotice');
+/* The quiet line under the counts: how many projects have no recorded state,
+   and that the counts leave them out. Absent when every state is known. */
+function renderStateNote(views){
+  const el = document.getElementById('stateNote');
   if(!el) return;
-  const n = views.filter(v => v.isSample).length;
-  if(!n){ el.innerHTML = ''; return; }
-  const body = n === views.length
-    ? 'Every status here is an example until you record the real one. Open a project and choose Update state.'
-    : n + ' of ' + views.length + ' projects still show sample state. Their statuses are examples, not facts.';
-  el.innerHTML = '<div class="notice"><span class="notice-mark" aria-hidden="true">' + infoIcon(17) + '</span>' +
-    '<span><strong>Sample state</strong>' + escapeHtml(body) + '</span></div>';
+  const n = hudCounts(views).unrecorded;
+  if(!n){ el.innerHTML = ''; el.setAttribute('hidden', ''); return; }
+  const lead = n === views.length
+    ? 'No project has a recorded state yet.'
+    : n + ' of ' + views.length + (n === 1 ? ' project needs' : ' projects need') + ' a state update.';
+  el.innerHTML = signalIcon('unrecorded', 14) + '<span>' + escapeHtml(lead) +
+    ' Counts include recorded states only.</span>';
+  el.removeAttribute('hidden');
 }
 
 function renderHud(views){
@@ -2805,8 +2861,14 @@ function renderAttention(views){
   const el = document.getElementById('attentionList');
   if(!el) return;
   const queue = attentionQueue(views);
-  el.innerHTML = queue.length
-    ? '<div class="list">' + queue.map(attentionRowHtml).join('') + '</div>'
+  if(queue.length){
+    el.innerHTML = '<div class="list">' + queue.map(attentionRowHtml).join('') + '</div>';
+    return;
+  }
+  /* "Nothing needs you" is only true when every state is known. While some
+     are not, say only what is known: nothing recorded asks for you. */
+  el.innerHTML = hudCounts(views).unrecorded
+    ? '<div class="attention-clear is-partial">' + infoIcon(16) + '<span>No recorded attention items.</span></div>'
     : '<div class="attention-clear">' + checkIcon(16) + '<span>Nothing needs you right now.</span></div>';
 }
 function attentionRowHtml(v){
@@ -2816,19 +2878,19 @@ function attentionRowHtml(v){
   return '<button class="list-row attention-row sig-' + kind + '" onclick="openProjectBrief(\'' + escapeAttr(v.id) + '\')">' +
     '<span class="attn-mark" aria-hidden="true">' + signalIcon(kind, 18) + '</span>' +
     '<span class="list-row-main">' +
-      '<span class="list-row-title">' + escapeHtml(v.name) + (v.isSample ? ' ' + sampleTagHtml() : '') + '</span>' +
+      '<span class="list-row-title">' + escapeHtml(v.name) + '</span>' +
       '<span class="list-row-desc">' + escapeHtml(reasons.join(' · ')) + '</span>' +
     '</span>' +
     '<span class="list-row-arrow" aria-hidden="true">' + chevronRight(15) + '</span>' +
   '</button>';
 }
 
-function sampleTagHtml(){ return '<span class="sample-tag">Sample</span>'; }
 function statusChipHtml(key, short){
   return '<span class="chip sig-' + key + '">' + signalIcon(key, 11) +
     escapeHtml(short ? SIGNALS[key].short : SIGNALS[key].label) + '</span>';
 }
 function chipsHtml(v, short){
+  if(!v.recorded) return statusChipHtml('unrecorded', short);
   return statusChipHtml(v.status, short) + v.attention.map(k => statusChipHtml(k, short)).join('');
 }
 
@@ -2841,11 +2903,12 @@ function renderFocusBar(views){
     return;
   }
   el.innerHTML = '<button class="focus-bar sig-' + v.signal + '" onclick="openBrief()">' +
-    '<span class="glyph-tile theme-' + v.visualTheme + '" aria-hidden="true">' + projectGlyph(v.visualTheme, 18) + '</span>' +
+    '<span class="glyph-tile theme-' + v.theme + '" aria-hidden="true">' + projectGlyph(v.theme, 18) + '</span>' +
     '<span class="focus-main">' +
-      '<span class="focus-name">' + escapeHtml(v.name) + (v.isSample ? sampleTagHtml() : '') + '</span>' +
+      '<span class="focus-name">' + escapeHtml(v.name) + '</span>' +
       '<span class="chip-row">' + chipsHtml(v, false) + '</span>' +
-      (v.nextAction ? '<span class="focus-next">Next: ' + escapeHtml(v.nextAction) + '</span>' : '') +
+      (v.nextAction ? '<span class="focus-next">Next: ' + escapeHtml(v.nextAction) + '</span>'
+        : !v.recorded ? '<span class="focus-next">No state recorded yet</span>' : '') +
     '</span>' +
     '<span class="focus-go">Brief' + chevronRight(15) + '</span>' +
   '</button>';
@@ -2856,7 +2919,7 @@ function renderFocusBar(views){
    ========================================================= */
 function briefHtml(v, docked){
   const rows = [
-    ['Status', SIGNALS[v.status].label],
+    ['Status', v.recorded ? SIGNALS[v.status].label : null],
     ['Version', v.version],
     ['Phase', v.phase],
     ['Current work', v.currentTask, true],
@@ -2865,20 +2928,21 @@ function briefHtml(v, docked){
   ];
   return '<article class="brief">' +
     '<div class="brief-head">' +
-      '<span class="glyph-tile large theme-' + v.visualTheme + '" aria-hidden="true">' + projectGlyph(v.visualTheme, 26) + '</span>' +
+      '<span class="glyph-tile large theme-' + v.theme + '" aria-hidden="true">' + projectGlyph(v.theme, 26) + '</span>' +
       '<div class="brief-titles">' +
         '<h2 class="brief-name" id="' + (docked ? 'dockedBriefName' : 'briefName') + '" tabindex="-1">' + escapeHtml(v.name) + '</h2>' +
         '<p class="brief-purpose">' + escapeHtml(v.shortDescription) + '</p>' +
       '</div>' +
     '</div>' +
-    '<div class="chip-row brief-chips">' + chipsHtml(v, false) + (v.isSample ? sampleTagHtml() : '') + '</div>' +
-    (v.isSample ? '<p class="brief-sample-note">Sample state: none of this is real yet. Choose Update state to record where this project actually is.</p>' : '') +
+    '<div class="chip-row brief-chips">' + chipsHtml(v, false) + '</div>' +
+    (v.recorded ? '' : '<p class="brief-note">No state is recorded for this project yet. It counts as a project, ' +
+      'but not as active or as needing you, until you choose Update state.</p>') +
     (v.blocker ? '<div class="notice notice-error"><span class="notice-mark" aria-hidden="true">' + signalIcon('blocked', 17) +
       '</span><span><strong>Blocked</strong>' + escapeHtml(v.blocker) + '</span></div>' : '') +
     (docked ? (anyTool(v) ? toolsHtml(v, true) : toolsEmptyHtml()) : (anyTool(v) ? '' : toolsEmptyHtml())) +
     '<div class="brief-rows">' + rows.map(r => briefRowHtml(r[0], r[1], r[2])).join('') + '</div>' +
     '<div class="list">' +
-      manageRowHtml('Update state', v.isSample ? 'Record where this project really is' : 'Status, what it needs, work and next step', 'openStateForm', v.id) +
+      manageRowHtml('Update state', v.recorded ? 'Status, what it needs, work and next step' : 'Record where this project really is', 'openStateForm', v.id) +
       manageRowHtml('Tool links', linksSummary(v), 'openLinksForm', v.id) +
     '</div>' +
   '</article>';
@@ -2960,7 +3024,7 @@ function renderLinksList(views){
   if(!el) return;
   el.innerHTML = views.map(v =>
     '<button class="list-row" onclick="openLinksForm(\'' + escapeAttr(v.id) + '\')">' +
-      '<span class="glyph-tile theme-' + v.visualTheme + '" aria-hidden="true">' + projectGlyph(v.visualTheme, 17) + '</span>' +
+      '<span class="glyph-tile theme-' + v.theme + '" aria-hidden="true">' + projectGlyph(v.theme, 17) + '</span>' +
       '<span class="list-row-main"><span class="list-row-title">' + escapeHtml(v.name) + '</span>' +
       '<span class="list-row-desc">' + escapeHtml(linksSummary(v)) + '</span></span>' +
       '<span class="list-row-arrow" aria-hidden="true">' + chevronRight(15) + '</span>' +
@@ -2982,6 +3046,12 @@ let formState = null;              // status and switches while the state editor
 let _formDraftTimer = null;
 
 function valueOf(id){ const el = document.getElementById(id); return el ? el.value : ''; }
+
+/* The address whose storage this app shares — every app served from it. */
+function siteHost(){
+  try{ return location.host || String(location.origin || '').replace(/^[a-z]+:\/\//i, ''); }
+  catch(e){ return 'this site'; }
+}
 function setValue(id, v){ const el = document.getElementById(id); if(el) el.value = v || ''; }
 
 /* One draft slot per editor, tagged with its project, and read back only
@@ -3018,18 +3088,18 @@ function openStateForm(id){
   editingStateId = id;
   const real = projectStates[id] || null;
   const draft = takeDraft(KEYS.stateDraft, id);
-  /* A project still on sample state opens EMPTY. Pre-filling the examples
-     would let one tap on Save turn them into recorded fact. */
+  /* A project with no record opens EMPTY, with no status chosen: nothing is
+     assumed, so nothing unknown can be saved as if it were known. */
   fillStateForm(draft || real || {});
   document.getElementById('stateFormTitle').textContent = p.name;
   document.getElementById('stateFormIntro').textContent = real
     ? (real.updatedAt ? 'Last recorded ' + formatDate(real.updatedAt) + '. ' : '') + 'Saving replaces it on this device.'
-    : p.name + ' is showing sample state. What you save here replaces it, on this device.';
+    : 'No state is recorded for ' + p.name + ' yet. What you save here is kept on this device.';
   const footer = document.getElementById('stateFooter');
   if(footer){
     footer.innerHTML = real
       ? '<button class="btn-secondary btn-danger btn-block" onclick="clearProjectState()">Clear recorded state</button>' +
-        '<div class="field-hint">The project goes back to sample state on this device. Its tool links stay.</div>'
+        '<div class="field-hint">The project goes back to Needs update on this device. Its tool links stay.</div>'
       : '';
   }
   clearFieldError('stateStatus');
@@ -3138,7 +3208,7 @@ async function clearProjectState(){
   if(!p || !projectStates[id]) return;
   const ok = await confirmAction({
     title: 'Clear the recorded state?',
-    message: p.name + ' will show sample state again until you record a new one. Its tool links are not affected.',
+    message: p.name + ' will show Needs update again until you record a new state. Its tool links are not affected.',
     confirmLabel: 'Clear state',
     destructive: true
   });
@@ -3148,7 +3218,7 @@ async function clearProjectState(){
   discardDraft(KEYS.stateDraft, editingStateId);
   finishStateForm();
   renderMissionControl();
-  toast(p.name + ' is back to sample state', 'success');
+  toast(p.name + ' has no recorded state now', 'success');
 }
 
 /* ---------- private links ---------- */
@@ -3167,8 +3237,9 @@ function openLinksForm(id){
   const privacy = document.getElementById('linksPrivacy');
   if(privacy){
     privacy.innerHTML = '<span class="notice-mark" aria-hidden="true">' + svg(LOCK_ICON, 17) + '</span>' +
-      '<span><strong>Only on this device</strong>These links are never written into the code, the repository ' +
-      'or the offline cache. A backup file you export from Settings does include them, so keep that file to yourself.</span>';
+      '<span><strong>Only on this device</strong>These links stay in this browser. They are never written into ' +
+      'the code, the repository, the offline cache or a backup file. Other web apps served from ' +
+      escapeHtml(siteHost()) + ' can read this browser storage too: the app\'s prefix keeps names apart, not access.</span>';
   }
   const fallback = document.getElementById('linksFallback');
   if(fallback){
@@ -3259,13 +3330,101 @@ async function removeProjectLinks(){
   toast('Links removed from this device', 'success');
 }
 
-/* ---------- Mission Control claims the foundation's four seams ---------- */
+/* =========================================================
+   BACKUP BOUNDARY — what may leave this device in a file
+   ---------------------------------------------------------
+   A backup carries recorded project states and nothing else,
+   by construction: the file is built from an allowlist of
+   fields, never from whatever happens to be in storage.
+   Private tool links, unsaved editor drafts, recovery
+   snapshots, device preferences and records this version
+   cannot read all stay on the device. Keeping an unreadable
+   record here is lossless storage; it is not permission to
+   send that record anywhere.
+
+   Reading one back is the mirror image: only project states
+   are accepted, each rebuilt from the same allowlist, merged by
+   id with the newer record winning. Tool links in a backup made
+   by 0.1.0 are ignored — never restored, merged, or used to
+   delete the links on this device — and the import says so.
+   ========================================================= */
+const BACKUP_FIELDS = ['id', 'status', 'needsQa', 'needsDecision', 'blocker', 'version', 'phase',
+                       'currentTask', 'nextAction', 'updatedAt'];
+const PRIVATE_BACKUP_KEYS = [KEYS.privateLinks, KEYS.linksDraft];
+
+/* One record, rebuilt field by field from the allowlist. Anything a record
+   carries beyond it — a link, a future field, an injected value — is dropped. */
+function backupRecord(raw){
+  const clean = normalizeState(raw);
+  if(!clean) return null;
+  const out = {};
+  BACKUP_FIELDS.forEach(f => { out[f] = clean[f]; });
+  return out;
+}
+
+function backupMissionControl(){
+  const records = PROJECT_REGISTRY.map(p => projectStates[p.id]).filter(Boolean)
+    .map(backupRecord).filter(Boolean);
+  const data = {};
+  data[KEYS.projectStates] = JSON.stringify(records);
+  return data;
+}
+
+/* Does a value in an old backup actually hold a link? The note says so only
+   when one is there: an empty list, or a draft with blank fields, is not. */
+function carriesLink(raw){
+  let v = raw;
+  if(typeof raw === 'string'){ try{ v = JSON.parse(raw); }catch(e){ return false; } }
+  const walk = x => Array.isArray(x) ? x.some(walk)
+    : (x && typeof x === 'object')
+      ? Object.keys(x).some(k => (/Url$/.test(k) && typeof x[k] === 'string' && x[k].trim() !== '') || walk(x[k]))
+      : false;
+  return walk(v);
+}
+
+function restoreMissionControl(data){
+  const result = { added: 0, updated: 0, collections: 0, skipped: 0, notes: [] };
+  const has = k => Object.prototype.hasOwnProperty.call(data, k);
+  const privateFound = PRIVATE_BACKUP_KEYS.some(k => has(k) && carriesLink(data[k]));
+
+  let incoming = null;
+  if(has(KEYS.projectStates)){
+    const raw = data[KEYS.projectStates];
+    if(Array.isArray(raw)) incoming = raw;
+    else if(typeof raw === 'string'){ try{ incoming = JSON.parse(raw); }catch(e){ incoming = null; } }
+  }
+  if(Array.isArray(incoming)){
+    result.collections = 1;
+    incoming.forEach(r => {
+      const rec = backupRecord(r);
+      if(!rec){ result.skipped++; return; }
+      const cur = projectStates[rec.id];
+      if(!cur){ projectStates[rec.id] = rec; result.added++; }
+      else if((rec.updatedAt || '') > (cur.updatedAt || '')){ projectStates[rec.id] = rec; result.updated++; }
+    });
+    if(result.added || result.updated) persistProjectStates();
+  }
+
+  if(privateFound){
+    result.notes.push('This file holds private tool links from an older version. They were not imported: ' +
+                      'the ChatGPT and Claude links on this device are unchanged.');
+  }
+  if(result.skipped){
+    result.notes.push(result.skipped + (result.skipped === 1 ? ' record in the file could not be read and was'
+                                                             : ' records in the file could not be read and were') + ' skipped.');
+  }
+  return result;
+}
+
+/* ---------- Mission Control claims the foundation's seams ---------- */
 Domain.tabIcons = {
   home:     '<path d="M8 1.8 13.6 5v6L8 14.2 2.4 11V5Z"/><path d="M2.4 5 8 8.2 13.6 5M8 8.2v6"/>',
   settings: '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6"/>'
 };
 Domain.hydrate = hydrateMissionControl;
 Domain.render  = renderMissionControl;
+Domain.backupData  = backupMissionControl;
+Domain.restoreData = restoreMissionControl;
 Domain.wire    = () => {
   ['stateOverlay', 'linksOverlay'].forEach(id => {
     const ov = document.getElementById(id);
@@ -3285,6 +3444,7 @@ Domain.wire    = () => {
    ========================================================= */
 function openDataSettings(){
   renderDataStats();
+  renderImportNotes([]);
   pushOverlayHistory();
   openOverlay('dataOverlay');
 }
@@ -3312,18 +3472,31 @@ function renderDataStats(){
                  statHtml(bytes < 1024 ? bytes + ' B' : (bytes / 1024).toFixed(1) + ' KB', 'Stored');
 }
 
-function exportData(){
-  const payload = {
+/* What a backup file carries. When the product declares an allowlist
+   (Domain.backupData), that is the whole of it; otherwise every stored key
+   except the recovery snapshots, the generic behaviour. Built apart from the
+   download so what leaves the device can be checked without making a file. */
+function buildBackup(){
+  const data = typeof Domain.backupData === 'function' ? Domain.backupData() : allStoredData();
+  return {
     app: APP_CONFIG.id,
     version: APP_VERSION,
     schema: DATA_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    data: {}
+    data: data
   };
+}
+function allStoredData(){
+  const out = {};
   Store.listKeys().forEach(k => {
     if(k.indexOf(KEYS.backupPrefix) === 0) return;
-    payload.data[k] = Store.get(k);
+    out[k] = Store.get(k);
   });
+  return out;
+}
+
+function exportData(){
+  const payload = buildBackup();
   try{
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -3355,15 +3528,18 @@ function importData(input){
       toast('That backup belongs to a different app.', 'error'); return;
     }
 
-    /* Merge whatever collections the backup itself declares, rather than a
-       hard-coded list of keys. That is what lets a product replace the demo
-       without rewriting import — and without import silently succeeding
-       while restoring nothing, which is the failure this shape prevents.
+    /* A product that declares its own restore (Domain.restoreData) decides
+       what it accepts. Otherwise merge whatever collections the backup itself
+       declares, rather than a hard-coded list of keys — without import ever
+       silently succeeding while restoring nothing.
 
        An array of records carrying an `id` merges by id, newest `updatedAt`
        winning. Anything else is written only when this device has no value
        for it, so an old backup can never overwrite newer state. */
-    const result = mergeBackup(payload.data);
+    const result = typeof Domain.restoreData === 'function'
+      ? Domain.restoreData(payload.data)
+      : mergeBackup(payload.data);
+    renderImportNotes(result.notes);
     if(result.collections === 0){
       toast('That backup contains no records this app recognises.', 'warning');
       return;
@@ -3375,6 +3551,18 @@ function importData(input){
   };
   reader.onerror = () => toast('Could not read that file.', 'error');
   reader.readAsText(file);
+}
+
+/* What an import did not do, said where it stays on screen: a toast can be
+   missed, and this is the part that matters. */
+function renderImportNotes(notes){
+  const el = document.getElementById('importNotes');
+  if(!el) return;
+  const list = (notes || []).filter(Boolean);
+  el.innerHTML = list.length
+    ? '<div class="notice notice-warning"><span aria-hidden="true">' + warnIcon(17) + '</span><span>' +
+      list.map(n => escapeHtml(n)).join('<br>') + '</span></div>'
+    : '';
 }
 
 /* Domain-agnostic merge. Knows about records — a thing with an `id` and

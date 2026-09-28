@@ -161,12 +161,14 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     version, phase, work and next step live in `data.projectStates` on the
     device. ChatGPT and Claude links live only in `data.privateLinks`. Never
     give a private link a default in source; never put state in the registry.
-31. **Sample state is never mistaken for fact.** It says "sample" wherever it
-    appears, carries no version and no phase, and a project on sample state
-    opens its editor empty. Never invent a version or phase for a real project.
+31. **No record is no state.** A project nobody has recorded says "Needs
+    update", has a `null` status and no attention, counts toward Projects and
+    toward nothing else, and opens its editor empty. Never fill in a status,
+    a version, a phase or any example text for a real project, and never say
+    "Nothing needs you" while any state is unknown.
 32. **Status and attention stay separate, and derived values stay derived.**
     A project is blocked exactly when a blocker is written. Attention, the
-    signal, the crew, the counts and the sample flag are computed on read and
+    signal, the crew, the counts and `recorded` are computed on read and
     never stored.
 33. **Every destination passes the link rule, twice.** `parseToolLink` at save
     and again at render. Tools are real links (`noopener noreferrer` for the
@@ -189,3 +191,20 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
 39. **Dev server on port 8398.** Port 8391 is shared by other projects on this
     machine, and one localhost origin means their service workers replace
     each other.
+40. **A backup is an allowlist, both ways.** Export only what
+    `backupMissionControl` builds from `BACKUP_FIELDS`: recorded project
+    states. Never private links, drafts, preferences, recovery snapshots or
+    unreadable records — keeping unknown data locally is not permission to
+    export it. Import accepts only project states, rebuilt from the same
+    allowlist, and never restores, merges or deletes private links; say so
+    when a file held some. Contract 26 guards all of it.
+41. **Say the shared origin plainly.** Every app on `morecobrax-dot.github.io`
+    shares one browser origin. The storage prefix keeps names apart, not
+    access. Never describe it as isolation, never claim how iOS Safari or a
+    Home Screen app treats storage without evidence from a device, and never
+    claim a link opens the ChatGPT or Claude app on the strength of a browser
+    test.
+42. **The registry has no ceiling.** The six required projects come first;
+    a new record needs no other change, and a look it does not have yet falls
+    back to `generic`. Never write code or a test that assumes six is the
+    maximum.
