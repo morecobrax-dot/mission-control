@@ -165,9 +165,25 @@ The product's own rules, on top of everything above.
   before anything else: quiet counts, then one line — what is blocked,
   waiting on a decision or ready for QA, in that order, each a one-line
   button to its brief, and how many states are unknown. The world follows at
-  once and is the focus: the top stays compact so every platform and label
+  once and is the focus: the top stays compact so every place and label
   is on the first screen of a phone, a phone on its side and an iPad, above
   the tab bar.
+- **A world you look at, not one you fly.** A fixed isometric view: no orbit,
+  no zoom gesture. Tap focuses, Overview shows everything, a drag inside the
+  world looks around within its bounds, and the page scrolls everywhere
+  else. A drag never opens anything. Moves are short and can be interrupted;
+  with Reduce Motion they are instant.
+- **One status per label.** A label says the project's name and one status —
+  what needs you, if anything does — in words and a shape. The brief says the
+  rest. Labels never shrink as projects are added; the world pans instead. A
+  label that cannot be read without covering another is not shown, and cannot
+  be tapped.
+- **Places, not progress bars.** Each project's place says what the project
+  is, drawn from what it really is. Nothing in it counts, fills or levels up;
+  no building appears because a project is further along.
+- **The crew shows the state and nothing else.** A worker's station and pose
+  come from the state alone. No record, no worker. A release-ready worker
+  raises an arm once, when it becomes ready — never again on a reload.
 - **One focus.** One tap focuses a project, a second opens its brief. The
   focus is remembered, because it is what you come back to.
 - **Unknown is not a status.** A project with no recorded state says "Needs
@@ -201,7 +217,9 @@ The product's own rules, on top of everything above.
 - **Actions appear only when they work.** A tool that is not set up is not
   shown; the brief says where to set it up instead.
 - **Motion carries meaning or nothing.** Only a project that needs you
-  pulses, and only a crew at work moves. Reduced motion stops both.
+  breathes, and only a crew with work to do moves; blocked stands still and
+  paused sits. Motion settles a minute after you last touch the world, and
+  stops whenever it cannot be seen. Reduced motion stops all of it.
 
 ## Real-device QA before shipping
 

@@ -2,3 +2,6 @@
 # this repository and its Pages site are public: committing them would ship
 # someone else's artwork. Keep them on this machine.
 references/visual/
+
+# The vendor script's scratch folder: scripts/vendor-three.js makes and removes it.
+.vendor-build/

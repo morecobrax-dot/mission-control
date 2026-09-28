@@ -1,0 +1,3 @@
+# The vendored library is held to its sha256 (contract 30): its bytes must
+# never change on checkout, so it is never given Windows line endings.
+vendor/three/three.min.js -text

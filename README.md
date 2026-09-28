@@ -26,12 +26,16 @@ and works offline.
   `PROJECT-STATUS.json` keeps itself up to date: Mission Control reads it when
   you open the app, when you come back to it, and when you tap Refresh. See
   *Status from repositories* below.
-- **Project field.** Every project in the registry — six to start, and a new
-  record needs no other change — as isometric platforms, drawn from data.
-  Each shows its name, a landmark, its lifecycle status, a beacon lit in its
-  signal colour, a floating marker when it needs you, and a small crew whose
-  pose follows its state. Tap once to focus a project; tap again (or press
-  Enter) for its brief.
+- **Project world.** Every project in the registry — six to start, and a new
+  record needs no other change — as a miniature 3D place: a training hall and
+  track, a scheduling studio, a library corner, a vault and ledger, a
+  launchpad, a sushi counter, or a generic module. Each has its name and one
+  status on its label (what needs you comes first), a beacon lit only by a
+  known state, and a worker whose station and pose follow that state; a
+  project with no recorded state has no worker. Tap once to bring a project
+  into focus; tap again (or press Enter) for its brief. Drag inside the world
+  to look around; Overview shows every project again. Where WebGL 2 is not
+  available, or the world fails, the flat isometric field is used instead.
 - **Quick brief.** Purpose, version, phase, status, current work, next action,
   the blocker if there is one, and when it was last updated — plus the tools
   that are actually set up. On a phone it is a page; on an iPad in landscape
@@ -200,12 +204,16 @@ npm run config:sync   # write derived values into the static files
 
 ```
 index.html              the whole app: tokens, shell, engine, Mission Control
-sw.js                   offline shell; cache name derived from APP_CONFIG
+field/world.js          the 3D world's layout, camera, gestures, crews and places, as data
+field/render3d.js       the 3D world, drawn with Three.js behind the field seam
+vendor/three/           Three.js 0.186.1, a pinned subset, with its licence and provenance
+sw.js                   offline shell and APP_FILES; cache name derived from APP_CONFIG
 manifest.webmanifest    install metadata, derived from APP_CONFIG
 icon-192/512.png        app icons
 scripts/config.js       sync / verify static files against APP_CONFIG
 scripts/contamination.js domain-residue guard
 scripts/secrets.js      private-link and credential guard
+scripts/vendor-three.js the one way vendor/three is made (needs the network; never in verify)
 test/harness.js         loads the app into a Node vm with a DOM stub
 test/contracts.js       the contract suite
 test/run.js             the runner
@@ -214,7 +222,7 @@ test/run.js             the runner
 ## The rest of the documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — how the pieces fit, the product model,
-  and the seam a 3D field will plug into.
+  and the 3D field behind its seam.
 - [PRODUCT-DESIGN.md](PRODUCT-DESIGN.md) — the UX and visual rules, including
   Mission Control's own.
 - [CLAUDE.md](CLAUDE.md) — development method for AI coding sessions.

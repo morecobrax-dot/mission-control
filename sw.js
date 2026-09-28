@@ -16,16 +16,23 @@
  */
 
 /* APP-CACHE-BEGIN */
-const CACHE_NAME = 'mission-control-v0.2.1';
+const CACHE_NAME = 'mission-control-v0.3.0';
 /* APP-CACHE-END */
 
+/* The shell, then APP_FILES from index.html (the 3D world's modules and
+ * the Three.js subset), written here by `npm run config:sync`. */
+/* APP-FILES-BEGIN */
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './field/world.js',
+  './field/render3d.js',
+  './vendor/three/three.min.js'
 ];
+/* APP-FILES-END */
 
 self.addEventListener('install', event => {
   event.waitUntil(

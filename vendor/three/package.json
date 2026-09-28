@@ -1,0 +1,53 @@
+{
+  "type": "module",
+  "name": "three",
+  "version": "0.186.1",
+  "license": "MIT",
+  "source": "https://registry.npmjs.org/three/-/three-0.186.1.tgz",
+  "integrity": "sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==",
+  "build": {
+    "tool": "esbuild@0.25.10",
+    "entry": "package/build/three.module.js",
+    "args": [
+      "--bundle",
+      "--format=esm",
+      "--minify",
+      "--target=es2020,safari15",
+      "--legal-comments=none"
+    ],
+    "exports": [
+      "REVISION",
+      "WebGLRenderer",
+      "Scene",
+      "OrthographicCamera",
+      "Group",
+      "Mesh",
+      "BufferGeometry",
+      "Float32BufferAttribute",
+      "BoxGeometry",
+      "CylinderGeometry",
+      "ConeGeometry",
+      "SphereGeometry",
+      "TorusGeometry",
+      "RingGeometry",
+      "PlaneGeometry",
+      "CircleGeometry",
+      "MeshLambertMaterial",
+      "MeshPhongMaterial",
+      "MeshBasicMaterial",
+      "CanvasTexture",
+      "Color",
+      "Vector3",
+      "Matrix4",
+      "Quaternion",
+      "Euler",
+      "HemisphereLight",
+      "DirectionalLight",
+      "AdditiveBlending",
+      "SRGBColorSpace"
+    ]
+  },
+  "file": "three.min.js",
+  "bytes": 542546,
+  "sha256": "5cf0665111fd7f5929976264e310cba4c7cdbc5b34f7fa78eff84c3ba6dac557"
+}

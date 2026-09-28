@@ -713,7 +713,7 @@ function testMobile(){
     /The visible mark can be small; the target never is/.test(style));
 
   sub('the product\'s own targets meet the same floor');
-  ['.block', '.tool-link', '.focus-bar', '.status-option', '.attn-pill'].forEach(sel => {
+  ['.block', '.tool-link', '.focus-bar', '.status-option', '.attn-pill', '.world-label', '.world-overview'].forEach(sel => {
     const re = new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\{[^}]*min-height:\\s*var\\(--touch-min\\)');
     T(sel + ' meets the floor', re.test(style));
   });
@@ -1804,25 +1804,26 @@ function testHub(){
    number of projects, drawn from data.
    ========================================================= */
 function testFieldSeam(){
-  section('CONTRACT 24 — the field: one renderer behind a 3D-ready seam, any number of projects');
+  section('CONTRACT 24 — the field: one renderer at a time behind one seam, any number of projects');
   const app = H.loadApp();
   const c = app.ctx, d = app.dom.document;
   const src = js();
 
   sub('the seam');
-  T('the renderer is exactly mount, draw and focus',
-    Object.keys(c.IsoField).filter(k => typeof c.IsoField[k] === 'function').sort().join() === 'draw,focus,mount');
-  T('the hub draws through the seam', /Field\.draw\(fieldScene\(views\)\)/.test(src) && !/IsoField\.draw\(/.test(src));
-  const renderer = (src.match(/PROJECT FIELD — the 2\.5D renderer[\s\S]*?\n   HUB\n/) || [''])[0];
+  const calls = o => Object.keys(o).filter(k => typeof o[k] === 'function').sort().join();
+  T('the flat renderer is exactly mount, draw, focus and unmount', calls(c.IsoField) === 'draw,focus,mount,unmount');
+  T('and so is the world renderer', calls(c.WorldField) === 'draw,focus,mount,unmount');
+  T('the hub draws through the seam', /Field\.draw\(fieldScene\(views\)\)/.test(src) && !/(IsoField|WorldField)\.draw\(/.test(src));
+  const renderer = (src.match(/PROJECT FIELD — one renderer at a time[\s\S]*?\n   HUB\n/) || [''])[0];
   T('the renderer section is found', renderer.length > 2000);
   T('the renderer never reads or writes storage', !/Store\./.test(stripComments(renderer)));
   T('the renderer never changes the selection', !/selectedId\s*=(?!=)/.test(stripComments(renderer)));
   const scene = c.fieldScene(c.allViews());
   T('the scene carries only what drawing needs', Object.keys(scene[0]).sort().join() ===
-    'attention,id,name,recorded,selected,signal,status,theme,workerState');
-  T('no canvas and no dependency in Phase 1',
+    'attention,badge,id,name,recorded,selected,signal,spoken,status,theme,workerState');
+  T('the page adds no script file and no package dependency: the world is a module the page imports',
     !/<canvas/.test(H.readApp()) && !/<script[^>]*\bsrc=/.test(H.readApp()) &&
-    Object.keys(H.readPkg().dependencies || {}).length === 0);
+    Object.keys(H.readPkg().dependencies || {}).length === 0 && Object.keys(H.readPkg().devDependencies || {}).length === 0);
 
   sub('platforms are drawn from data');
   T('every landmark is a list of known primitives', Object.keys(c.LANDMARKS).every(k =>
@@ -1901,7 +1902,8 @@ function testFieldSeam(){
     /\.block\.worker-working \.worker\{[\s\S]{0,160}animation: worker-bob/.test(css()));
   T('which the global reduced-motion rule switches off',
     /@media \(prefers-reduced-motion: reduce\)\{[\s\S]{0,200}animation: none !important/.test(css()));
-  T('no script-driven animation loop', !/requestAnimationFrame\(|setInterval\(/.test(stripComments(src)));
+  T('the page script runs no animation loop: the world\'s one loop lives in its module',
+    !/requestAnimationFrame\(|setInterval\(/.test(stripComments(src)));
 
   sub('a seventh project needs no new code');
   const more = H.loadApp();
@@ -1967,8 +1969,9 @@ function testSecrets(){
   T('the worker ignores other origins, so an opened link is never cached',
     /new URL\(req\.url\)\.origin !== location\.origin/.test(sw));
   const assets = (sw.match(/const ASSETS = \[([\s\S]*?)\];/) || ['', ''])[1];
-  T('the worker precaches the app shell and nothing else',
-    assets.replace(/\s+/g, '') === "'./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'");
+  T('the worker precaches the shell and the files the app loads, and nothing else',
+    assets.replace(/\s+/g, '') === "'./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'," +
+      H.loadApp().ctx.APP_FILES.map(f => "'" + f + "'").join(','));
   T('no private-link field has a default in source', !/(chatgptUrl|claudeUrl)\s*:\s*['"]/.test(src));
   T('no ChatGPT or Claude address is written into the app script at all',
     !/['"`]https?:\/\/(?:chatgpt\.com|chat\.openai\.com|claude\.ai)/i.test(stripComments(src)));
@@ -1989,7 +1992,8 @@ function testSecrets(){
   const fsx = require('fs'), px = require('path');
   const sources = ['index.html', 'sw.js', 'manifest.webmanifest', 'package.json', 'README.md', 'ARCHITECTURE.md', 'CLAUDE.md',
     'PRODUCT-DESIGN.md', 'test/contracts.js', 'test/harness.js', 'test/run.js', 'scripts/config.js',
-    'scripts/contamination.js', 'scripts/secrets.js', 'scripts/project-status.js'];
+    'scripts/contamination.js', 'scripts/secrets.js', 'scripts/project-status.js', 'scripts/vendor-three.js',
+    'field/world.js', 'field/render3d.js', 'field/package.json', 'vendor/three/three.min.js', 'vendor/three/package.json'];
   const hidden = [];
   sources.forEach(f => {
     const s = fsx.readFileSync(px.join(H.ROOT, f), 'utf8');
@@ -2783,6 +2787,226 @@ function testRefresh(){
   });
 }
 
+/* =========================================================
+   CONTRACT 30 — THE WORLD
+   The 3D field is two modules and a vendored library outside
+   the page script, so this contract imports them directly:
+   the library is the pinned build and nothing else, the world
+   decides nothing the app owns, every place and crew state is
+   whole, the layout and camera keep every project reachable at
+   a readable size, and a touch is a tap or a pan, never both.
+   ========================================================= */
+async function testWorld(){
+  section('CONTRACT 30 — the world: pinned, presentation-only, whole, reachable');
+  const fsx = require('fs'), px = require('path'), crypto = require('crypto'), zlib = require('zlib');
+  const { pathToFileURL } = require('url');
+  const at = p => px.join(H.ROOT, p);
+  const read = p => fsx.readFileSync(at(p), 'utf8');
+  const app = H.loadApp();
+  const c = app.ctx;
+
+  sub('the library is the pinned build, served from here');
+  const prov = JSON.parse(read('vendor/three/package.json'));
+  const lib = fsx.readFileSync(at('vendor/three/three.min.js'));
+  T('the vendored file is the one its provenance describes',
+    crypto.createHash('sha256').update(lib).digest('hex') === prov.sha256 && lib.length === prov.bytes, prov.sha256);
+  T('from the pinned release and tarball', prov.version === '0.186.1' && /^sha512-/.test(prov.integrity) &&
+    prov.source === 'https://registry.npmjs.org/three/-/three-0.186.1.tgz');
+  T('built the way the vendor script builds it', /--target=es2020,safari15/.test(prov.build.args.join(' ')) &&
+    read('scripts/vendor-three.js').indexOf("const VERSION = '" + prov.version + "'") !== -1 &&
+    read('scripts/vendor-three.js').indexOf(prov.integrity) !== -1);
+  T('its licence travels with it', /MIT License/.test(read('vendor/three/LICENSE')) && /Three\.js Authors/.test(lib.slice(0, 400).toString()));
+  T('it parses on Safari 15: no class static blocks', !/static\s*\{/.test(lib.toString()));
+  const gz = zlib.gzipSync(lib, { level: 9 }).length;
+  const W = await import(pathToFileURL(at('field/world.js')).href);
+  T('it fits the transfer budget, gzipped', gz <= W.BUDGET.threeGzipBytes, gz + ' bytes');
+  const THREE = await import(pathToFileURL(at('vendor/three/three.min.js')).href);
+  T('it exports exactly what the world imports', Object.keys(THREE).sort().join() === prov.build.exports.slice().sort().join());
+  T('and it is release 186', THREE.REVISION === '186');
+
+  sub('the app loads only files it ships, and ships them for offline');
+  T('every file the app loads exists', c.APP_FILES.every(f => fsx.existsSync(at(f))), c.APP_FILES.join(', '));
+  T('the world module is one of them', c.APP_FILES.indexOf(c.WORLD_MODULE) !== -1);
+  const r3 = read('field/render3d.js'), wj = read('field/world.js');
+  const imports = s => [...s.matchAll(/\bfrom\s+'([^']+)'/g)].map(m => m[1]);
+  T('the renderer imports only the library and the world', imports(r3).sort().join() === '../vendor/three/three.min.js,./world.js');
+  T('the world imports nothing', imports(wj).length === 0 && !/\bimport\s*\(/.test(wj));
+  T('each module is precached by its path', c.APP_FILES.indexOf('./field/world.js') !== -1 && c.APP_FILES.indexOf('./vendor/three/three.min.js') !== -1);
+
+  sub('the world decides nothing the app owns');
+  const code = s => stripComments(s);
+  T('it never touches storage', !/localStorage|sessionStorage|indexedDB|\bStore\b/.test(code(r3) + code(wj)));
+  T('it never fetches', !/\bfetch\(|XMLHttpRequest|WebSocket/.test(code(r3) + code(wj)));
+  T('it never changes the selection: a tap is reported, the next draw says what is selected',
+    !/selectedId|tapProject|selectProject/.test(code(r3)) && /H\.onTap\(item\.id\)/.test(r3));
+  T('it never decides a status: colours come from the button the app classed',
+    !/SIGNALS|attentionOf|needsQa|needsDecision/.test(code(r3)) && /rawToken\(b, '--sig'\)/.test(r3));
+  T('the camera is never stored', !/setItem|Store\.set/.test(code(r3)));
+  T('no literal colour in either module', !/#[0-9a-fA-F]{3,8}\b|0x[0-9a-fA-F]{6}\b/.test(code(r3) + code(wj)));
+  T('one loop: every frame request schedules the same tick',
+    (r3.match(/requestAnimationFrame\(/g) || []).length === (r3.match(/requestAnimationFrame\(tick\)/g) || []).length &&
+    !/setInterval\(/.test(r3));
+  T('a move is instant under Reduce Motion', /if\(!S\.frame \|\| instant \|\| rm\(\) \|\| !awake\(\)\)/.test(r3));
+  T('nothing draws while hidden, covered, off screen or lost',
+    /function awake\(\)\{ return !S\.destroyed && !S\.lost && !S\.failed && S\.onscreen && !S\.covered && !document\.hidden; \}/.test(r3));
+  T('a lost context gets one grace period, then the flat field, never a retry',
+    /LOST_GRACE_MS = 2500/.test(r3) && /fail\('context-lost'\)/.test(r3) && /if\(worldStage !== 'idle'\) return;/.test(js()));
+  T('its own context listeners go on after Three.js\'s',
+    r3.indexOf("listen(canvas, 'webglcontextlost'") > r3.indexOf('new THREE.WebGLRenderer('));
+
+  sub('every token the world names is on the page');
+  const style = css();
+  const missing = Object.values(W.PALETTE).filter(t => style.indexOf(t + ':') === -1);
+  T('every palette entry is a design token', missing.length === 0, missing.join(', '));
+  const colours = new Set(Object.keys(W.PALETTE).concat(['tint', 'terrain']));
+  const parts = [];
+  Object.keys(W.ENVIRONMENTS).forEach(k => W.ENVIRONMENTS[k].parts.forEach(p => parts.push(['place ' + k, p])));
+  Object.keys(W.STATIONS).forEach(k => W.STATIONS[k].parts.forEach(p => parts.push(['station ' + k, p])));
+  Object.keys(W.HAND_PROPS).forEach(k => W.HAND_PROPS[k].forEach(p => parts.push(['hand ' + k, p])));
+  const bad = parts.filter(([, p]) => !colours.has(p.c) || W.SHAPES.indexOf(p.s) === -1 || W.FINISHES.indexOf(p.m) === -1 ||
+    !p.p.every(Number.isFinite) || !p.d.every(v => v === null || v === undefined || (Number.isFinite(v) && v > 0)));
+  T('every part is a known shape, finish and colour, with real dimensions', bad.length === 0,
+    bad.slice(0, 3).map(b => b[0] + ' ' + JSON.stringify(b[1])).join(' | '));
+  T('a station is the same for every project: no project colour', parts.filter(([w, p]) => !/^place/.test(w) && (p.c === 'tint' || p.c === 'terrain')).length === 0);
+  T('glow is only ever the light of a place', parts.filter(([, p]) => p.m === 'glow').every(([, p]) => ['window', 'screen', 'tint', 'paper'].indexOf(p.c) !== -1));
+
+  sub('every project has a place, and a place stays on its plinth');
+  const themes = [...new Set(c.PROJECT_REGISTRY.map(p => c.projectView(p.id).theme))];
+  T('each registered look has its own place', themes.every(t => !!W.ENVIRONMENTS[t]), themes.join(','));
+  T('an unknown look gets the generic place', W.environmentFor('not-a-theme-yet') === W.ENVIRONMENTS.generic);
+  Object.keys(W.ENVIRONMENTS).forEach(k => {
+    const e = W.ENVIRONMENTS[k];
+    T(k + ': a primary structure and a few props', e.parts.length >= 5);
+    T(k + ': every part stands on the plinth', e.parts.every(p => Math.abs(p.p[0]) <= W.TILE.reach && Math.abs(p.p[2]) <= W.TILE.reach));
+    T(k + ': clear of the beacon at the right corner', e.parts.every(p => Math.hypot(p.p[0] - W.BEACON.x, p.p[2] - W.BEACON.z) > 0.9));
+    T(k + ': room for the crew in front', Math.abs(e.crew.x) <= W.TILE.reach && Math.abs(e.crew.z) <= W.TILE.reach && e.crew.x + e.crew.z > 1.5);
+  });
+  T('no place is a progress bar: nothing counts, measures or fills', !/progress|percent|complete|level/i.test(code(wj)));
+
+  sub('the crew: every state has a station and a pose; unknown has neither');
+  const workers = [...new Set(Object.keys(c.SIGNALS).map(k => c.SIGNALS[k].worker))];
+  T('every worker the app derives is one the world knows', workers.every(w => w in W.CREW), workers.join(','));
+  T('no record, no crew: nothing is known to be happening there', W.CREW.unrecorded === null && W.poseFor('unrecorded', 0, null) === null);
+  workers.filter(w => w !== 'unrecorded').forEach(w => {
+    T(w + ': a station', !!W.STATIONS[W.CREW[w].station]);
+    const still = W.poseFor(w, 0, null);
+    T(w + ': a finite still pose, the same every time', !!still && Object.values(still).every(v => typeof v === 'boolean' || Number.isFinite(v)) &&
+      JSON.stringify(still) === JSON.stringify(W.poseFor(w, 0, null)));
+    T(w + ': nothing moves under Reduce Motion', W.crewLoops(w, true) === false);
+  });
+  T('blocked is halted, paused is still, release ready does not loop',
+    !W.crewLoops('warning', false) && !W.crewLoops('quiet', false) && !W.crewLoops('celebrating', false));
+  T('building, QA, decision, stable and planning move while seen',
+    ['working', 'inspecting', 'waiting', 'idle', 'surveying'].every(w => W.crewLoops(w, false)));
+  T('paused sits', W.poseFor('quiet', 0, null).seated === true && W.poseFor('working', 0, null).seated === false);
+  T('the acknowledgment peaks mid-way and settles',
+    W.poseFor('celebrating', 0, 0.5).armR < W.poseFor('celebrating', 0, null).armR - 1 &&
+    Math.abs(W.poseFor('celebrating', 0, 1).armR - W.poseFor('celebrating', 0, null).armR) < 1e-9);
+  T('it plays only on a change, never on a first draw or reload',
+    /if\(!S\.first && prev\.workerState && prev\.workerState !== 'celebrating' && item\.workerState === 'celebrating' && !rm\(\)\) t\.celebrate = now;/.test(r3));
+
+  sub('layout: every project reachable, none shrunk to nothing, no ceiling');
+  const shapes = [[358, 512], [341, 335], [590, 142], [706, 568], [590, 778], [1200, 700]];
+  const overlapping = tiles => {
+    const S = W.SILHOUETTE;
+    for(let i = 0; i < tiles.length; i++) for(let j = i + 1; j < tiles.length; j++){
+      const a = W.toView(tiles[i].u, tiles[i].v, 0), b = W.toView(tiles[j].u, tiles[j].v, 0);
+      if(Math.abs(a.x - b.x) < S.halfW * 2 - 1e-6 && Math.abs(a.y - b.y) < S.plinthBottom - S.top - 1e-6) return true;
+    }
+    return false;
+  };
+  let clean = true, reading = true, readable = true, framed = true;
+  [1, 2, 3, 5, 6, 7, 9, 12, 20, 50].forEach(n => shapes.forEach(([w, h]) => {
+    const pick = W.chooseLayout(n, w, h);
+    const lay = W.layoutTiles(n, pick.cols, pick.stagger);
+    if(lay.tiles.length !== n || overlapping(lay.tiles)) clean = false;
+    for(let i = 1; i < n; i++){
+      const p = lay.tiles[i - 1], q = lay.tiles[i];
+      if(q.row < p.row || (q.row === p.row && q.u <= p.u)) reading = false;
+    }
+    const b = W.viewBounds(lay.tiles), f = W.overviewFrame(b, w, h);
+    if(!(f.scale >= W.WORLD.minScale) || !Number.isFinite(f.x + f.y)) readable = false;
+    if(f.scale > W.WORLD.minScale + 1e-9){
+      const tl = W.toScreen(f, b.minX, b.minY, w, h), br = W.toScreen(f, b.maxX, b.maxY, w, h);
+      if(tl.x < -0.5 || tl.y < -0.5 || br.x > w + 0.5 || br.y + W.WORLD.labelPx > h + 0.5) framed = false;
+    }
+  }));
+  T('tiles never overlap, from one project to fifty, on every screen', clean);
+  T('tiles keep registry order: left to right, then down', reading);
+  T('the overview never shrinks a tile below the readable scale; a large world pans instead', readable);
+  T('an overview that fits shows every tile and its label room', framed);
+  T('labels are type-scale text, never scaled with the world', /\.world-name\{[^}]*font-size: var\(--fs-meta\)/.test(style) &&
+    !/scale\(/.test((style.match(/\.world-label\{[^}]*\}/) || [''])[0]));
+
+  sub('the camera stays in the world and goes where it is sent');
+  const lay6 = W.layoutTiles(6, 2, false), b6 = W.viewBounds(lay6.tiles);
+  const over = W.overviewFrame(b6, 358, 512);
+  const far = W.clampFrame({ x: 1e6, y: -1e6, scale: over.scale }, b6);
+  T('a pan cannot lose the world', far.x <= b6.maxX && far.y >= b6.minY);
+  const focus = W.focusFrame(lay6.tiles[5], b6, 358, 512);
+  T('focus comes closer than the overview', focus.scale > over.scale && focus.scale <= W.WORLD.maxScale);
+  const home = W.revealFrame(focus, lay6.tiles[5], b6, 358, 512);
+  T('a tile already in view does not move the camera', home === focus);
+  const moved = W.revealFrame(focus, lay6.tiles[0], b6, 358, 512);
+  const t0 = W.toView(lay6.tiles[0].u, lay6.tiles[0].v, 0), p0 = W.toScreen(moved, t0.x, t0.y, 358, 512);
+  T('keyboard focus on a tile out of view brings it into view', !W.sameFrame(moved, focus) && p0.x > 0 && p0.x < 358 && p0.y > 0 && p0.y < 512);
+  T('a move starts where it is and ends where it was sent',
+    W.sameFrame(W.mixFrame(over, focus, 0), over) && W.sameFrame(W.mixFrame(over, focus, 1), focus));
+  T('the drawing buffer never exceeds two device pixels per CSS pixel', W.pixelRatioFor(3, 390, 520) === 2);
+  T('nor a size a tablet pays for', W.pixelRatioFor(2, 1400, 1000) ** 2 * 1400 * 1000 <= W.WORLD.maxCanvasPixels + 1);
+
+  sub('labels: readable at once, or not there to tap');
+  const shown = W.resolveLabels([
+    { id: 'a', row: 0, x: 10, y: 10, w: 80, h: 40 },
+    { id: 'b', row: 1, x: 50, y: 20, w: 80, h: 40 },
+    { id: 'c', row: 1, x: 200, y: 20, w: 80, h: 40 },
+    { id: 'd', row: 1, x: 900, y: 20, w: 80, h: 40 }], ['a'], 400, 300);
+  T('the selected label wins an overlap', shown.a === true && shown.b === false);
+  T('a clear label shows', shown.c === true);
+  T('a label outside the view is not there', shown.d === false);
+  T('a hidden label or an off-screen tile takes no taps',
+    /\.world-tile\.is-hidden \.world-label\{ opacity: 0; pointer-events: none; \}/.test(style) &&
+    /\.world-tile\.is-off \.world-hit\{ pointer-events: none; \}/.test(style));
+  T('a focused label always shows', /\.world-tile:focus-visible \.world-label\{ opacity: 1;/.test(style));
+
+  sub('a touch is a tap or a pan, never both');
+  let g = W.createArbiter(8);
+  g.down(1, 100, 100);
+  T('movement inside the slop is still a tap', g.move(1, 105, 106) === null && g.up(1).type === 'tap');
+  g.down(1, 100, 100);
+  const start = g.move(1, 100, 109);
+  T('past the slop it becomes a pan, with the whole movement', start.type === 'pan-start' && start.dy === 9);
+  T('and stays one', g.move(1, 100, 101).type === 'pan' && g.up(1).type === 'pan-end');
+  g.down(1, 0, 0);
+  T('a second finger is ignored while the first owns the gesture', g.down(2, 0, 0) === null && g.move(2, 50, 50) === null);
+  T('a cancelled touch is no tap', g.cancel(1).type === 'cancel' && !g.busy());
+  g.down(3, 0, 0); g.move(3, 30, 0);
+  T('a lost capture ends a pan as a pan', g.cancel(3).type === 'pan-end');
+  T('a stray event after the end does nothing', g.up(3) === null && g.move(3, 1, 1) === null);
+  T('the viewport, and only it, takes drags from the page', /\.world-view\{[^}]*touch-action: none/.test(style) &&
+    (style.match(/touch-action: none/g) || []).length === 1);
+  T('the click a drag would make never reaches a button', /listen\(view, 'click', e => \{\s*if\(!S\.swallowClick\) return;/.test(r3) &&
+    /, true\);/.test(r3.slice(r3.indexOf("listen(view, 'click'"), r3.indexOf("listen(view, 'click'") + 260)));
+
+  sub('the page keeps the flat field until the world is drawn, and after it fails');
+  T('where WebGL 2 is absent the world is never asked for', c.worldStage === 'off' && c.Field === c.IsoField &&
+    (app.dom.document.getElementById('projectField').innerHTML.match(/<button class="block /g) || []).length === 6);
+  let destroyed = 0;
+  c.worldStage = 'on';
+  c.WorldField.world = { draw(){}, focus(){}, destroy(){ destroyed++; } };
+  c.WorldField.mount(app.dom.document.getElementById('projectField'));
+  c.Field = c.WorldField;
+  c.stopWorld();
+  T('a failed world is destroyed once and the flat field drawn again', destroyed === 1 && c.Field === c.IsoField &&
+    (app.dom.document.getElementById('projectField').innerHTML.match(/<button class="block /g) || []).length === 6);
+  c.stopWorld(); c.startWorld();
+  T('and it is not tried again this visit', destroyed === 1 && c.worldStage === 'off' && c.Field === c.IsoField);
+  T('the world reports taps to the app and asks it about motion and cover',
+    /onTap: tapProject,[\s\S]{0,80}onFail: stopWorld,[\s\S]{0,80}reducedMotion: prefersReducedMotion,[\s\S]{0,80}covered: \(\) => document\.body\.classList\.contains\('scroll-locked'\)/.test(js()));
+  T('the flat field leaves the host before the world takes it', /Field\.unmount\(\);\s*const world = mod\.createWorld\(host/.test(js()));
+  T('no errors', app.errors.length === 0, app.errors.join(' | '));
+}
+
 module.exports = {
   T, section, sub, results, reset, testPortability,
   testBoot, testConfig, testStorage, testCollision, testMigration,
@@ -2790,5 +3014,5 @@ module.exports = {
   testMobile, testDesignSystem, testPWA, testRelease, testStress,
   testAccessibility, testContamination, testSourcesOfTruth,
   testRegistry, testStatusModel, testPrivateLinks, testHub, testFieldSeam, testSecrets,
-  testBackupBoundary, testStatusContract, testConnectedState, testRefresh
+  testBackupBoundary, testStatusContract, testConnectedState, testRefresh, testWorld
 };

@@ -84,6 +84,10 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
 
 1. **New code goes in the largest inline `<script>` block.** A second block or
    a linked file is invisible to every contract, and the suite will still pass.
+   The one exception is the 3D field: `field/world.js` and
+   `field/render3d.js` are ES modules the page imports, with the vendored
+   `vendor/three/`. Contract 30 imports them directly; anything they must
+   guarantee needs an assertion there, and nothing else goes outside the page.
 2. **Never hard-code a font size, font family, or colour.** Use the tokens. A
    genuine exception is marked `/* fs-exempt: reason */` on the lines above it.
 3. **Never add a lock/unlock pair to an overlay.** The engine's observer handles
@@ -177,10 +181,13 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     web). Screens show a link's host, never its path.
 34. **Status is never colour alone.** Every entry in `SIGNALS` has a word and a
     shape, and its hue is a layer-4 token.
-35. **The field is drawn only through its seam.** `Field.mount/draw/focus`,
-    fed by `fieldScene()`. A renderer never reads `Store`, never decides a
-    status and never owns the selection. A 3D renderer replaces `IsoField`
-    behind the same three calls and keeps a button per project.
+35. **The field is drawn only through its seam.** `Field.mount/draw/focus/unmount`,
+    fed by `fieldScene()`, one renderer at a time. A renderer never reads
+    `Store`, never fetches, never decides a status and never owns the
+    selection: it reports a tap, and the next draw says what is selected.
+    `WorldField` (`field/render3d.js`) is the field and keeps a real button
+    per project; `IsoField` is its fallback for the rest of a visit when the
+    world cannot run. The camera's frame is never stored.
 36. **The residue-scan exemption never grows.** It is exactly the two registry
     lines that name the first project and link its repository. Anywhere else
     that name still fails.
@@ -248,3 +255,15 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     `scripts/secrets.js`, not retyped. `version` in a status file is the
     publisher's release version and claims nothing about deployment, QA or
     stability.
+49. **The world is one loop, on demand.** Nothing draws while the world is
+    hidden, covered, off screen or lost; ambient motion is capped and
+    settles; Reduce Motion makes every move instant and stills every crew.
+    Status lights only the beacon and the helmet, and only when known — no
+    record, no light, no worker. A place is a place, never a progress bar:
+    no levels, counts or completion. A crew's acknowledgment plays on the
+    change itself, never on a reload.
+50. **Three.js is vendored, pinned and made one way.** Change it only with
+    `scripts/vendor-three.js` (version, tarball integrity and esbuild pinned);
+    never edit `vendor/three/three.min.js` — contract 30 holds it to its
+    sha256. A file the app loads is listed in `APP_FILES`, and
+    `npm run config:sync` precaches it.

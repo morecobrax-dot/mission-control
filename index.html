@@ -183,6 +183,22 @@
   --worker-suit: #D5DBE4;
   --worker-head: #F1F3F6;
   --worker-shadow: rgba(4,6,10,0.45);
+  /* The 3D world's own materials and light (field/world.js names them).
+     Glows are the light of a place (windows, screens), pale and never a
+     status hue. */
+  --mat-paper: #E6E1D6;
+  --mat-wood-light: #B08C62;
+  --mat-fur: #9C6B45;
+  --mat-fur-dark: #5E3F2A;
+  --mat-water: #3B6684;
+  --mat-board: #182030;
+  --mat-blueprint: #2C4F7A;
+  --glow-window: #FFE8C2;
+  --glow-screen: #CFE2F0;
+  --light-key: #FFF3E4;
+  --light-sky: #B9C7DE;
+  --light-ground: #1A2231;
+  --world-label: rgba(11,15,22,0.72);
 
   /* Each project's ground and landmark accent. The grounds stay dark and
      every accent is at least ΔE 20 (CIELAB) from every status hue above —
@@ -983,6 +999,68 @@ body.scroll-locked{
   50%{ transform: translateY(-7%); }
 }
 
+/* ---- The 3D world ----
+   field/render3d.js draws into .world-view: one transparent canvas over
+   the field's own floor, and above it one real button per project (its tap
+   target, its name and its keyboard stop), moved onto its tile each frame.
+   While the world loads, the field already has the world's height and the
+   SVG waits hidden, so nothing jumps and the flat field never flashes. */
+.project-field{ --world-h: clamp(300px, calc(100dvh - 330px - var(--inset-top) - var(--inset-bottom)), 780px); }
+.project-field.is-world, .project-field.world-pending{
+  height: var(--world-h); padding: 0;
+  background: radial-gradient(ellipse at 50% 42%, var(--field-haze), transparent 70%), var(--field-floor);
+}
+.project-field.world-pending > .field-grid{ visibility: hidden; }
+/* Inside the world a drag pans it; outside, the page scrolls as ever. */
+.world-view{
+  position: absolute; inset: 0; overflow: hidden; cursor: grab;
+  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.world-view.is-panning{ cursor: grabbing; }
+.world-canvas{ position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.world-layer{ position: absolute; inset: 0; pointer-events: none; }
+/* The button itself takes no taps: its tile's shape and its label do, so
+   a box's empty corners never catch a tap meant for a neighbour. */
+.world-tile{
+  position: absolute; left: 0; top: 0; margin: 0; padding: 0;
+  background: none; border: none; color: var(--text); pointer-events: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.world-tile:focus-visible{ outline: none; }
+.world-hit{ position: absolute; inset: 0; pointer-events: auto; cursor: pointer; }
+.world-label{
+  position: absolute; top: calc(100% - var(--label-tuck, 0px)); left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  width: max-content; max-width: var(--label-max, 140px); min-height: var(--touch-min);
+  padding: 3px var(--space-sm); border-radius: var(--radius-md);
+  background: var(--world-label); text-align: center; pointer-events: auto; cursor: pointer;
+  transition: opacity var(--dur) var(--ease);
+}
+.world-name{
+  font-size: var(--fs-meta); font-weight: 700; line-height: var(--lh-tight);
+  color: var(--text-dim); overflow-wrap: break-word;
+}
+.world-tile.is-selected .world-name{ color: var(--text); }
+.world-tile.is-selected .world-name::after{
+  content: ''; display: block; height: 2px; margin: 3px auto 0; width: 60%;
+  border-radius: var(--radius-pill); background: var(--field-select);
+}
+.world-badge .chip{ padding: 1px 6px; }
+/* A label that would cover another, or has left the view, is not there:
+   it cannot be read, so it cannot be tapped. */
+.world-tile.is-hidden .world-label{ opacity: 0; pointer-events: none; }
+.world-tile.is-off .world-hit{ pointer-events: none; }
+.world-tile:focus-visible .world-label{ opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
+.world-overview{
+  position: absolute; top: var(--space-sm); right: var(--space-sm);
+  display: inline-flex; align-items: center; gap: var(--space-xs);
+  min-height: var(--touch-min); padding: 0 var(--space-md);
+  background: var(--surface); color: var(--text); cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-pill); box-shadow: var(--shadow-md);
+  font-size: var(--fs-support); font-weight: 600;
+}
+.world-overview[hidden]{ display: none; }
+
 /* ---- The focus bar: the selected project, one tap from its brief ---- */
 .focus-host{ margin-top: var(--space-md); }
 .focus-bar{
@@ -1115,6 +1193,11 @@ body.scroll-locked{
   .hud-item{ padding: var(--space-xs); }
   .project-field{ padding-bottom: var(--space-md); }
   .field-grid{ grid-template-columns: repeat(6, minmax(0, 1fr)); max-width: 640px; }
+  /* The world takes what height there is; the camera fits the row to it. */
+  .project-field{ --world-h: max(140px, calc(100dvh - 246px - var(--inset-top) - var(--inset-bottom))); }
+  /* Six labels share one short row: smaller type, closer set, still whole words. */
+  .world-label{ gap: 2px; padding: 2px 3px; }
+  .world-name{ font-size: var(--fs-micro); }
   .field-grid .block:nth-child(3n+2){ margin-top: 0; }
   .field-grid .block:nth-child(even){ margin-top: 18%; }
 }
@@ -1141,6 +1224,8 @@ body.scroll-locked{
   /* Sized by the height it has, not only the width: two rows of platforms
      and their labels stay above the tab bar on an iPad on its side. */
   .field-grid{ max-width: 600px; max-width: calc((100dvh - 380px) * 1.2); }
+  .project-field{ --world-h: clamp(380px, calc(100dvh - 250px - var(--inset-top) - var(--inset-bottom)), 760px); }
+  .world-name{ font-size: var(--fs-support); }
   .block-name{ font-size: var(--fs-support); }
 }
 
@@ -1475,6 +1560,23 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-3-0',
+    version: '0.3.0',
+    title: 'A world of projects',
+    date: '2026-09-28',
+    summary: 'The projects now stand in a small 3D world you can look around, with a worker at each one showing what is happening there.',
+    newFeatures: [
+      'Each project is a miniature place: a track and training hall, a scheduling studio, a library with a lectern, a vault with a ledger, a learning launchpad and a sushi counter',
+      'Tap a project to bring it into focus and tap it again for its brief; drag inside the world to look around, and Overview shows every project again',
+      'A worker at each project shows its state: building, checking for QA, waiting on a decision, stopped by a blocker, planning, looking after a stable release, marking a release as ready, or resting while paused. A project with no recorded state has no worker'
+    ],
+    improvements: [
+      'Each label shows one status, and whatever needs you comes first',
+      'The world is saved with the app, so it opens offline; where a device cannot draw it, the flat field is used instead'
+    ],
+    fixes: []
+  },
   {
     id: 'v0-2-1',
     version: '0.2.1',
@@ -3050,7 +3152,7 @@ function selectProject(id, opts){
 
 function isBlockFocused(){
   const a = document.activeElement;
-  return !!(a && a.classList && a.classList.contains('block'));
+  return !!(a && a.classList && (a.classList.contains('block') || a.classList.contains('world-tile')));
 }
 
 function revealFocusBar(){
@@ -3104,31 +3206,66 @@ function watchLayout(){
 }
 
 /* =========================================================
-   PROJECT FIELD — the 2.5D renderer, behind a 3D-ready seam
+   PROJECT FIELD — one renderer at a time, behind one seam
    ---------------------------------------------------------
-   The field is drawn by exactly one renderer, through three
+   The field is drawn by exactly one renderer, through four
    calls: mount(host) once, draw(scene) whenever anything
-   changes, focus(id) to bring one project forward. The scene
-   is a derived, render-only description (ids, names, signals,
-   crews, themes, selection), so a renderer never reads Store,
-   never decides a status and never owns the selection.
+   changes, focus(id) to put keyboard focus on one project, and
+   unmount() to hand the host to another renderer. The scene is
+   a derived, render-only description (ids, names, signals,
+   crews, themes, the words a label says, selection), so a
+   renderer never reads Store, never decides a status and never
+   owns the selection: a tap calls tapProject(), and the next
+   draw says what is selected.
 
-   Phase 1 ships IsoField: an inline SVG platform inside one
-   real <button> per project. No canvas, no dependency.
-
-   A Phase 2 WebGL renderer implements the same three calls —
-   one canvas, one scene, a group per project, geometry and
-   materials shared, LANDMARKS rebuilt from boxes, cylinders and
-   cones — and keeps a button per project as its hit and
-   accessibility layer. Nothing outside this section changes.
+   WorldField is the field: a miniature 3D world drawn with
+   Three.js by field/render3d.js, a module loaded after the
+   first paint, only where WebGL 2 exists. It keeps a real
+   button per project as its tap target and accessibility layer.
+   IsoField, an inline SVG platform inside one button per
+   project, draws the first paint while the world loads and is
+   the fallback for the rest of the visit when it cannot run.
    ========================================================= */
+
+/* The files the app loads besides itself: the world's modules and the
+   Three.js subset they import. `npm run config:sync` copies this list into
+   sw.js, so a fresh install precaches the world and it opens offline. A
+   contract checks every file exists. */
+const APP_FILES = ['./field/world.js', './field/render3d.js', './vendor/three/three.min.js'];
+const WORLD_MODULE = './field/render3d.js';
+/* A slow first visit shows the flat field rather than an empty floor. */
+const WORLD_WAIT_MS = 4000;
+
 function fieldScene(views){
   return views.map(v => ({
     id: v.id, name: v.name, theme: v.theme,
     status: v.status, signal: v.signal, attention: v.attention.slice(),
     workerState: v.workerState, recorded: v.recorded,
+    spoken: fieldSpoken(v), badge: fieldBadgeHtml(v),
     selected: v.id === selectedId
   }));
+}
+
+/* A project's accessible name: its name, then every status it has. */
+function fieldSpoken(v){
+  return (v.recorded
+    ? [v.name, SIGNALS[v.status].label].concat(v.attention.map(k => SIGNALS[k].label))
+    : [v.name, SIGNALS.unrecorded.label + ': no state recorded']).join('. ');
+}
+
+/* One status on a world label, with its word and shape: what needs you if
+   anything does (and how many more things do), else the recorded status,
+   else Needs update — said in words, never as a chip, which would read as
+   a status. */
+function fieldBadgeHtml(v){
+  if(v.attention.length){
+    const k = v.attention[0];
+    return '<span class="chip sig-' + k + '">' + signalIcon(k, 11) + escapeHtml(SIGNALS[k].short) +
+      (v.attention.length > 1 ? ' +' + (v.attention.length - 1) : '') + '</span>';
+  }
+  if(v.recorded) return statusChipHtml(v.status, true);
+  return '<span class="block-unrecorded sig-unrecorded">' + signalIcon('unrecorded', 11) +
+    escapeHtml(SIGNALS.unrecorded.label) + '</span>';
 }
 
 const IsoField = {
@@ -3141,15 +3278,94 @@ const IsoField = {
   focus(id){
     const b = document.getElementById('block-' + id);
     if(b) try{ b.focus({ preventScroll: true }); }catch(e){}
+  },
+  unmount(){
+    if(this.host) this.host.innerHTML = '';
+    this.host = null;
+  }
+};
+
+/* The world renderer behind the same four calls. The world itself is made
+   by startWorld(); until then, and after any failure, this is not Field. */
+const WorldField = {
+  host: null,
+  world: null,
+  mount(host){ this.host = host || null; },
+  draw(scene){ if(this.world) this.world.draw(scene); },
+  focus(id){ if(this.world) this.world.focus(id); },
+  unmount(){
+    const w = this.world;
+    this.world = null;
+    if(w) try{ w.destroy(); }catch(e){}
+    if(this.host) this.host.classList.remove('is-world');
+    this.host = null;
   }
 };
 let Field = IsoField;
 
+/* idle -> loading -> on, or off for the rest of the visit. Nothing retries:
+   a device that cannot draw the world once gets the flat field, not a loop. */
+let worldStage = 'idle';
+/* A browser can define WebGL 2 and still refuse a context (a blocked GPU,
+   a policy): one probe, released at once, spares that device the download. */
+function worldSupported(){
+  try{
+    if(typeof window.WebGL2RenderingContext !== 'function') return false;
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if(!gl) return false;
+    const lose = gl.getExtension('WEBGL_lose_context');
+    if(lose) lose.loseContext();
+    return true;
+  }catch(e){ return false; }
+}
+
+function startWorld(){
+  if(worldStage !== 'idle') return;
+  const host = document.getElementById('projectField');
+  if(!host || !worldSupported()){ worldStage = 'off'; return; }
+  worldStage = 'loading';
+  host.classList.add('world-pending');
+  const reveal = setTimeout(() => host.classList.remove('world-pending'), WORLD_WAIT_MS);
+  import(WORLD_MODULE).then(mod => {
+    clearTimeout(reveal);
+    if(worldStage !== 'loading') return;
+    /* The flat field leaves first: the host holds one renderer at a time.
+       If the world cannot start, stopWorld() draws the flat field again. */
+    Field.unmount();
+    const world = mod.createWorld(host, {
+      onTap: tapProject,
+      onFail: stopWorld,
+      reducedMotion: prefersReducedMotion,
+      covered: () => document.body.classList.contains('scroll-locked')
+    });
+    WorldField.world = world;
+    Field = WorldField;
+    Field.mount(host);
+    host.classList.remove('world-pending');
+    host.classList.add('is-world');
+    worldStage = 'on';
+    renderHub();
+  }).catch(() => {
+    clearTimeout(reveal);
+    stopWorld();
+  });
+}
+
+function stopWorld(){
+  if(worldStage === 'off') return;
+  worldStage = 'off';
+  const host = document.getElementById('projectField');
+  if(host) host.classList.remove('world-pending');
+  if(Field === WorldField){
+    Field.unmount();
+    Field = IsoField;
+  }
+  renderHub();
+}
+
 function isoBlockHtml(b){
   const pulse = ATTENTION_KINDS.indexOf(b.signal) !== -1;
-  const spoken = (b.recorded
-    ? [b.name, SIGNALS[b.status].label].concat(b.attention.map(k => SIGNALS[k].label))
-    : [b.name, SIGNALS.unrecorded.label + ': no state recorded']).join('. ');
+  const spoken = b.spoken;
   const marker = b.attention.length
     ? '<span class="chip attn-marker sig-' + b.attention[0] + '">' + signalIcon(b.attention[0], 11) +
       escapeHtml(SIGNALS[b.attention[0]].short) +
@@ -4188,8 +4404,9 @@ Domain.wire    = () => {
   window.addEventListener('pagehide', flushFormDrafts);
   window.addEventListener('pageshow', e => { if(e && e.persisted) refreshStatuses('front'); });
   watchLayout();
-  /* The first screen is already drawn from what is stored; the repositories
-     are asked after it, so the network never holds up the app. */
+  /* The first screen is already drawn from what is stored; the world and
+     the repositories come after it, so neither holds up the app. */
+  startWorld();
   setTimeout(() => refreshStatuses('open'), 0);
 };
 

@@ -52,7 +52,8 @@ const SUITES = [
   C.testBackupBoundary,
   C.testStatusContract,
   C.testConnectedState,
-  C.testRefresh
+  C.testRefresh,
+  C.testWorld
 ];
 
 /* A contract whose promise never settles lets the event loop drain, and Node

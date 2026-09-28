@@ -299,60 +299,107 @@ derives `{ repo, branch }` from the repository URL and `defaultBranch`, which
 is everything a future "start a new session" launcher needs. Nothing about it
 is stored.
 
-## The project field and its 3D seam
+## The project field: one renderer behind one seam
 
-The field is drawn by exactly one renderer, through three calls:
+The field is drawn by exactly one renderer at a time, through four calls:
 
 ```js
 Field.mount(host)    // once
 Field.draw(scene)    // whenever anything changes
-Field.focus(id)      // bring one project forward
+Field.focus(id)      // put keyboard focus on one project
+Field.unmount()      // hand the host to another renderer
 ```
 
 `scene` is `fieldScene(views)`: ids, names, themes, statuses, signals,
-attention, worker states, whether a state is recorded, and the selection — a render-only
-description. The renderer never reads storage, never decides a status and
-never owns the selection; a contract checks all three.
+attention, worker states, whether a state is recorded, the words a label says
+(`spoken`, and `badge`: one status, attention first) and the selection — a
+render-only description. A renderer never reads storage, never fetches, never
+decides a status and never owns the selection: a tap calls `tapProject()`,
+and the next draw says what is selected. Contracts 24 and 30 check all of it.
 
-**Today the field is `IsoField`:** one `<button>` per project containing an
-inline isometric SVG platform — a plinth, a terrain layer, the project's
-landmark, a status beacon and a placeholder crew. Landmarks are data
-(`LANDMARKS`): lists of boxes, cylinders, cones and face discs in platform
-units, drawn back to front. The only motion is CSS — the beacon breathes when
-a project needs you, a working crew bobs, Refresh turns while it checks — and
-the global reduced-motion rule stops all of it.
+**The field is `WorldField`: a miniature 3D world.** It lives outside the
+page script, in two ES modules the page imports after its first paint:
 
-**Light has two owners.** Identity light belongs to the place: the plinth's
-front lip in neutral light (`--field-rim`), the ground's rim in the project's
-own accent (`--tint-*`), and a pool of light under the project in focus
-(`--field-pool`). Every accent is at least ΔE 20 (CIELAB) from every status hue
-— contract 24 measures it — so identity is strong without reading as status.
-Status light belongs to the beacon alone, and it is lit only by a known state:
-glow, halo and core in the signal's hue. With no state the lamp is off, drawn
-as a ring, so an unknown project can be attractive without looking active,
-healthy or in need.
+- `field/world.js` — everything decided rather than drawn, with no Three.js
+  and no DOM, so the contracts import and test it in Node: the layout (tile
+  centres in registry order; columns and stagger chosen per view so tiles are
+  as large as they can be), the camera (overview, focus, reveal, bounded
+  panning, all in 2D view units because the camera never turns), the gesture
+  arbiter (tap, pan, cancel), the crew's poses, and every place as data —
+  boxes, cylinders, cones, balls, rings and tori named by colour token.
+- `field/render3d.js` — turns it into pixels with Three.js: one canvas, one
+  scene, one orthographic camera at a fixed isometric angle. Each place's
+  parts merge into one geometry per finish (matte, metal, glow), built once
+  per look and shared; stations and hand props are built once for every
+  tile. A status change swaps a material or a visibility; nothing is rebuilt.
 
-**The next 3D direction** keeps the same three calls. A WebGL renderer
-(Three.js, vendored for offline use) replaces `IsoField`, with:
+Three.js 0.186.1 is vendored in `vendor/three/`: a subset of only the
+classes the world imports, tree-shaken and minified by esbuild,
+`scripts/vendor-three.js` being the one way it is made (pinned tarball
+integrity, pinned esbuild, target `es2020,safari15` so no class static
+blocks), with its licence and a provenance file whose sha256 contract 30
+holds the file to. It is about 135 KB gzipped. Nothing is fetched from a CDN.
 
-- **One shared world**, not six dioramas in a grid: the platforms stand on
-  one continuous ground, arranged by the same data, with room between them.
-- **A constrained camera**: a fixed three-quarter view that can pan and zoom
-  within bounds and ease to the project in focus — never free orbit, never a
-  view that hides a label.
-- **Product-specific structures** built in more detail from the same
-  `LANDMARKS` data, one coherent material language across all of them — not
-  six unrelated art styles, and no extra levels or buildings that would
-  suggest progress no state supports.
-- **State-driven workers**: the crew's pose and motion come from
-  `workerState` alone, so what moves always means something, and Reduce
-  Motion stills it.
-- **A button per project kept** as the hit and accessibility layer, so
-  touch, keyboard and screen readers behave exactly as today.
+**Lifecycle.** The page draws `IsoField` first. `startWorld()` runs once,
+only where `WebGL2RenderingContext` exists: the field keeps the world's height
+with the SVG hidden while the module loads (so nothing jumps and the flat
+field never flashes; a slow first visit shows it after 4 s), then the SVG is
+unmounted and the world mounted. Any failure — the import, the context, a
+render, or a lost context not restored within 2.5 s — calls `stopWorld()`:
+the world is destroyed and `IsoField` draws again, for the rest of the visit.
+`worldStage` goes `idle → loading → on` or `off`, never back, so there is no
+retry loop. `destroy()` disposes every geometry, material and texture,
+releases the context and removes its DOM.
 
-Three.js is still out of this build on purpose: it is a large library outside
-the tested script block, the harness cannot run WebGL or canvas, and the
-product's data flow had to prove itself first.
+**One loop, on demand.** The module's one `requestAnimationFrame` loop runs
+only while the camera moves or something is animating, and only while the
+world is on screen, uncovered (no overlay — the page's `scroll-locked`), the
+page visible and the context alive. Ambient motion (a working crew, a
+breathing attention beacon) is capped at 30 fps and settles into still poses
+60 s after the last touch. Under Reduce Motion every camera move is instant
+and nothing loops. The drawing buffer is at most 2 device pixels per CSS
+pixel and 2.5 million pixels.
+
+**Camera and touch.** A fixed isometric view: no orbit, no zoom gesture. Two
+framings — the overview (every tile at the largest scale that fits, never
+below a readable minimum; a larger world pans instead) and focus (one tile,
+close) — with 380 ms interruptible moves. The viewport alone has
+`touch-action: none`: a drag inside it pans (bounded to the world), a drag
+outside scrolls the page. One arbiter decides every touch: under 8 px it is a
+tap; past that it is a pan for good and the click it would make is swallowed,
+so a drag never selects or opens a brief. Pointer cancel and lost capture end
+a gesture with no tap. The camera's frame is transient: never stored.
+Resizing, rotating or docking reframes in the same mode with the same
+selection; a reload starts at the overview with the stored selection.
+
+**The button layer.** Every project keeps a real `<button>` in registry
+order, moved onto its tile each frame: its tap target is the tile's shape
+(`clip-path`, so a box's empty corners take no taps), its label (name and
+one status, attention first) is at least 44 px tall, and its accessible name
+says every status. A label that would overlap another is hidden and takes no
+taps (the focused and selected labels win), as is one out of view; keyboard
+focus shows a hidden label and pans its tile into view. Overview appears
+whenever the whole world is not in view.
+
+**Places and crews.** Each look has a place: a training hall inside a running
+track, a scheduling studio with a timeline wall, a library corner with a
+lectern, a vault with coins and a ledger, a launchpad, a sushi counter with
+its capybara chef, and a plainly generic module. Identity (the ground, the
+seam of light round each plinth, the accents) is the project's own
+`--terrain-*`/`--tint-*`; status lights only the beacon's lamp and halo and
+the worker's helmet, and only when a state is known — with no record the lamp
+is dark and there is no worker. The crew's station and pose come from
+`workerState` alone (building works at a bench, QA holds a clipboard, a
+decision points at a console, blocked stands at a barrier, stable tends a
+valve, paused sits dimmed, planning leans over a blueprint, release ready
+raises an arm once, on the change itself — never on a reload).
+
+**`IsoField` is the fallback**: one `<button>` per project containing an
+inline isometric SVG platform, landmarks as data (`LANDMARKS`), CSS motion
+only. Light has two owners there too: identity light belongs to the place
+(`--field-rim`, `--tint-*`, `--field-pool`), status light to the beacon, lit
+only by a known state. Every accent is at least ΔE 20 (CIELAB) from every
+status hue — contract 24 measures it.
 
 ## Layout
 
@@ -372,8 +419,10 @@ project.
 ## PWA
 
 Every path is relative, so the app works from any deployment sub-path. The
-service worker is network-first with a cache fallback, precaches only the app
-shell, ignores other origins (so an opened ChatGPT or Claude link, or a
+service worker is network-first with a cache fallback, precaches the app
+shell and every file in `APP_FILES` (the world's modules and the Three.js
+subset — `npm run config:sync` writes the list into `sw.js`), ignores other
+origins (so an opened ChatGPT or Claude link, or a
 repository's status file, is never cached), and on activate deletes only its
 own older caches. Offline, the app opens from the shell cache and shows each
 project's last valid status from `cache.repoStatus`.
@@ -383,7 +432,8 @@ project's last valid status from `cache.repoStatus`.
 `test/harness.js` reads `index.html` as text, extracts the largest `<script>`
 block, and evaluates it in a Node `vm` against a DOM stub and an in-memory
 `localStorage`. Top-level `const`/`let` a test needs must be listed in
-`BRIDGE`.
+`BRIDGE`. The harness has no WebGL, so there the page keeps the flat field;
+the world's modules are imported directly by contract 30.
 
 Contracts 1–19 defend the foundation; 20–29 defend Mission Control: the
 registry (six required projects, one shape, nothing private, no ceiling, a
@@ -393,13 +443,15 @@ derived, never stored twice; no record is no state), private links
 what needs you, one focus, remembered), the field seam (including a seventh
 project, identity light and ΔE), secret safety, the backup boundary (allowlist
 out, allowlist in, private links, source choices and fetched status never
-leave or return), the status file (27), connected state (28) and checking the
-repositories (29), the last two against a stand-in for GitHub's raw host and a
+leave or return), the status file (27), connected state (28), checking the
+repositories (29) and the world (30: the pinned library, presentation-only
+modules, every place and crew state whole, layout and camera, labels and the
+tap-or-pan arbiter), the last two against a stand-in for GitHub's raw host and a
 clock the test moves. `npm run verify` also runs the config check, the residue
 scan and the secret scan. The runner fails a run that never reaches its end:
 a contract whose promise never settles would otherwise let Node exit 0.
 
-The harness cannot see hit-testing, layout, the network or the service
+The harness cannot see hit-testing, layout, WebGL, the network or the service
 worker. Those are checked in a real browser: real touch, real typing,
 reloads, offline, reduced motion and rotation, at phone, iPad and desktop
 sizes, against the real published status files — with failures injected on
@@ -432,11 +484,14 @@ foundation expects them.
 | A project's published status | `PROJECT-STATUS.json` in that project's repository — never in this one |
 | The status file's contract | `STATUS_KEYS`, `validateStatusFile` and `scripts/project-status.js` together — contract 27 holds them equal; a new shape is a new `schemaVersion`; then copy the checker unchanged to every publisher |
 | How often repositories are asked | `STATUS_FRESH_MS`, `STATUS_RETRY_MS`, `STATUS_BACKOFF_MS` — and contract 29 |
-| A project's look | its `visualTheme`, the `--terrain-*`/`--tint-*` tokens, and `LANDMARKS` |
+| A project's look | its `visualTheme`, the `--terrain-*`/`--tint-*` tokens, its place in `ENVIRONMENTS` (`field/world.js`) and, for the fallback, `LANDMARKS` |
 | What a backup may carry | `BACKUP_FIELDS` — and contract 26 |
 | The status vocabulary | `PROJECT_STATUSES`, `SIGNALS`, and the `--sig-*` tokens |
 | What counts as active | `ACTIVE_STATUSES` |
 | The link rule | `parseToolLink` — and contract 22 |
-| The field's rendering | `IsoField`, behind `Field` |
+| The field's rendering | `field/render3d.js` (and `IsoField`, the fallback), behind `Field` |
+| Layout, camera, gestures, crews | `field/world.js` — and contract 30 |
+| The Three.js version | `scripts/vendor-three.js`, then `npm run verify` |
+| A file the app loads | `APP_FILES`, then `npm run config:sync` |
 | A data shape | bump `DATA_SCHEMA_VERSION` and add a migration |
 | A release | an `APP_UPDATES` entry, then `npm run config:sync` |

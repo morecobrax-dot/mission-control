@@ -53,11 +53,15 @@ function loadConfig(){
   if(err) throw new Error(err);
   return {
     cfg,
+    files: (app.ctx.APP_FILES || []).slice(),
     version: app.ctx.APP_VERSION,
     cacheName: app.ctx.CACHE_NAMESPACE,
     storagePrefix: app.ctx.STORAGE_NAMESPACE
   };
 }
+
+/* The application shell: the page, its manifest and its icons. */
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 /* ---------- what each static file should contain ---------- */
 function targets(c){
@@ -92,6 +96,14 @@ function targets(c){
       label: 'sw.js cache name',
       region: ['/* APP-CACHE-BEGIN */', '/* APP-CACHE-END */'],
       build: () => "const CACHE_NAME = '" + cacheName + "';"
+    },
+    {
+      /* The precache: the shell, then every file the app loads besides
+         itself, so a fresh install works offline from its first visit. */
+      file: H.SW_PATH,
+      label: 'sw.js precache list',
+      region: ['/* APP-FILES-BEGIN */', '/* APP-FILES-END */'],
+      build: () => 'const ASSETS = [\n' + SHELL.concat(c.files).map(p => "  '" + p + "'").join(',\n') + '\n];'
     },
     {
       file: H.MANIFEST_PATH,
