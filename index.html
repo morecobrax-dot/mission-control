@@ -1476,6 +1476,18 @@ function validateAppId(id){
    ========================================================= */
 const APP_UPDATES = [
   {
+    id: 'v0-2-1',
+    version: '0.2.1',
+    title: 'Accurate hint',
+    date: '2026-09-28',
+    summary: 'The docked brief\'s hint describes the hub as it now is.',
+    newFeatures: [],
+    improvements: [],
+    fixes: [
+      'On an iPad or a desktop with no project in focus, the brief\'s hint pointed to a Needs attention list the hub no longer has'
+    ]
+  },
+  {
     id: 'v0-2-0',
     version: '0.2.0',
     title: 'Connected status',
@@ -3047,7 +3059,7 @@ function revealFocusBar(){
   try{ bar.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' }); }catch(e){}
 }
 
-/* From a Needs-attention row. The row has already said what is wrong, so
+/* From a Needs-attention button. It has already said what is wrong, so
    it goes straight to the brief, without scrolling the hub behind it. */
 function openProjectBrief(id){
   if(!isKnownProject(id)) return;
@@ -3721,7 +3733,7 @@ function renderDockedBrief(views){
   el.innerHTML = v ? briefHtml(v, true) : emptyStateHtml({
     mark: svg(Domain.tabIcons.home, 30),
     title: 'No project in focus',
-    body: 'Tap a platform in the field, or a row under Needs attention, to see its brief here.'
+    body: 'Tap a platform in the field, or a project that needs you above it, to see its brief here.'
   });
 }
 

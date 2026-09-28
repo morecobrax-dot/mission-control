@@ -16,7 +16,7 @@
  */
 
 /* APP-CACHE-BEGIN */
-const CACHE_NAME = 'mission-control-v0.2.0';
+const CACHE_NAME = 'mission-control-v0.2.1';
 /* APP-CACHE-END */
 
 const ASSETS = [

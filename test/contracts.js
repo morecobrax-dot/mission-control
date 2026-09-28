@@ -903,8 +903,20 @@ function testRelease(){
     c.APP_UPDATES.every(u => (u.newFeatures || []).length + (u.improvements || []).length +
                              (u.fixes || []).length > 0));
 
-  sub('the starter ships a minimal history, not an inherited one');
-  T('a small number of entries', c.APP_UPDATES.length <= 3, String(c.APP_UPDATES.length));
+  sub('a minimal history, not an inherited one');
+  /* The starter's own list once came along with it. The bound here was
+     "three entries or fewer", which read as a cap on shipping and stopped
+     Mission Control's fourth release; what it guards is that this history
+     starts at the product's own first release and every entry is a later
+     release of it — the rule Capy Sushi and Space Kindergarten already use. */
+  const semver = v => v.split('.').map(Number);
+  const newer = (a, b) => { const x = semver(a), y = semver(b); for(let i = 0; i < 3; i++){ if(x[i] !== y[i]) return x[i] > y[i]; } return false; };
+  T('this product\'s own releases, not an inherited list: they end at its first release',
+    c.APP_UPDATES[c.APP_UPDATES.length - 1].id === 'v0-1-0' && c.APP_UPDATES[c.APP_UPDATES.length - 1].title === 'Command center',
+    c.APP_UPDATES[c.APP_UPDATES.length - 1].id);
+  T('and each entry is a newer release than the one below it',
+    c.APP_UPDATES.every((u, i) => i === c.APP_UPDATES.length - 1 || newer(u.version, c.APP_UPDATES[i + 1].version)),
+    c.APP_UPDATES.map(u => u.version).join(' > '));
   T('the authoring rules travel with the data', /AUTHORING A NEW ENTRY/.test(js()));
   T('and it says new products replace it', /New products replace this array wholesale/.test(js()));
 
@@ -1771,6 +1783,10 @@ function testHub(){
 
   sub('a wide screen docks the brief instead');
   T('the stylesheet and the script use one query', css().indexOf('@media ' + c.WIDE_QUERY + '{') !== -1);
+  /* 0.2.0 shipped a hint naming the "Needs attention" list it had replaced. */
+  const emptyDock = (js().match(/title: 'No project in focus',\s*body: '([^']*)'/) || ['', ''])[1];
+  T('with nothing in focus, the docked brief\'s hint names only what the hub has',
+    emptyDock.length > 20 && !/Needs attention|a row under/.test(emptyDock), emptyDock);
   const wide = H.loadApp({ sharedStorage: shared });
   wide.ctx.window.matchMedia = () => ({ matches: true, addEventListener(){}, removeEventListener(){} });
   wide.ctx.tapProject('capybara-sushi'); wide.ctx.tapProject('capybara-sushi'); wide.ctx.__flush();
