@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "app-starter",
+      "name": "mission-control",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["--yes", "http-server", "-c-1", "."],
-      "port": 8391,
+      "runtimeArgs": ["--yes", "http-server", "-a", "127.0.0.1", "-p", "8398", "-c-1", "."],
+      "port": 8398,
       "autoPort": true
     }
   ]

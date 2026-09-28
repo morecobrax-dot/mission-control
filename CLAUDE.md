@@ -3,23 +3,25 @@
 Instructions for AI coding sessions in this repository. These override default
 behaviour.
 
-Read [STARTER-ARCHITECTURE.md](STARTER-ARCHITECTURE.md) before changing
-architecture, and [PRODUCT-DESIGN.md](PRODUCT-DESIGN.md) before changing
-anything a user sees.
+Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing architecture, and
+[PRODUCT-DESIGN.md](PRODUCT-DESIGN.md) before changing anything a user sees.
+
+This is **Mission Control**, a product built from the app-starter
+foundation. Its own rules are at the end of this file (29 onward).
 
 ---
 
-## Before implementing a new product
+## Before changing Mission Control
 
-If you are starting a product from this foundation, in this order:
+In this order:
 
 1. Read [PRODUCT-DESIGN.md](PRODUCT-DESIGN.md) — the rules the UI must obey.
-2. Read [STARTER-ARCHITECTURE.md](STARTER-ARCHITECTURE.md) — what already
-   exists, so you do not rebuild it.
-3. Read the product's own requirements. If there aren't any written down, ask
-   for them before writing code.
-4. Follow [NEW-PROJECT.md](NEW-PROJECT.md) step by step.
-5. **Separate foundation from domain before you type.** Name which parts of the
+2. Read [ARCHITECTURE.md](ARCHITECTURE.md) — what already exists, so you do
+   not rebuild it: the foundation, the product model, the link rule, the
+   field seam.
+3. Read the phase brief. If the requirement is not written down, ask for it
+   before writing code.
+4. **Separate foundation from domain before you type.** Name which parts of the
    change are product-specific and which are genuinely reusable.
 
 ### The foundation-modification rule
@@ -146,3 +148,44 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
 28. **Stop at the requested phase.** Finish it completely, report, and wait.
     Do not start the next phase, do not "while I'm here", do not polish the
     demo into a product.
+
+## Mission Control rules
+
+29. **Nothing private in the repository.** It and its Pages site are public.
+    Never commit a ChatGPT conversation link, a Claude session id or link, a
+    token, an API key, a credential or a local machine path. Tests use obvious
+    fixtures — `.test` hosts, ids that say `FAKE` — and `npm run secrets`
+    (inside `npm run verify`) fails on anything that looks real.
+30. **Identity is public, state is local, links are private.** Names, purposes,
+    repositories and live URLs live in `PROJECT_REGISTRY`. Status, attention,
+    version, phase, work and next step live in `data.projectStates` on the
+    device. ChatGPT and Claude links live only in `data.privateLinks`. Never
+    give a private link a default in source; never put state in the registry.
+31. **Sample state is never mistaken for fact.** It says "sample" wherever it
+    appears, carries no version and no phase, and a project on sample state
+    opens its editor empty. Never invent a version or phase for a real project.
+32. **Status and attention stay separate, and derived values stay derived.**
+    A project is blocked exactly when a blocker is written. Attention, the
+    signal, the crew, the counts and the sample flag are computed on read and
+    never stored.
+33. **Every destination passes the link rule, twice.** `parseToolLink` at save
+    and again at render. Tools are real links (`noopener noreferrer` for the
+    web). Screens show a link's host, never its path.
+34. **Status is never colour alone.** Every entry in `SIGNALS` has a word and a
+    shape, and its hue is a layer-4 token.
+35. **The field is drawn only through its seam.** `Field.mount/draw/focus`,
+    fed by `fieldScene()`. A renderer never reads `Store`, never decides a
+    status and never owns the selection. A 3D renderer replaces `IsoField`
+    behind the same three calls and keeps a button per project.
+36. **The residue-scan exemption never grows.** It is exactly the two registry
+    lines that name the first project and link its repository. Anywhere else
+    that name still fails.
+37. **Moodboards are never shipped.** `references/visual/` is git-ignored.
+    Never commit, trace or reproduce that artwork.
+38. **No integration the brief did not ask for.** No AI, backend, auth, cloud
+    sync, Notion, OpenAI, Anthropic or private GitHub API, and no guessing at
+    whether a Claude session is running. Status is explicit data until a
+    phase brief says otherwise.
+39. **Dev server on port 8398.** Port 8391 is shared by other projects on this
+    machine, and one localhost origin means their service workers replace
+    each other.

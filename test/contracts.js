@@ -1,10 +1,12 @@
 /* =========================================================
-   STARTER CONTRACTS
+   MISSION CONTROL CONTRACTS
    ---------------------------------------------------------
-   High-value contracts, not test volume. Every assertion here
-   defends something a future product would otherwise have to
-   rediscover: a namespace collision, a scroll lock that leaks, a
-   type scale that quietly stops being used.
+   High-value contracts, not test volume. Contracts 1–19 defend
+   the foundation this product was built on: a namespace
+   collision, a scroll lock that leaks, a type scale that quietly
+   stops being used. Contracts 20–25 defend Mission Control
+   itself: the registry, the status model, private links, the
+   hub, the field seam and secret safety.
 
    Each contract states what it protects, in the language of the
    failure it prevents. If an assertion cannot be described that
@@ -37,6 +39,15 @@ function stripComments(s){
   return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
+/* Obviously fake links. Real ones never appear in this repository: the
+   secret scan (contract 25) ignores exactly these markers — a .test host or
+   an id that says FAKE — and fails on anything that looks real. */
+const FIX = {
+  chat:      'https://chat.example.test/c/FAKE-FIXTURE-0001',
+  claude:    'https://claude.example.test/code/FAKE-FIXTURE-0002',
+  claudeApp: 'claude://code/FAKE-FIXTURE-0003'
+};
+
 /* =========================================================
    CONTRACT 1 — BOOT
    The app starts, says so, and fails loudly rather than blankly.
@@ -56,12 +67,13 @@ function testBoot(){
   sub('booting on top of existing data');
   const shared = new Map();
   const seeded = H.loadApp({ sharedStorage: shared });
-  seeded.ctx.items.push({ id: 'i_x', title: 'Existing', note: '', status: 'active',
-                          createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
-  seeded.ctx.persistItems();
+  seeded.ctx.projectStates.dayplan = seeded.ctx.normalizeState({
+    id: 'dayplan', status: 'building', nextAction: 'Existing', updatedAt: '2026-01-01T00:00:00.000Z' });
+  seeded.ctx.persistProjectStates();
   const second = H.loadApp({ sharedStorage: shared });
-  T('an existing record survives a reload', second.ctx.items.length === 1);
-  T('and keeps its identity', second.ctx.items[0].title === 'Existing');
+  T('an existing record survives a reload', !!second.ctx.projectStates.dayplan);
+  T('and keeps its content', !!second.ctx.projectStates.dayplan &&
+    second.ctx.projectStates.dayplan.nextAction === 'Existing');
   T('reloading raises no errors', second.errors.length === 0, second.errors.join(' | '));
 
   sub('there is only one script block, so the suite sees all the code');
@@ -214,11 +226,10 @@ function testCollision(){
   T('app-one.listKeys never returns an app-two key',
     one.ctx.Store.listKeys().every(k => shared.get('app-one.' + k) !== undefined));
 
-  one.ctx.items.push({ id: 'i1', title: 'One', note: '', status: 'active',
-                       createdAt: 'a', updatedAt: 'a' });
-  one.ctx.persistItems();
-  T('one app writing records leaves the other empty',
-    two.ctx.Store.getJSON(two.ctx.KEYS.items, []).length === 0);
+  one.ctx.privateLinks.loop = { id: 'loop', chatgptUrl: FIX.chat, claudeUrl: null, updatedAt: 'a' };
+  one.ctx.persistPrivateLinks();
+  T('one app writing private links leaves the other empty',
+    two.ctx.Store.getJSON(two.ctx.KEYS.privateLinks, []).length === 0);
 
   sub('cache identity');
   T('cache names differ', one.ctx.CACHE_NAMESPACE !== two.ctx.CACHE_NAMESPACE);
@@ -252,16 +263,16 @@ function testMigration(){
   T('nothing was migrated on a fresh install', c.runMigrations().migrated === false);
 
   sub('idempotence');
-  c.Store.set(c.KEYS.items, JSON.stringify([{ id: 'a', title: 'A', status: 'active' }]));
-  const before = c.Store.get(c.KEYS.items);
+  c.Store.set(c.KEYS.projectStates, JSON.stringify([{ id: 'loop', status: 'stable', updatedAt: 'a' }]));
+  const before = c.Store.get(c.KEYS.projectStates);
   c.runMigrations(); c.runMigrations(); c.runMigrations();
-  T('running migrations repeatedly changes nothing', c.Store.get(c.KEYS.items) === before);
+  T('running migrations repeatedly changes nothing', c.Store.get(c.KEYS.projectStates) === before);
 
   sub('a corrupt or absent version is handled without data loss');
   c.Store.set(c.KEYS.schemaVersion, 'not-a-number');
   const r = c.runMigrations();
   T('a nonsense version does not throw', r && typeof r === 'object');
-  T('records survive it', c.Store.get(c.KEYS.items) === before);
+  T('records survive it', c.Store.get(c.KEYS.projectStates) === before);
 
   sub('the mechanism exists even though the starter has no migrations yet');
   T('a migration table is declared', typeof c.MIGRATIONS === 'object');
@@ -282,14 +293,14 @@ function testNavigation(){
   const tabs = [...d.querySelectorAll('.tab-btn')].map(b => b.dataset.tab).filter(Boolean);
   T('the tab bar declares tabs', tabs.length >= 2, String(tabs.length));
   tabs.forEach(t => T('tab "' + t + '" has a view', !!d.getElementById('view-' + t)));
-  T('the demo ships only as many tabs as it needs', tabs.length <= 4, String(tabs.length));
+  T('the app ships only as many tabs as it needs', tabs.length <= 4, String(tabs.length));
 
   sub('an unknown tab is a no-op, not a blank screen');
-  c.switchTab('items');
+  c.switchTab('settings');
   const before = c.currentTab;
   c.switchTab('does-not-exist');
   T('currentTab is unchanged', c.currentTab === before);
-  T('the current view is still active', d.getElementById('view-items').classList.contains('active'));
+  T('the current view is still active', d.getElementById('view-settings').classList.contains('active'));
 
   sub('a tab opens at its top, so the same tap gives the same result');
   app.ctx.window && (app.ctx.window.scrollY = 400);
@@ -344,13 +355,13 @@ function testOverlays(){
     /body\.scroll-locked\{[\s\S]{0,200}overscroll-behavior: none/.test(style));
 
   sub('opening and closing, for real');
-  open(app, 'itemDetailOverlay');
+  open(app, 'briefOverlay');
   T('the stack records it', c._openSheetStack.length === 1);
   T('the background is locked', d.body.classList.contains('scroll-locked'));
   T('the surface is announced as a dialog',
-    d.getElementById('itemDetailOverlay').getAttribute('aria-modal') === 'true');
+    d.getElementById('briefOverlay').getAttribute('aria-modal') === 'true');
   T('it is painted at the stack base',
-    d.getElementById('itemDetailOverlay').style.zIndex === String(c.OVERLAY_Z_BASE));
+    d.getElementById('briefOverlay').style.zIndex === String(c.OVERLAY_Z_BASE));
 
   sub('stacking is open order, not document order');
   open(app, 'confirmOverlay');
@@ -358,16 +369,16 @@ function testOverlays(){
   T('the newest is on top', c.topOpenSheet().id === 'confirmOverlay');
   T('and painted above the one beneath it',
     Number(d.getElementById('confirmOverlay').style.zIndex) >
-    Number(d.getElementById('itemDetailOverlay').style.zIndex));
+    Number(d.getElementById('briefOverlay').style.zIndex));
   T('the lock counts both layers', c._lockDepth === 2, String(c._lockDepth));
 
   sub('closing a child reveals its parent — the surface below is the way back');
   close(app, 'confirmOverlay');
-  T('the parent is still open', d.getElementById('itemDetailOverlay').classList.contains('open'));
+  T('the parent is still open', d.getElementById('briefOverlay').classList.contains('open'));
   T('the stack shrank to one', c._openSheetStack.length === 1);
   T('the background is still locked', d.body.classList.contains('scroll-locked'));
   T('the closed surface gave back its z-index', d.getElementById('confirmOverlay').style.zIndex === '');
-  close(app, 'itemDetailOverlay');
+  close(app, 'briefOverlay');
   T('closing the last one unlocks', !d.body.classList.contains('scroll-locked'));
   T('the stack is empty', c._openSheetStack.length === 0);
   T('the lock depth is zero', c._lockDepth === 0);
@@ -517,95 +528,125 @@ function testConfirmation(){
 }
 
 /* =========================================================
-   CONTRACT 10 — FORMS AND THE DEMO DOMAIN
+   CONTRACT 10 — RECORDING A PROJECT'S STATE
+   Validate before saving, never promote a sample to a fact,
+   and never lose an edit to a page torn down underneath it.
    ========================================================= */
 function testForms(){
-  section('CONTRACT 10 — create, edit, validate, persist, delete');
+  section('CONTRACT 10 — recording a project\'s state');
   const shared = new Map();
   const app = H.loadApp({ sharedStorage: shared });
   const c = app.ctx, d = app.dom.document;
+  const ns = c.STORAGE_NAMESPACE;
 
-  sub('validation refuses to save nothing');
-  c.openItemForm(); c.__flush();
-  d.getElementById('itemTitle').value = '   ';
-  c.saveItemForm();
-  T('an empty title does not create a record', c.items.length === 0);
-  T('the field is flagged', d.getElementById('itemTitle').classList.contains('field-error'));
-  T('and marked invalid for assistive tech',
-    d.getElementById('itemTitle').getAttribute('aria-invalid') === 'true');
-  T('with a message that says what to do',
-    d.getElementById('itemTitleError').textContent.length > 10);
-  T('the form stays open', d.getElementById('itemFormOverlay').classList.contains('open'));
+  sub('a project on sample state opens the editor empty');
+  c.openStateForm('dayplan'); c.__flush();
+  T('the editor opens', d.getElementById('stateOverlay').classList.contains('open'));
+  T('no status is pre-chosen', c.formState.status === null);
+  T('no sample text is pre-filled — one tap on Save must not turn an example into a fact',
+    ['stateBlocker', 'stateVersion', 'statePhase', 'stateTask', 'stateNext']
+      .every(id => d.getElementById(id).value === ''));
+  T('the switches start off', d.getElementById('stateQa').getAttribute('aria-checked') === 'false' &&
+    d.getElementById('stateDecision').getAttribute('aria-checked') === 'false');
+  T('the editor says it replaces sample state', /sample state/.test(d.getElementById('stateFormIntro').textContent));
 
-  sub('creating');
-  d.getElementById('itemTitle').value = 'First item';
-  d.getElementById('itemNote').value = 'A note';
-  c.setFormStatus('active');
-  c.saveItemForm(); c.__flush();
-  T('the record exists', c.items.length === 1);
-  T('with its title', c.items[0].title === 'First item');
-  T('with its note', c.items[0].note === 'A note');
-  T('with a status', c.items[0].status === 'active');
-  T('with an id', typeof c.items[0].id === 'string' && c.items[0].id.length > 4);
-  T('with timestamps', !!c.items[0].createdAt && !!c.items[0].updatedAt);
-  T('the form closed', !d.getElementById('itemFormOverlay').classList.contains('open'));
-  T('it was persisted', H.loadApp({ sharedStorage: shared }).ctx.items.length === 1);
+  sub('validation refuses to save without a status');
+  d.getElementById('stateNext').value = 'Ship it';
+  c.saveStateForm(); c.__flush();
+  T('no record was created', !c.projectStates.dayplan);
+  T('nothing was written', !shared.has(ns + c.KEYS.projectStates));
+  T('the status control is flagged', d.getElementById('stateStatus').classList.contains('field-error'));
+  T('and marked invalid for assistive tech', d.getElementById('stateStatus').getAttribute('aria-invalid') === 'true');
+  T('with a message that says what to do', d.getElementById('stateStatusError').textContent.length > 20);
+  T('the editor stays open', d.getElementById('stateOverlay').classList.contains('open'));
 
-  sub('editing changes the record, not its identity');
-  const id = c.items[0].id, created = c.items[0].createdAt;
-  c.openItemForm(id); c.__flush();
-  T('the form is pre-filled', d.getElementById('itemTitle').value === 'First item');
-  d.getElementById('itemTitle').value = 'Renamed';
-  c.setFormStatus('done');
-  c.saveItemForm(); c.__flush();
-  T('still one record', c.items.length === 1);
-  T('the title changed', c.items[0].title === 'Renamed');
-  T('the status changed', c.items[0].status === 'done');
-  T('the id is unchanged', c.items[0].id === id);
-  T('createdAt is unchanged', c.items[0].createdAt === created);
+  sub('recording a state');
+  c.pickStatus('building');
+  T('choosing a status clears the error', !d.getElementById('stateStatus').classList.contains('field-error'));
+  c.toggleSwitch('stateQa');
+  d.getElementById('stateVersion').value = ' 0.4.0 ';
+  d.getElementById('statePhase').value = 'Phase 2';
+  d.getElementById('stateTask').value = 'Drag   to reschedule\n  blocks';
+  const before = Date.now();
+  c.saveStateForm(); c.__flush();
+  const rec = c.projectStates.dayplan;
+  T('the record exists', !!rec);
+  T('with its status', !!rec && rec.status === 'building');
+  T('with what it needs', !!rec && rec.needsQa === true && rec.needsDecision === false);
+  T('text is trimmed and its whitespace collapsed',
+    !!rec && rec.version === '0.4.0' && rec.currentTask === 'Drag to reschedule blocks');
+  T('an empty blocker means not blocked', !!rec && rec.blocker === null);
+  T('it is dated now', !!rec && Date.parse(rec.updatedAt) >= before - 1000);
+  T('the editor closed', !d.getElementById('stateOverlay').classList.contains('open'));
+  T('it was persisted', !!H.loadApp({ sharedStorage: shared }).ctx.projectStates.dayplan);
+  const v = c.projectView('dayplan');
+  T('the project is no longer a sample', v.isSample === false);
+  T('its last update is the record\'s own date', !!rec && v.lastUpdated === rec.updatedAt);
+  T('what it needs is derived from the record', v.signal === 'needs_qa' && v.status === 'building');
 
-  sub('a draft lives outside the committed collection');
-  c.openItemForm(); c.__flush();
-  d.getElementById('itemTitle').value = 'Half typed';
-  c.flushDraft();
-  T('the draft was written', c.Store.getJSON(c.KEYS.itemDraft, null).title === 'Half typed');
-  T('it is under its own key', c.KEYS.itemDraft.indexOf('draft.') === 0);
-  T('it did not become a record', c.items.length === 1);
-  T('and it cannot be counted as one',
-    c.Store.getJSON(c.KEYS.items, []).length === 1);
+  sub('editing starts from the record, not the sample');
+  c.openStateForm('dayplan'); c.__flush();
+  T('the form is pre-filled from the record',
+    c.formState.status === 'building' && d.getElementById('stateVersion').value === '0.4.0');
+  d.getElementById('stateBlocker').value = 'Waiting on a server key';
+  c.saveStateForm(); c.__flush();
+  T('a written blocker blocks it', c.projectView('dayplan').signal === 'blocked');
+  T('still one record for the project',
+    c.Store.getJSON(c.KEYS.projectStates, []).filter(r => r.id === 'dayplan').length === 1);
+
+  sub('lengths are capped, never trusted');
+  c.openStateForm('dayplan'); c.__flush();
+  d.getElementById('stateNext').value = 'x'.repeat(5000);
+  c.saveStateForm(); c.__flush();
+  T('an over-long field is cut to its limit',
+    c.projectStates.dayplan.nextAction.length === c.STATE_LIMITS.nextAction);
+
+  sub('a draft survives the page being torn down, and nothing else');
+  c.openStateForm('loop'); c.__flush();
+  c.pickStatus('stable');
+  d.getElementById('stateNext').value = 'Half typed';
+  c.flushFormDrafts();
+  T('the draft was written', c.Store.getJSON(c.KEYS.stateDraft, null) !== null);
+  T('under its own key, outside the records', c.KEYS.stateDraft.indexOf('draft.') === 0);
+  T('it did not become a record', !c.projectStates.loop);
+  const other = H.loadApp({ sharedStorage: shared });
+  other.ctx.openStateForm('dayplan'); other.ctx.__flush();
+  T('another project\'s editor ignores it',
+    other.dom.document.getElementById('stateNext').value !== 'Half typed');
+  other.ctx.closeStateForm(); other.ctx.__flush();
+  T('and closing that editor leaves it alone', other.ctx.Store.getJSON(other.ctx.KEYS.stateDraft, null) !== null);
   const restored = H.loadApp({ sharedStorage: shared });
-  restored.ctx.openItemForm(); restored.ctx.__flush();
-  T('reopening the form restores it',
-    restored.dom.document.getElementById('itemTitle').value === 'Half typed');
-  T('editing an existing record never writes a draft',
-    /if\(editingItemId\) return;\s*\/\/ an edit in progress is not a draft/.test(js()) ||
-    /function scheduleDraftSave\(\)\{\s*if\(editingItemId\) return;/.test(js()));
+  restored.ctx.openStateForm('loop'); restored.ctx.__flush();
+  T('reopening the same editor after a reload restores it',
+    restored.dom.document.getElementById('stateNext').value === 'Half typed' &&
+    restored.ctx.formState.status === 'stable');
+  restored.ctx.closeStateForm(); restored.ctx.__flush();
+  T('leaving it on purpose discards the draft', restored.ctx.Store.get(restored.ctx.KEYS.stateDraft) === null);
 
-  sub('saving clears the draft');
-  d.getElementById('itemTitle').value = 'Second item';
-  c.saveItemForm(); c.__flush();
-  T('the draft is gone', c.Store.get(c.KEYS.itemDraft) === null);
-  T('the record was created', c.items.length === 2);
+  sub('saving discards the draft');
+  c.closeStateForm(); c.__flush();
+  c.openStateForm('loop'); c.__flush();
+  c.pickStatus('stable');
+  c.flushFormDrafts();
+  c.saveStateForm(); c.__flush();
+  T('the draft is gone after a save', c.Store.get(c.KEYS.stateDraft) === null);
+  T('and the state was recorded', !!c.projectStates.loop);
 
-  sub('deleting asks first');
-  const target = c.items[1].id;
-  c.openItemDetail(target); c.__flush();
-  const p = c.deleteItemFromDetail();
-  c.__flush();
+  sub('clearing a recorded state asks first');
+  c.openStateForm('loop'); c.__flush();
+  const p = c.clearProjectState(); c.__flush();
   T('a confirmation is shown', d.getElementById('confirmOverlay').classList.contains('open'));
   c.closeConfirm(); c.__flush();
   return p.then(() => {
-    T('cancelling keeps the record', c.items.length === 2);
-    c.openItemDetail(target); c.__flush();
-    const p2 = c.deleteItemFromDetail();
-    c.__flush();
+    T('cancelling keeps the record', !!c.projectStates.loop);
+    const p2 = c.clearProjectState(); c.__flush();
     c.acceptConfirm(); c.__flush();
     return p2.then(() => {
-      T('confirming removes it', c.items.length === 1);
-      T('the right one went', !c.items.some(i => i.id === target));
-      T('the detail page closed', !d.getElementById('itemDetailOverlay').classList.contains('open'));
-      T('the removal was persisted',
-        H.loadApp({ sharedStorage: shared }).ctx.items.length === 1);
+      T('confirming clears it', !c.projectStates.loop);
+      T('the project is back on sample state', c.projectView('loop').isSample === true);
+      T('the editor closed', !d.getElementById('stateOverlay').classList.contains('open'));
+      T('the removal was persisted', !H.loadApp({ sharedStorage: shared }).ctx.projectStates.loop);
+      T('no errors along the way', app.errors.length === 0, app.errors.join(' | '));
     });
   });
 }
@@ -663,6 +704,20 @@ function testMobile(){
     });
   T('the visible mark is not forced to the target size — only the target is',
     /The visible mark can be small; the target never is/.test(style));
+
+  sub('the product\'s own targets meet the same floor');
+  ['.block', '.tool-link', '.focus-bar', '.status-option'].forEach(sel => {
+    const re = new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\{[^}]*min-height:\\s*var\\(--touch-min\\)');
+    T(sel + ' meets the floor', re.test(style));
+  });
+  T('a switch is its whole row, and the row meets the floor',
+    /\.toggle-row\{[^}]*min-height: var\(--touch-min\)/.test(style) &&
+    (src.match(/class="toggle-row switch-row"/g) || []).length >= 2);
+  const product = (style.match(/MISSION CONTROL — hub, field, brief, editors[\s\S]*?RESPONSIVE/) || [''])[0];
+  T('the product stylesheet is found', product.length > 1000);
+  T('nothing in the product depends on hover', !/:hover/.test(product));
+  T('link fields use the 16px text rule, with a URL keyboard',
+    (src.match(/<input type="text" id="link(Chatgpt|Claude)" inputmode="url"/g) || []).length === 2);
 
   sub('orientation and text scaling');
   T('landscape reclaims height rather than clipping',
@@ -738,6 +793,19 @@ function testDesignSystem(){
   T('it disables animation and transition globally',
     /@media \(prefers-reduced-motion: reduce\)\{[\s\S]{0,200}animation: none !important; transition: none !important/.test(style));
   T('and the JS honours it too', /prefersReducedMotion\(\)/.test(js()));
+
+  sub('the product never takes over a foundation class name');
+  /* Reusing .field for the project field once painted the field's floor
+     behind every form input in the app. A product rule may extend a
+     foundation class (.detail-row.stacked, .brief .notice) — never redefine
+     the bare one. */
+  const productAt = style.indexOf('MISSION CONTROL — hub, field, brief, editors');
+  const responsiveAt = style.indexOf('RESPONSIVE', productAt);
+  T('the product stylesheet is delimited', productAt > 0 && responsiveAt > productAt);
+  const bare = s => [...s.matchAll(/^\s*\.([a-z][a-z0-9-]*)\{/gm)].map(m => m[1]);
+  const foundationClasses = new Set(bare(style.slice(0, productAt)).concat(bare(style.slice(responsiveAt))));
+  const taken = bare(style.slice(productAt, responsiveAt)).filter(c => foundationClasses.has(c));
+  T('no bare foundation class is redefined by the product', taken.length === 0, taken.join(', '));
 
   sub('status is never carried by colour alone');
   T('a badge shows a word, not just a hue', /\.badge\{[\s\S]{0,400}text-transform: uppercase/.test(style));
@@ -848,7 +916,7 @@ function testStress(){
   const c = app.ctx, d = app.dom.document;
 
   sub('100 tab switches');
-  const tabs = ['home', 'items', 'settings'];
+  const tabs = ['home', 'settings'];
   for(let i = 0; i < 100; i++) c.switchTab(tabs[i % tabs.length]);
   const active = [...d.querySelectorAll('.view')].filter(v => v.classList.contains('active'));
   T('still exactly one active view', active.length === 1, String(active.length));
@@ -856,43 +924,65 @@ function testStress(){
   T('no console errors', app.errors.length === 0, app.errors.join(' | '));
 
   sub('100 overlay open/close cycles');
-  for(let i = 0; i < 100; i++){ open(app, 'itemDetailOverlay'); close(app, 'itemDetailOverlay'); }
+  for(let i = 0; i < 100; i++){ open(app, 'briefOverlay'); close(app, 'briefOverlay'); }
   T('the stack is empty', c._openSheetStack.length === 0, String(c._openSheetStack.length));
   T('the lock depth is zero', c._lockDepth === 0, String(c._lockDepth));
   T('the body is not left locked', !d.body.classList.contains('scroll-locked'));
-  T('no z-index is left painted', d.getElementById('itemDetailOverlay').style.zIndex === '');
+  T('no z-index is left painted', d.getElementById('briefOverlay').style.zIndex === '');
   T('the opener map did not grow', c._sheetOpeners.size === 0, String(c._sheetOpeners.size));
 
   sub('50 nested cycles');
   for(let i = 0; i < 50; i++){
-    open(app, 'itemDetailOverlay');
+    open(app, 'briefOverlay');
     open(app, 'confirmOverlay');
     close(app, 'confirmOverlay');
-    close(app, 'itemDetailOverlay');
+    close(app, 'briefOverlay');
   }
   T('the stack is empty', c._openSheetStack.length === 0, String(c._openSheetStack.length));
   T('the lock depth is zero', c._lockDepth === 0, String(c._lockDepth));
   T('history depth did not run away', Math.abs(c._historyDepth) <= 1, String(c._historyDepth));
 
-  sub('50 create / edit / delete cycles');
-  const before = c.items.length;
-  for(let i = 0; i < 50; i++){
-    c.openItemForm();
-    d.getElementById('itemTitle').value = 'Item ' + i;
-    c.saveItemForm();
-    const id = c.items[c.items.length - 1].id;
-    c.openItemForm(id);
-    d.getElementById('itemTitle').value = 'Item ' + i + ' edited';
-    c.saveItemForm();
-    c.items = c.items.filter(x => x.id !== id);
-    c.persistItems();
+  sub('240 taps across the field — focus, brief, back');
+  const ids = c.PROJECT_REGISTRY.map(p => p.id);
+  for(let i = 0; i < 240; i++){
+    c.tapProject(ids[Math.floor(i / 2) % ids.length]);
+    c.__flush();
+    if(d.getElementById('briefOverlay').classList.contains('open')){ c.closeBrief(); c.__flush(); }
   }
-  T('the collection returned to its starting size', c.items.length === before,
-    c.items.length + ' vs ' + before);
-  T('no draft was left behind', c.Store.get(c.KEYS.itemDraft) === null);
+  T('exactly one project is selected', ids.indexOf(c.selectedId) !== -1);
+  T('exactly one platform is pressed',
+    (d.getElementById('projectField').innerHTML.match(/aria-pressed="true"/g) || []).length === 1);
+  T('the overlay stack is empty', c._openSheetStack.length === 0);
+  T('history depth did not run away', Math.abs(c._historyDepth) <= 1, String(c._historyDepth));
+
+  sub('50 record / edit cycles');
+  for(let i = 0; i < 50; i++){
+    c.openStateForm('dayplan');
+    c.pickStatus(c.PROJECT_STATUSES[i % c.PROJECT_STATUSES.length]);
+    d.getElementById('stateNext').value = 'Step ' + i;
+    c.saveStateForm();
+    c.openStateForm('dayplan');
+    d.getElementById('stateNext').value = 'Step ' + i + ' edited';
+    c.saveStateForm();
+    c.__flush();
+  }
+  T('one record for the project, however often it was saved',
+    c.Store.getJSON(c.KEYS.projectStates, []).length === 1);
+  T('it holds the last edit', c.projectStates.dayplan.nextAction === 'Step 49 edited');
+  T('no draft was left behind', c.Store.get(c.KEYS.stateDraft) === null);
+
+  sub('50 link saves');
+  for(let i = 0; i < 50; i++){
+    c.openLinksForm('loop');
+    d.getElementById('linkChatgpt').value = FIX.chat;
+    d.getElementById('linkClaude').value = i % 2 ? FIX.claudeApp : '';
+    c.saveLinksForm();
+    c.__flush();
+  }
+  T('one link record for the project', c.Store.getJSON(c.KEYS.privateLinks, []).length === 1);
+  T('no draft was left behind', c.Store.get(c.KEYS.linksDraft) === null);
   T('the stack is still empty', c._openSheetStack.length === 0);
-  T('storage did not accumulate keys', c.Store.listKeys().length <= 4,
-    c.Store.listKeys().join(','));
+  T('storage did not accumulate keys', c.Store.listKeys().length <= 5, c.Store.listKeys().join(','));
   T('no console errors after all of it', app.errors.length === 0, app.errors.join(' | '));
 
   sub('an overlay left open at teardown still unlocks on close');
@@ -908,10 +998,12 @@ function testStress(){
 function testAccessibility(){
   section('CONTRACT 16 — accessibility is structural');
   const src = H.readApp(), style = css();
+  const app = H.loadApp();
+  const c = app.ctx, d = app.dom.document;
 
   sub('semantics');
   T('navigation is a <nav> with a name', /<nav class="tabbar" aria-label="Main">/.test(src));
-  T('screens are <main> elements', (src.match(/<main class="view/g) || []).length >= 3);
+  T('screens are <main> elements', (src.match(/<main class="view/g) || []).length >= 2);
   T('every icon-only control has a label',
     [...src.matchAll(/<button[^>]*class="[^"]*icon-btn[^"]*"[^>]*>/g)]
       .every(m => /aria-label=/.test(m[0])));
@@ -919,16 +1011,29 @@ function testAccessibility(){
     (src.match(/aria-hidden="true"/g) || []).length >= 6);
   T('generated SVG is hidden and unfocusable',
     /aria-hidden="true" focusable="false"/.test(js()));
+  T('the hub names what it lists', /<h2 class="sr-only" id="hubHeading">/.test(src));
 
   sub('state is exposed, not just painted');
-  T('the filter is a tablist', /role="tablist"/.test(src));
-  T('its options report selection', /aria-selected="true"/.test(src));
-  T('the status control is a radiogroup', /role="radiogroup"/.test(src));
-  T('its options report checked state', /aria-checked="true"/.test(src));
-  T('the toggle exposes checked state', /\.toggle\[aria-checked="true"\]/.test(style));
+  T('the status control is a radiogroup', /id="stateStatus" role="radiogroup"/.test(src));
+  c.openStateForm('loop'); c.__flush();
+  c.pickStatus('stable');
+  const radios = d.getElementById('stateStatus').innerHTML;
+  T('its options are radios that report which one is checked',
+    (radios.match(/role="radio" aria-checked="true"/g) || []).length === 1 &&
+    (radios.match(/role="radio" aria-checked="false"/g) || []).length === c.PROJECT_STATUSES.length - 1);
+  T('the switches are switches', (src.match(/role="switch" aria-checked="false"/g) || []).length >= 2);
+  c.toggleSwitch('stateQa');
+  T('a switch reports its new state', d.getElementById('stateQa').getAttribute('aria-checked') === 'true');
+  T('the toggle exposes checked state',
+    /\.toggle\[aria-checked="true"\]/.test(style) && /\.switch-row\[aria-checked="true"\] \.toggle/.test(style));
+  c.closeStateForm(); c.__flush();
+  c.tapProject('loop');
+  T('a focused platform reports it',
+    /id="block-loop" aria-pressed="true"/.test(d.getElementById('projectField').innerHTML));
   T('validation errors are announced', /role="alert"/.test(src));
   T('an invalid field is marked', /setAttribute\('aria-invalid', 'true'\)/.test(js()));
-  T('a field points at its own error message', /aria-describedby="itemTitleError"/.test(src));
+  T('a link field points at its own error message', /aria-describedby="linkChatgptError linkChatgptHint"/.test(src));
+  T('the status group points at its error message', /aria-describedby="stateStatusError"/.test(src));
 
   sub('focus');
   T('focus is always visible', /\*:focus-visible\{ outline: 2px solid var\(--accent\)/.test(style));
@@ -936,9 +1041,10 @@ function testAccessibility(){
     /\.sheet:focus, \.sheet:focus-visible\{ outline: none; \}/.test(style));
   T('a dialog traps Tab', /sheetFocusables\(ov\)/.test(js()));
   T('and returns focus when it closes', /opener\.focus\(\{ preventScroll: true \}\)/.test(js()));
+  T('a platform keeps keyboard focus when a tap redraws the field', /if\(keepFocus\) Field\.focus\(id\);/.test(js()));
 
   sub('hidden content is hidden properly');
-  T('the file input is visually hidden, not display:none', /class="sr-only"/.test(src));
+  T('hidden text is visually hidden, not display:none', /class="sr-only"/.test(src));
   T('.sr-only keeps it in the accessibility tree', /\.sr-only\{[\s\S]{0,200}clip: rect\(0 0 0 0\)/.test(style));
 }
 
@@ -951,11 +1057,24 @@ function testContamination(){
   const code = scan.run();
   T('the contamination scan is clean', code === 0);
 
+  sub('the one exemption is exact, and has not grown');
   const src = H.readApp();
-  T('no legacy brand token in the app', !/\bLOOP\b/.test(src));
-  T('the demo domain is neutral', /const ITEM_STATUSES/.test(js()));
-  T('the demo is small enough to delete easily',
-    (js().match(/DEMO DOMAIN[\s\S]*?SETTINGS — data ownership/) || [''])[0].split('\n').length < 400);
+  const lines = src.split(/\r?\n/).map(l => l.trim());
+  const allowed = scan.ALLOWED.map(a => a.line);
+  T('it is two lines', scan.ALLOWED.length === 2, String(scan.ALLOWED.length));
+  T('both are in the app, not the docs or the tests', scan.ALLOWED.every(a => a.file === 'index.html'));
+  const brand = lines.filter(l => /\bLOOP\b/.test(l));
+  T('the brand token appears only on its registry line',
+    brand.length === 1 && allowed.indexOf(brand[0]) !== -1, brand.join(' | '));
+  const remote = lines.filter(l => /morecobrax-dot\/loop\b/i.test(l));
+  T('the old remote appears only on its registry line',
+    remote.length === 1 && allowed.indexOf(remote[0]) !== -1, remote.join(' | '));
+  const registry = (js().match(/const PROJECT_REGISTRY = \[[\s\S]*?\n\];/) || [''])[0];
+  T('and both lines sit inside the project registry', allowed.every(l => registry.indexOf(l) !== -1));
+
+  sub('the starter demo is gone');
+  T('no demo entity remains in the app', !/openItemForm|ITEM_STATUSES|itemDetailOverlay|componentsOverlay/.test(src));
+  T('the product section replaced it', /MISSION CONTROL — the product/.test(js()));
 }
 
 /* =========================================================
@@ -1044,18 +1163,29 @@ function testPortability(){
   T('the seam defaults are no-ops, so a product boots before it has a domain',
     /const Domain = \{[\s\S]{0,200}hydrate\(\)\{\},/.test(src));
 
-  sub('no foundation function names the demo entity');
-  /* The boundary is the DEMO DOMAIN banner. Everything above it, plus the
-     settings/updates/utilities/boot sections below it, is foundation. */
-  const demoStart = src.indexOf('DEMO DOMAIN — Item');
-  const demoEnd = src.indexOf('SETTINGS — data ownership');
-  T('the demo section is delimited', demoStart > 0 && demoEnd > demoStart);
-  const foundation = src.slice(0, demoStart) + src.slice(demoEnd);
-  /* setItem/getItem/removeItem are the localStorage API, not the demo. */
+  sub('no foundation function names the product');
+  /* The boundary is the MISSION CONTROL banner. Everything above it, plus the
+     settings/updates/utilities/boot sections below it, is foundation. The
+     key table is shared on purpose (a product adds its keys there), so it is
+     the one place a product name may appear. */
+  const productStart = src.indexOf('MISSION CONTROL — the product');
+  const productEnd = src.indexOf('SETTINGS — data ownership');
+  T('the product section is delimited', productStart > 0 && productEnd > productStart);
+  /* APP_CONFIG and APP_UPDATES are the product's own words declared where
+     the foundation expects them, so they are set aside with the key table. */
+  const foundation = stripComments(src.slice(0, productStart) + src.slice(productEnd))
+    .replace(/const KEYS = \{[\s\S]*?\};/, '')
+    .replace(/const APP_CONFIG = \{[\s\S]*?\};/, '')
+    .replace(/const APP_UPDATES = \[[\s\S]*?\n\];/, '');
+  const productRefs = (foundation.match(
+    /\b(?:PROJECT_[A-Z_]+|[A-Za-z]*[Pp]roject[A-Za-z0-9_]*|privateLinks?|SIGNALS|ATTENTION_KINDS|IsoField|LANDMARKS|renderHub|selectedId|openBrief)\b/g) || []);
+  T('the foundation contains no reference to the product',
+    productRefs.length === 0, [...new Set(productRefs)].join(', '));
+  /* The starter's demo entity is gone too: setItem/getItem/removeItem are
+     the localStorage API, not the demo. */
   const demoRefs = (foundation.match(/[A-Za-z_$][A-Za-z0-9_$]*[Ii]tem[A-Za-z0-9_$]*/g) || [])
     .filter(n => !/^(set|get|remove)Item$/.test(n));
-  T('the foundation contains no reference to the demo entity',
-    demoRefs.length === 0, [...new Set(demoRefs)].join(', '));
+  T('and none to the starter demo', demoRefs.length === 0, [...new Set(demoRefs)].join(', '));
 
   sub('backup import is domain-agnostic');
   T('merge iterates the backup, not a hard-coded key list',
@@ -1106,7 +1236,7 @@ function testPortability(){
       ? 'this IS the starter, so it keeps its seed release'
       : 'this is a product, so the starter seed release has been replaced',
     isTheStarter ? carriesSeed : !carriesSeed,
-    isTheStarter ? '' : 'still shipping ' + STARTER_SEED_RELEASE + ' — see NEW-PROJECT.md step 10');
+    isTheStarter ? '' : 'still shipping ' + STARTER_SEED_RELEASE + ' — replace APP_UPDATES with the product\'s own history');
 
   sub('nothing hard-codes the starter identity');
   /* Contracts must follow the config, so that copying the repo and changing
@@ -1131,10 +1261,527 @@ function testPortability(){
   })());
 }
 
+/* =========================================================
+   CONTRACT 20 — THE PROJECT REGISTRY
+   Six projects, one shape, drawn from data — and nothing
+   private in a file that is public.
+   ========================================================= */
+function testRegistry(){
+  section('CONTRACT 20 — six projects, one shape, nothing private');
+  const app = H.loadApp();
+  const c = app.ctx;
+  const reg = c.PROJECT_REGISTRY;
+
+  sub('the six projects the brief names');
+  T('there are six', reg.length === 6, String(reg.length));
+  T('in the brief\'s order', reg.map(p => p.id).join() ===
+    'loop,dayplan,daily-verse,personal-savings,space-kindergarten,capybara-sushi');
+  T('ids are unique', new Set(reg.map(p => p.id)).size === reg.length);
+  T('ids are safe slugs', reg.every(p => /^[a-z][a-z0-9-]*$/.test(p.id)));
+
+  sub('every record has the same shape');
+  const FIELDS = ['defaultBranch', 'id', 'liveUrl', 'name', 'repositoryUrl', 'shortDescription', 'visualTheme'];
+  T('every record carries exactly the identity fields',
+    reg.every(p => Object.keys(p).sort().join() === FIELDS.join()));
+  T('every project has a name and a one-line purpose',
+    reg.every(p => p.name && p.shortDescription && p.shortDescription.length <= 90));
+  T('every theme has a landmark and a glyph',
+    reg.every(p => c.LANDMARKS[p.visualTheme] && c.PROJECT_GLYPHS[p.visualTheme]));
+  T('no two projects share a look', new Set(reg.map(p => p.visualTheme)).size === reg.length);
+  T('every project names its default branch', reg.every(p => /^[A-Za-z0-9._/-]+$/.test(p.defaultBranch || '')));
+
+  sub('public links are real https links that pass the link rule');
+  reg.forEach(p => {
+    T(p.id + ': repository', c.parseToolLink(p.repositoryUrl, 'https').ok &&
+      /^https:\/\/github\.com\/morecobrax-dot\/[A-Za-z0-9._-]+$/.test(p.repositoryUrl));
+    T(p.id + ': live app, or absent', p.liveUrl === null ||
+      (c.parseToolLink(p.liveUrl, 'https').ok && /^https:\/\/morecobrax-dot\.github\.io\/[A-Za-z0-9._-]+\/$/.test(p.liveUrl)));
+  });
+  T('a project with no live app says so with null, not a guess',
+    reg.filter(p => p.liveUrl === null).map(p => p.id).join() === 'personal-savings');
+
+  sub('nothing private and no state in the public registry');
+  const regSrc = (js().match(/const PROJECT_REGISTRY = \[[\s\S]*?\n\];/) || [''])[0];
+  T('the registry is found', regSrc.length > 200);
+  T('no ChatGPT or Claude link in it', !/chatgpt|openai|claude/i.test(regSrc));
+  T('no private-link field in it', !/chatgptUrl|claudeUrl/.test(regSrc));
+  T('no status, version or phase lives in identity',
+    !/\b(status|version|phase|currentTask|nextAction|blocker|needsQa|needsDecision)\s*:/.test(regSrc));
+
+  sub('sample state is labelled, and invents nothing');
+  T('every project has a sample state', reg.every(p => c.SAMPLE_STATE[p.id]));
+  T('every sample status is a real status',
+    reg.every(p => c.PROJECT_STATUSES.indexOf(c.SAMPLE_STATE[p.id].status) !== -1));
+  const sampleSrc = (js().match(/const SAMPLE_STATE = \{[\s\S]*?\n\};/) || [''])[0];
+  T('the samples are found', sampleSrc.length > 100);
+  T('no sample invents a version or a phase', !/\b(version|phase)\s*:/.test(sampleSrc));
+  T('sample text says it is an example',
+    /^Example:/.test(c.SAMPLE_TEXT.currentTask) && /^Example:/.test(c.SAMPLE_TEXT.nextAction));
+  T('a sample blocker says it is an example too',
+    reg.map(p => c.SAMPLE_STATE[p.id].blocker).filter(Boolean).every(b => /^Example:/.test(b)));
+  const views = c.allViews();
+  T('every project starts as a sample', views.every(v => v.isSample));
+  T('the samples show every kind of attention',
+    c.ATTENTION_KINDS.every(k => views.some(v => v.attention.indexOf(k) !== -1)));
+  T('a sample has no last-updated date — nobody recorded it', views.every(v => v.lastUpdated === null));
+}
+
+/* =========================================================
+   CONTRACT 21 — STATUS AND ATTENTION
+   Two separate facts, one owner each, and everything else
+   derived — so nothing can disagree with its source.
+   ========================================================= */
+function testStatusModel(){
+  section('CONTRACT 21 — status and attention: separate, derived, never stored twice');
+  const shared = new Map();
+  const app = H.loadApp({ sharedStorage: shared });
+  const c = app.ctx;
+
+  sub('the vocabulary');
+  T('five lifecycle statuses', c.PROJECT_STATUSES.join() === 'planning,building,release_ready,stable,paused');
+  T('three kinds of attention, most severe first', c.ATTENTION_KINDS.join() === 'blocked,needs_decision,needs_qa');
+  const keys = c.PROJECT_STATUSES.concat(c.ATTENTION_KINDS);
+  T('every status and attention has a word, a short word, a shape and a crew',
+    keys.every(k => c.SIGNALS[k] && c.SIGNALS[k].label && c.SIGNALS[k].short && c.SIGNALS[k].icon && c.SIGNALS[k].worker));
+  T('and nothing else', Object.keys(c.SIGNALS).sort().join() === keys.slice().sort().join());
+  T('every shape is different, so colour is never the only difference',
+    new Set(keys.map(k => c.SIGNALS[k].icon)).size === keys.length);
+  T('every one has its own hue class', keys.every(k =>
+    new RegExp('\\.sig-' + k + '\\{ --sig: var\\(--sig-[a-z]+\\); \\}').test(css())));
+  T('the hues are tokens in the domain layer', /4 · DOMAIN[\s\S]*--sig-blocked: #/.test(css()));
+
+  sub('blocked means exactly "a blocker is written down"');
+  const base = { status: 'building', needsQa: false, needsDecision: false, blocker: null };
+  T('no blocker, not blocked', c.attentionOf(base).length === 0);
+  T('a blocker, blocked', c.attentionOf(Object.assign({}, base, { blocker: 'x' }))[0] === 'blocked');
+  T('a blank blocker is no blocker',
+    c.normalizeState({ id: 'loop', status: 'building', blocker: '   ' }).blocker === null);
+  T('there is no separate blocked flag to disagree with it', !/\bblocked\s*:\s*(true|false)/.test(js()));
+
+  sub('attention keeps every kind, most severe first');
+  const all = { status: 'building', needsQa: true, needsDecision: true, blocker: 'x' };
+  T('all three at once', c.attentionOf(all).join() === 'blocked,needs_decision,needs_qa');
+
+  sub('the headline signal and the crew');
+  const put = (id, s) => { c.projectStates[id] = c.normalizeState(Object.assign({ id: id, updatedAt: '2026-01-01' }, s)); };
+  put('dayplan', { status: 'building', needsQa: true });
+  put('loop', { status: 'paused' });
+  put('daily-verse', { status: 'release_ready' });
+  put('personal-savings', { status: 'planning', needsDecision: true, needsQa: true });
+  put('space-kindergarten', { status: 'stable' });
+  put('capybara-sushi', { status: 'building', blocker: 'Real blocker', needsDecision: true });
+  const v = id => c.projectView(id);
+  T('attention outranks the lifecycle', v('dayplan').signal === 'needs_qa' && v('dayplan').status === 'building');
+  T('without attention the lifecycle is the headline', v('loop').signal === 'paused');
+  T('the crew follows the headline',
+    v('dayplan').workerState === 'inspecting' && v('loop').workerState === 'quiet' &&
+    v('daily-verse').workerState === 'celebrating' && v('space-kindergarten').workerState === 'idle' &&
+    v('capybara-sushi').workerState === 'warning' && v('personal-savings').workerState === 'waiting');
+
+  sub('the counts');
+  const counts = c.hudCounts(c.allViews());
+  T('projects', counts.projects === 6);
+  T('active is planning, building and release ready', counts.active === 4, String(counts.active));
+  T('a project needing two things counts in both', counts.needsQa === 2 && counts.needsDecision === 2,
+    counts.needsQa + '/' + counts.needsDecision);
+  T('blocked', counts.blocked === 1);
+
+  sub('the queue');
+  const q = c.attentionQueue(c.allViews()).map(x => x.id).join();
+  T('blocked first, then decisions, then QA; ties keep registry order',
+    q === 'capybara-sushi,personal-savings,dayplan', q);
+
+  sub('nothing derived is ever stored');
+  c.persistProjectStates();
+  const stored = JSON.parse(shared.get(c.STORAGE_NAMESPACE + c.KEYS.projectStates));
+  const FIELDS = 'blocker,currentTask,id,needsDecision,needsQa,nextAction,phase,status,updatedAt,version';
+  T('a stored record holds exactly the recorded facts', stored.every(r => Object.keys(r).sort().join() === FIELDS));
+  T('no attention, signal, crew or sample flag was written',
+    !/attention|signal|workerState|isSample/.test(shared.get(c.STORAGE_NAMESPACE + c.KEYS.projectStates)));
+
+  sub('a record this version cannot read is kept, not deleted');
+  shared.set(c.STORAGE_NAMESPACE + c.KEYS.projectStates, JSON.stringify([
+    { id: 'loop', status: 'stable', updatedAt: '2026-01-01' },
+    { id: 'a-future-project', status: 'stable', updatedAt: '2026-01-01' },
+    { id: 'dayplan', status: 'archived', updatedAt: '2026-01-02' }
+  ]));
+  const later = H.loadApp({ sharedStorage: shared });
+  T('the readable record loads', !!later.ctx.projectStates.loop);
+  T('an unknown status is not guessed at: that project shows sample state',
+    later.ctx.projectView('dayplan').isSample === true);
+  later.ctx.openStateForm('space-kindergarten'); later.ctx.pickStatus('building'); later.ctx.saveStateForm();
+  const after = JSON.parse(shared.get(c.STORAGE_NAMESPACE + c.KEYS.projectStates));
+  T('saving another project writes the unreadable records back untouched',
+    after.some(r => r.id === 'a-future-project') && after.some(r => r.id === 'dayplan' && r.status === 'archived'));
+  later.ctx.openStateForm('dayplan'); later.ctx.pickStatus('building'); later.ctx.saveStateForm();
+  const replaced = JSON.parse(shared.get(c.STORAGE_NAMESPACE + c.KEYS.projectStates));
+  T('saving that project replaces its unreadable record', replaced.filter(r => r.id === 'dayplan').length === 1 &&
+    replaced.find(r => r.id === 'dayplan').status === 'building');
+  T('no errors', app.errors.length === 0 && later.errors.length === 0, app.errors.concat(later.errors).join(' | '));
+}
+
+/* =========================================================
+   CONTRACT 22 — PRIVATE LINKS
+   Validated when saved and again when drawn, kept on this
+   device, and never shown in full.
+   ========================================================= */
+function testPrivateLinks(){
+  section('CONTRACT 22 — private links: validated, local, never shown in full');
+  const shared = new Map();
+  const app = H.loadApp({ sharedStorage: shared });
+  const c = app.ctx, d = app.dom.document;
+  const ns = c.STORAGE_NAMESPACE;
+
+  sub('the link rule accepts the documented forms');
+  const ok = (u, k) => c.parseToolLink(u, k).ok;
+  T('a ChatGPT conversation link', ok('https://chatgpt.com/c/FAKE-FIXTURE-0011', 'chatgpt'));
+  T('a Claude Code session link', ok('https://claude.ai/code/session_FAKE_FIXTURE_0012', 'claude'));
+  T('the Claude app form', ok(FIX.claudeApp, 'claude'));
+  T('a new-session link with repo and branch',
+    ok('https://claude.ai/code/new?repo=morecobrax-dot%2Fdayplan&branch=main', 'claude'));
+  T('surrounding whitespace is trimmed',
+    c.parseToolLink('  ' + FIX.chat + '  ', 'chatgpt').url === FIX.chat);
+  T('the host is reported, without www',
+    c.parseToolLink('https://www.chat.example.test/c/FAKE', 'chatgpt').host === 'chat.example.test');
+  T('an app link reports the app, not a host', c.parseToolLink(FIX.claudeApp, 'claude').host === 'Claude app');
+
+  sub('and refuses everything else, with a reason');
+  const bad = {
+    'a script link': ['javascript:void(0)', 'chatgpt'],
+    'a data URL': ['data:text/html,x', 'chatgpt'],
+    'plain http': ['http://chat.example.test/c/FAKE', 'chatgpt'],
+    'a file URL': ['file:///FAKE/path', 'chatgpt'],
+    'the Claude app form in the ChatGPT field': [FIX.claudeApp, 'chatgpt'],
+    'another app\'s scheme': ['vscode://FAKE', 'claude'],
+    'a Claude app link off its route': ['claude://settings/FAKE', 'claude'],
+    'a name and password in the link': ['https://user:pass@chat.example.test/c/FAKE', 'chatgpt'],
+    'a token parameter': ['https://chat.example.test/c/FAKE?access_token=FAKE', 'chatgpt'],
+    'an API key parameter': ['https://claude.example.test/code/FAKE?api_key=FAKE', 'claude'],
+    'an encoded token parameter': ['https://chat.example.test/c/FAKE?acc%65ss_token=FAKE', 'chatgpt'],
+    'a token in the fragment': ['https://chat.example.test/c/FAKE#id_token=FAKE', 'chatgpt'],
+    'a space': ['https://chat.example.test/c/FAKE x', 'chatgpt'],
+    'a quote': ['https://chat.example.test/c/FAKE"onmouseover=x', 'chatgpt'],
+    'an angle bracket': ['https://chat.example.test/<b>', 'chatgpt'],
+    'no scheme': ['chat.example.test/c/FAKE', 'chatgpt'],
+    'a host that is not a host': ['https://-bad-/x', 'chatgpt'],
+    'a single-word host': ['https://intranet/x', 'chatgpt'],
+    'something too long': ['https://chat.example.test/c/' + 'F'.repeat(2100), 'chatgpt'],
+    'a control character': ['https://chat.example.test/c/FAKE\u0007', 'chatgpt']
+  };
+  Object.keys(bad).forEach(label => {
+    const r = c.parseToolLink(bad[label][0], bad[label][1]);
+    T('refuses ' + label, !r.ok && !r.empty && typeof r.error === 'string' && r.error.length > 10, JSON.stringify(r));
+  });
+  T('an empty field is not an error', c.parseToolLink('   ', 'claude').empty === true);
+  /* Refused for the right reason, not by a later check that happens to fail:
+     a mutation run found both of these still refused — with the wrong words. */
+  T('plain http is refused because it is not https',
+    /https:\/\//.test(c.parseToolLink('http://chat.example.test/c/FAKE', 'chatgpt').error || ''));
+  T('a link with a name and password is refused for that reason',
+    /username or password/.test(c.parseToolLink('https://user:pass@chat.example.test/c/FAKE', 'chatgpt').error || ''));
+
+  sub('saving, on this device, through the adapter');
+  c.openLinksForm('dayplan'); c.__flush();
+  T('the editor states where links live', /Only on this device/.test(d.getElementById('linksPrivacy').innerHTML));
+  T('and designs the Claude fallback from public facts only',
+    /morecobrax-dot\/dayplan<\/code> at <code>main/.test(d.getElementById('linksFallback').innerHTML));
+  d.getElementById('linkChatgpt').value = 'http://chat.example.test/c/FAKE';
+  c.saveLinksForm(); c.__flush();
+  T('an invalid link is refused', !c.privateLinks.dayplan);
+  T('nothing was written', !shared.has(ns + c.KEYS.privateLinks));
+  T('the field is flagged with its reason',
+    d.getElementById('linkChatgpt').getAttribute('aria-invalid') === 'true' &&
+    d.getElementById('linkChatgptError').textContent.length > 10);
+  T('the editor stays open', d.getElementById('linksOverlay').classList.contains('open'));
+  d.getElementById('linkChatgpt').value = FIX.chat;
+  d.getElementById('linkClaude').value = FIX.claude;
+  c.saveLinksForm(); c.__flush();
+  T('valid links are saved', !!c.privateLinks.dayplan && c.privateLinks.dayplan.chatgptUrl === FIX.chat);
+  T('the editor closed', !d.getElementById('linksOverlay').classList.contains('open'));
+  T('they persist across a reload',
+    H.loadApp({ sharedStorage: shared }).ctx.privateLinks.dayplan.claudeUrl === FIX.claude);
+  T('they live in one namespaced collection and nowhere else in storage',
+    [...shared.keys()].filter(k => shared.get(k).indexOf('FAKE-FIXTURE-0001') !== -1).join() ===
+    ns + c.KEYS.privateLinks);
+
+  sub('actions appear only when configured');
+  const v = c.projectView('dayplan');
+  T('ChatGPT and Claude are now offered', !!v.tools.chatgpt && !!v.tools.claude);
+  T('GitHub and the live app come from the registry',
+    v.tools.github === c.PROJECT_REGISTRY[1].repositoryUrl && v.tools.live === c.PROJECT_REGISTRY[1].liveUrl);
+  const ps = c.projectView('personal-savings');
+  T('a project with no live app offers no live action', ps.tools.live === null);
+  T('a project with no private links offers neither', ps.tools.chatgpt === null && ps.tools.claude === null);
+  T('the brief never renders an unconfigured action', !/tool-live|tool-chatgpt|tool-claude/.test(c.toolsHtml(ps, false)));
+  const html = c.toolsHtml(v, false);
+  T('each tool is a real link', (html.match(/<a class="tool-link/g) || []).length === 4);
+  T('web links open with no opener and no referrer', (html.match(/target="_blank" rel="noopener noreferrer"/g) || []).length === 4);
+  const visible = html.replace(/<[^>]*>/g, ' ');
+  T('only the host is ever shown — never the conversation', !/FAKE-FIXTURE/.test(visible) && /chat\.example\.test/.test(visible));
+  c.privateLinks.dayplan.claudeUrl = FIX.claudeApp;
+  const appHtml = c.toolsHtml(c.projectView('dayplan'), false);
+  T('an app link is handed to the system, not opened in a tab',
+    /<a class="tool-link tool-claude" href="claude:\/\/code\/FAKE-FIXTURE-0003" rel="noreferrer"/.test(appHtml));
+  T('the settings list says what is set, not what it is',
+    /ChatGPT and Claude set on this device/.test(d.getElementById('linksList').innerHTML) &&
+    !/FAKE-FIXTURE/.test(d.getElementById('linksList').innerHTML));
+
+  sub('a stored link is re-checked before it is drawn');
+  c.privateLinks.dayplan.chatgptUrl = 'javascript:void(0)';
+  const tampered = c.projectView('dayplan');
+  T('a tampered link is not offered', tampered.tools.chatgpt === null);
+  T('it is reported as needing a fix', tampered.brokenLinks.join() === 'chatgpt' && /needs fixing/.test(c.linksSummary(tampered)));
+  T('it never reaches the page', !/javascript:/.test(c.toolsHtml(tampered, false)) && !/javascript:/.test(c.briefHtml(tampered, true)));
+  c.persistPrivateLinks();
+  c.openLinksForm('dayplan'); c.__flush();
+  T('opening its editor shows the reason next to it', d.getElementById('linkChatgpt').getAttribute('aria-invalid') === 'true');
+  c.closeLinksForm(); c.__flush();
+
+  sub('corrupt storage degrades safely');
+  shared.set(ns + c.KEYS.privateLinks, '{not json');
+  const corrupt = H.loadApp({ sharedStorage: shared });
+  T('a corrupt store reads as no links', Object.keys(corrupt.ctx.privateLinks).length === 0);
+  T('and raises no error', corrupt.errors.length === 0, corrupt.errors.join(' | '));
+  T('the corrupt value is not repaired behind your back', shared.get(ns + c.KEYS.privateLinks) === '{not json');
+
+  sub('removing asks first');
+  const fresh = H.loadApp({ sharedStorage: new Map() });
+  const f = fresh.ctx, fd = fresh.dom.document;
+  f.openLinksForm('loop'); fd.getElementById('linkChatgpt').value = FIX.chat; f.saveLinksForm(); f.__flush();
+  f.openLinksForm('loop'); f.__flush();
+  const p = f.removeProjectLinks(); f.__flush();
+  T('a confirmation is shown', fd.getElementById('confirmOverlay').classList.contains('open'));
+  f.closeConfirm(); f.__flush();
+  return p.then(() => {
+    T('cancelling keeps them', !!f.privateLinks.loop);
+    const p2 = f.removeProjectLinks(); f.__flush();
+    f.acceptConfirm(); f.__flush();
+    return p2.then(() => {
+      T('confirming erases them', !f.privateLinks.loop);
+      T('and the project offers no private tools', f.projectView('loop').tools.chatgpt === null);
+      T('no errors along the way', app.errors.length === 0 && fresh.errors.length === 0,
+        app.errors.concat(fresh.errors).join(' | '));
+    });
+  });
+}
+
+/* =========================================================
+   CONTRACT 23 — THE HUB
+   Attention first, one focus, a second tap for the brief —
+   and the focus is still there when you come back.
+   ========================================================= */
+function testHub(){
+  section('CONTRACT 23 — the hub: attention first, one focus, remembered');
+  const shared = new Map();
+  const app = H.loadApp({ sharedStorage: shared });
+  const c = app.ctx, d = app.dom.document;
+  const ns = c.STORAGE_NAMESPACE;
+  const html = id => d.getElementById(id).innerHTML;
+
+  sub('first launch');
+  T('nothing is selected until you choose', c.selectedId === null);
+  T('and nothing was written to say so', !shared.has(ns + c.KEYS.selectedProject));
+  T('the focus bar says how to begin', /Tap a project to focus it/.test(html('focusBar')));
+  const hud = html('hud');
+  T('the HUD reads projects, active, QA, decisions, blocked — in that order',
+    ['Projects', 'Active', 'QA', 'Decision', 'Blocked'].map(w => hud.indexOf('>' + w + '<')).every((at, i, a) => at > 0 && (i === 0 || at > a[i - 1])));
+  T('its counts come from the projects', /<span class="hud-value">6<\/span><span class="hud-label">Projects/.test(hud));
+  const attention = html('attentionList');
+  T('the attention list puts the blocked project first',
+    attention.indexOf('Capy Sushi') < attention.indexOf('Personal Savings') &&
+    attention.indexOf('Personal Savings') < attention.indexOf('Space Kindergarten') &&
+    attention.indexOf('Capy Sushi') > 0);
+  T('a blocker is shown in words, not just a colour', /Blocked: Example: what is stopping the work\./.test(attention));
+  T('sample state is announced', /Sample state/.test(html('sampleNotice')));
+  T('every sample row says so', (attention.match(/class="sample-tag"/g) || []).length === 3);
+
+  sub('the field is drawn from data');
+  const field = html('projectField');
+  T('one platform per project', (field.match(/<button class="block /g) || []).length === 6);
+  T('each is a real button with a spoken name', (field.match(/<button class="block [^>]*aria-label="[^"]+"/g) || []).length === 6);
+  T('names come from the registry', c.PROJECT_REGISTRY.every(p => field.indexOf('>' + p.name + '<') !== -1));
+  T('no platform is written into the markup',
+    !/class="block /.test(H.bodyBlock(H.readApp()).replace(/<script>[\s\S]*<\/script>/, '')));
+  T('each platform shows its status word', c.allViews().every(v => field.indexOf(c.SIGNALS[v.status].short) !== -1));
+  T('an attention marker wears a shape and a word',
+    /class="chip attn-marker sig-blocked"><svg[^>]*>[\s\S]*?<\/svg>Blocked</.test(field));
+
+  sub('one tap focuses');
+  c.tapProject('dayplan'); c.__flush();
+  T('the project is selected', c.selectedId === 'dayplan');
+  T('its platform reports it', /id="block-dayplan" aria-pressed="true"/.test(html('projectField')));
+  T('only one platform is pressed', (html('projectField').match(/aria-pressed="true"/g) || []).length === 1);
+  T('the focus bar shows it', /DayPlan/.test(html('focusBar')) && /class="focus-bar sig-paused"/.test(html('focusBar')));
+  T('no brief opened yet', !d.getElementById('briefOverlay').classList.contains('open'));
+  T('the choice is saved', shared.get(ns + c.KEYS.selectedProject) === 'dayplan');
+
+  sub('a second tap opens the brief');
+  c.tapProject('dayplan'); c.__flush();
+  T('the brief page opens', d.getElementById('briefOverlay').classList.contains('open'));
+  T('its title is the project', d.getElementById('briefTitle').textContent === 'DayPlan');
+  const brief = html('briefBody');
+  T('it carries every field the brief asks for',
+    ['Status', 'Version', 'Phase', 'Current work', 'Next action', 'Last updated'].every(l => brief.indexOf('>' + l + '<') !== -1) &&
+    brief.indexOf('Visual daily planner') !== -1);
+  T('an unknown value says so instead of inventing one', /is-unknown">Not recorded/.test(brief));
+  T('a sample brief says it is a sample', /Sample state: none of this is real yet/.test(brief));
+  T('configured tools sit in the thumb-reach action bar',
+    /tool-github/.test(html('briefTools')) && /tool-live/.test(html('briefTools')) && !/tool-chatgpt/.test(html('briefTools')));
+  T('and the bar is shown because it has something in it', d.getElementById('briefTools').getAttribute('hidden') === null);
+  c.closeBrief(); c.__flush();
+  T('Back closes it', !d.getElementById('briefOverlay').classList.contains('open'));
+
+  sub('the focus is still there when you come back');
+  const again = H.loadApp({ sharedStorage: shared });
+  T('it is restored after a relaunch', again.ctx.selectedId === 'dayplan');
+  T('and drawn', /id="block-dayplan" aria-pressed="true"/.test(again.dom.document.getElementById('projectField').innerHTML));
+  shared.set(ns + c.KEYS.selectedProject, 'no-such-project');
+  const third = H.loadApp({ sharedStorage: shared });
+  T('an unknown stored id selects nothing', third.ctx.selectedId === null);
+  T('and is left as it was, not repaired', shared.get(ns + c.KEYS.selectedProject) === 'no-such-project');
+
+  sub('from the attention list straight to the brief');
+  c.openProjectBrief('capybara-sushi'); c.__flush();
+  T('the row opens that project\'s brief',
+    c.selectedId === 'capybara-sushi' && d.getElementById('briefOverlay').classList.contains('open'));
+  T('with its blocker in words', /notice-error[\s\S]*<strong>Blocked<\/strong>Example: what is stopping the work\./.test(html('briefBody')));
+  c.closeBrief(); c.__flush();
+
+  sub('a tap on nothing does nothing');
+  c.tapProject('no-such-project'); c.__flush();
+  T('the selection is unchanged', c.selectedId === 'capybara-sushi');
+  T('no brief opened', !d.getElementById('briefOverlay').classList.contains('open'));
+  c.closeBrief(); c.__flush();
+  T('closing a closed brief is harmless', c._historyDepth === 0 && c._openSheetStack.length === 0);
+
+  sub('a wide screen docks the brief instead');
+  T('the stylesheet and the script use one query', css().indexOf('@media ' + c.WIDE_QUERY + '{') !== -1);
+  const wide = H.loadApp({ sharedStorage: shared });
+  wide.ctx.window.matchMedia = () => ({ matches: true, addEventListener(){}, removeEventListener(){} });
+  wide.ctx.tapProject('capybara-sushi'); wide.ctx.tapProject('capybara-sushi'); wide.ctx.__flush();
+  T('no page opens', !wide.dom.document.getElementById('briefOverlay').classList.contains('open'));
+  const docked = wide.dom.document.getElementById('dockedBrief').innerHTML;
+  T('the docked brief shows the focused project', /id="dockedBriefName"[^>]*>Capy Sushi</.test(docked));
+  T('and carries its tools itself', /class="tools docked"/.test(docked));
+  T('no errors', app.errors.length === 0 && wide.errors.length === 0, app.errors.concat(wide.errors).join(' | '));
+}
+
+/* =========================================================
+   CONTRACT 24 — THE FIELD AND ITS 3D SEAM
+   One renderer, three calls, a render-only scene — so Phase 2
+   can swap in WebGL without touching anything else.
+   ========================================================= */
+function testFieldSeam(){
+  section('CONTRACT 24 — the field: one renderer behind a 3D-ready seam');
+  const app = H.loadApp();
+  const c = app.ctx, d = app.dom.document;
+  const src = js();
+
+  sub('the seam');
+  T('the renderer is exactly mount, draw and focus',
+    Object.keys(c.IsoField).filter(k => typeof c.IsoField[k] === 'function').sort().join() === 'draw,focus,mount');
+  T('the hub draws through the seam', /Field\.draw\(fieldScene\(views\)\)/.test(src) && !/IsoField\.draw\(/.test(src));
+  const renderer = (src.match(/PROJECT FIELD — the 2\.5D renderer[\s\S]*?\n   HUB\n/) || [''])[0];
+  T('the renderer section is found', renderer.length > 2000);
+  T('the renderer never reads or writes storage', !/Store\./.test(stripComments(renderer)));
+  T('the renderer never changes the selection', !/selectedId\s*=(?!=)/.test(stripComments(renderer)));
+  const scene = c.fieldScene(c.allViews());
+  T('the scene carries only what drawing needs', Object.keys(scene[0]).sort().join() ===
+    'attention,id,isSample,name,selected,signal,status,theme,workerState');
+  T('no canvas and no dependency in Phase 1',
+    !/<canvas/.test(H.readApp()) && !/<script[^>]*\bsrc=/.test(H.readApp()) &&
+    Object.keys(H.readPkg().dependencies || {}).length === 0);
+
+  sub('platforms are drawn from data');
+  T('every landmark is a list of known primitives', Object.keys(c.LANDMARKS).every(k =>
+    c.LANDMARKS[k].length > 0 && c.LANDMARKS[k].every(p => ['box', 'cyl', 'cone', 'discY'].indexOf(p[0]) !== -1)));
+  const mats = new Set();
+  Object.keys(c.LANDMARKS).forEach(k => c.LANDMARKS[k].forEach(p => mats.add(p[p.length - 1])));
+  ['m-plinth', 'm-terrain', 'm-crate', 'm-signal'].forEach(m => mats.add(m));
+  T('every material has a colour token', [...mats].every(m =>
+    new RegExp('\\.' + m + '\\{ --c: var\\(--').test(css())), [...mats].join(','));
+  T('every theme has its ground and accent', Object.keys(c.LANDMARKS).every(t =>
+    new RegExp('\\.theme-' + t + '\\{ --terrain: var\\(--terrain-' + t + '\\); --tint: var\\(--tint-' + t + '\\); \\}').test(css())));
+  const field = d.getElementById('projectField').innerHTML;
+  T('the platform drawing is decorative to assistive tech',
+    (field.match(/<svg class="platform" viewBox="[^"]+" aria-hidden="true" focusable="false">/g) || []).length === 6);
+  T('no broken number reaches the geometry', !/NaN|Infinity|undefined/.test(field));
+  T('drawing is deterministic', c.platformSvg(scene[0]) === c.platformSvg(scene[0]));
+
+  sub('the crew');
+  const workers = [...new Set(Object.keys(c.SIGNALS).map(k => c.SIGNALS[k].worker))];
+  T('eight worker states, one per signal', workers.length === 8, workers.join(','));
+  T('every state but "quiet" has a picture', workers.filter(w => w !== 'quiet').every(w => c.crewSvg(w).length > 50));
+  T('a paused platform has no crew and is dimmed',
+    c.crewSvg('quiet') === '' && /\.block\.worker-quiet \.platform\{ opacity: /.test(css()));
+
+  sub('motion is status-driven and can be switched off');
+  T('only projects that need you pulse', scene.every(b => {
+    const m = field.match(new RegExp('<button class="block [^"]*"[^>]*id="block-' + b.id + '"'));
+    return !!m && (/ pulse"/.test(m[0]) === (c.ATTENTION_KINDS.indexOf(b.signal) !== -1));
+  }));
+  T('the pulse and the working crew are CSS animations',
+    /\.block\.pulse \.beacon-glow\{[\s\S]{0,160}animation: beacon-pulse/.test(css()) &&
+    /\.block\.worker-working \.worker\{[\s\S]{0,160}animation: worker-bob/.test(css()));
+  T('which the global reduced-motion rule switches off',
+    /@media \(prefers-reduced-motion: reduce\)\{[\s\S]{0,200}animation: none !important/.test(css()));
+  T('no script-driven animation loop', !/requestAnimationFrame\(|setInterval\(/.test(stripComments(src)));
+}
+
+/* =========================================================
+   CONTRACT 25 — SECRET SAFETY
+   The repository and its site are public. Nothing private is
+   ever committed, cached, logged or put in an address bar.
+   ========================================================= */
+function testSecrets(){
+  section('CONTRACT 25 — nothing private is ever committed, cached or logged');
+  const scan = require('../scripts/secrets.js');
+  T('the secret scan is clean', scan.run() === 0);
+
+  sub('the scan catches what it claims to');
+  /* Assembled at run time, so this file never contains one whole. */
+  const planted = {
+    'a ChatGPT conversation': 'https://chatgpt.com/c/' + '6f3a9c2e-1b7d-4e55-9a10-2c3d4e5f6a7b',
+    'a ChatGPT share link': 'https://chatgpt.com/share/' + '6f3a9c2e1b7d',
+    'a Claude Code session': 'https://claude.ai/code/' + 'sess' + 'ion_01AbCdEfGhIjKlMn',
+    'a Claude app session': 'claude://code/' + 'sess' + 'ion_01AbCdEfGhIjKlMn',
+    'a bare Claude session id': 'session' + '_01AbCdEfGhIjKlMnOp',
+    'an Anthropic key': 'sk-ant-' + 'api03-AbCdEfGhIjKlMnOpQr',
+    'an OpenAI key': 'sk-proj-' + 'AbCdEfGhIjKlMnOpQrStUv',
+    'a GitHub token': 'ghp_' + 'AbCdEfGhIjKlMnOpQrStUvWx',
+    'a private key': '-----BEGIN ' + 'RSA PRIVATE KEY-----',
+    'a Windows home path': 'C:\\' + 'Users\\someone\\notes.txt',
+    'a macOS home path': ' /' + 'Users/someone/notes.txt'
+  };
+  Object.keys(planted).forEach(k => T('catches ' + k, scan.scanText('x ' + planted[k] + ' y').length > 0));
+  sub('and lets declared fixtures through');
+  [FIX.chat, FIX.claude, FIX.claudeApp, 'https://chatgpt.com/c/FAKE-FIXTURE-0021', 'https://claude.ai/code/new']
+    .forEach(f => T('passes the fixture ' + f.slice(0, 32), scan.scanText(f).length === 0));
+
+  sub('private links never reach the worker, the source, a log or the address bar');
+  const sw = H.readSW(), src = js();
+  T('the worker ignores other origins, so an opened link is never cached',
+    /new URL\(req\.url\)\.origin !== location\.origin/.test(sw));
+  const assets = (sw.match(/const ASSETS = \[([\s\S]*?)\];/) || ['', ''])[1];
+  T('the worker precaches the app shell and nothing else',
+    assets.replace(/\s+/g, '') === "'./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'");
+  T('no private-link field has a default in source', !/(chatgptUrl|claudeUrl)\s*:\s*['"]/.test(src));
+  T('no ChatGPT or Claude address is written into the app script at all',
+    !/['"`]https?:\/\/(?:chatgpt\.com|chat\.openai\.com|claude\.ai)/i.test(stripComments(src)));
+  T('the app never logs — the one console line reports a failed boot',
+    (stripComments(src).match(/console\.[a-z]+\(/g) || []).join() === 'console.error(' &&
+    /console\.error\('Boot failed:'/.test(src));
+  T('nothing is written to the address bar',
+    !/location\.(href|hash|search)\s*=|history\.(pushState|replaceState)\([^)]*[A-Za-z]/.test(stripComments(src).replace(/history\.pushState\(\{ appOverlay: true \}, ''\)/, '')));
+  T('the moodboards are git-ignored, so they are never published',
+    require('fs').readFileSync(require('path').join(H.ROOT, '.gitignore'), 'utf8').split(/\r?\n/).indexOf('references/visual/') !== -1);
+}
+
 module.exports = {
   T, section, sub, results, reset, testPortability,
   testBoot, testConfig, testStorage, testCollision, testMigration,
   testNavigation, testOverlays, testToast, testConfirmation, testForms,
   testMobile, testDesignSystem, testPWA, testRelease, testStress,
-  testAccessibility, testContamination, testSourcesOfTruth
+  testAccessibility, testContamination, testSourcesOfTruth,
+  testRegistry, testStatusModel, testPrivateLinks, testHub, testFieldSeam, testSecrets
 };

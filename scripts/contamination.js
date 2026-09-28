@@ -37,6 +37,21 @@ const ROOT = path.join(__dirname, '..');
 /* Files that are allowed to describe the check itself. */
 const SELF = ['scripts/contamination.js'];
 
+/* MISSION CONTROL NARROWING
+   Mission Control tracks, as one project among six, the fitness app this
+   repository's ancestry came from. Its registry record legitimately names
+   that project and links its repository — and nothing else may. These two
+   exact lines, in the app, are the whole exemption: the same token on any
+   other line, in any other file, or a registry line worded differently,
+   still fails. A contract checks the exemption has not grown. */
+const ALLOWED = [
+  { file: 'index.html', label: 'legacy brand token', line: "name: 'LOOP'," },
+  { file: 'index.html', label: 'legacy remote', line: "repositoryUrl: 'https://github.com/morecobrax-dot/loop'," }
+];
+function isAllowed(rel, label, line){
+  return ALLOWED.some(a => a.file === rel && a.label === label && a.line === line.trim());
+}
+
 const SKIP_DIRS = new Set(['.git', 'node_modules']);
 const TEXT_EXT = new Set(['.html', '.js', '.json', '.md', '.css', '.webmanifest', '.txt', '.yml', '.yaml']);
 
@@ -100,7 +115,7 @@ function run(){
       RULES.forEach(r => {
         const re = new RegExp(r.re.source, r.re.flags);
         const m = line.match(re);
-        if(m){
+        if(m && !isAllowed(rel, r.label, line)){
           hits.push({
             file: rel, line: i + 1, label: r.label,
             text: line.trim().slice(0, 110), match: m[0]
@@ -115,7 +130,7 @@ function run(){
   if(!hits.length){
     console.log('  clean — no fitness-domain residue found');
     console.log('\n  Note: binary assets are checked by filename only. Icons and images');
-    console.log('  still need a human to look at them. See NEW-PROJECT.md.');
+    console.log('  still need a human to look at them.');
     return 0;
   }
 
@@ -135,4 +150,4 @@ function run(){
 }
 
 if(require.main === module) process.exit(run());
-module.exports = { run, RULES };
+module.exports = { run, RULES, ALLOWED };

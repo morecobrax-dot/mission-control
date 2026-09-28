@@ -1,14 +1,15 @@
 {
-  "name": "app-starter",
+  "name": "mission-control",
   "version": "0.1.0",
   "private": true,
-  "description": "An opinionated, offline-capable mobile app foundation.",
+  "description": "A personal command center for software projects.",
   "scripts": {
     "verify": "node test/run.js verify",
     "test": "node test/run.js contracts",
     "config:sync": "node scripts/config.js sync",
     "config:verify": "node scripts/config.js verify",
-    "contamination": "node scripts/contamination.js"
+    "contamination": "node scripts/contamination.js",
+    "secrets": "node scripts/secrets.js"
   },
   "engines": {
     "node": ">=18"

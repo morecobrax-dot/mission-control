@@ -149,6 +149,30 @@ inherits both.
 record the failure that caused it. Every unusual line in this codebase carries
 one, which is the only reason it can be audited at all.
 
+## Mission Control
+
+The product's own rules, on top of everything above.
+
+- **It reduces the mental load of running many projects.** The world exists
+  to make project state easier and more enjoyable to understand. It must
+  never become a beautiful interface that hides the information you actually
+  need: every platform also says its name, its status in words, and what it
+  needs from you.
+- **Attention first.** The hub answers "what needs me?" before anything else:
+  quiet counts, then a list of what is blocked, waiting on a decision or
+  ready for QA, in that order. Everything else is below it.
+- **One focus.** One tap focuses a project, a second opens its brief. The
+  focus is remembered, because it is what you come back to.
+- **Sample is not fact.** Placeholder state says so wherever it appears and
+  invents nothing a person could mistake for real — no version, no phase.
+- **Unknown says "Not recorded".** It is never filled with a plausible guess.
+- **Private stays off the screen.** A tool shows where it goes (its host),
+  never the conversation or session it opens.
+- **Actions appear only when they work.** A tool that is not set up is not
+  shown; the brief says where to set it up instead.
+- **Motion carries meaning or nothing.** Only a project that needs you
+  pulses, and only a crew at work moves. Reduced motion stops both.
+
 ## Real-device QA before shipping
 
 Install to the home screen. Test offline. Rotate it. Turn on reduced motion.

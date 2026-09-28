@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<!-- APP-META-BEGIN — derived from APP_CONFIG by `npm run config:sync`. Do not hand-edit. -->
-<title>App Starter</title>
-<meta name="description" content="An opinionated, offline-capable mobile app foundation.">
-<meta name="apple-mobile-web-app-title" content="Starter">
+<!-- APP-META-BEGIN
+ — derived from APP_CONFIG by `npm run config:sync`. Do not hand-edit. -->
+<title>Mission Control</title>
+<meta name="description" content="A personal command center for software projects.">
+<meta name="apple-mobile-web-app-title" content="Mission Ctrl">
 <meta name="theme-color" content="#0B0F16">
 <!-- APP-META-END -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -142,8 +143,54 @@
   --bp-lg: 900px;
 
   /* ---- 4 · DOMAIN ----------------------------------------------
-     Empty by design. A product defines its own category colours
-     here — status hues, chart series, whatever it actually needs. */
+     Mission Control's own colours. */
+
+  /* The status language. A hue is never the only signal: every
+     status also shows its word and its own shape (SIGNALS in the
+     script), so these can be read without colour vision. */
+  --sig-planning: #8FA3BF;
+  --sig-building: #3CD7E4;
+  --sig-release: #86F56A;
+  --sig-stable: #4CC48A;
+  --sig-paused: #6D798B;
+  --sig-qa: #F0B43F;
+  --sig-decision: #B28BFF;
+  --sig-blocked: #FF6464;
+
+  /* The project field: a quiet floor under platforms built from
+     dark materials, so a project's identity can never be read as
+     its status. Faces are shaded by mixing toward --iso-shade. */
+  --field-floor: #0D131D;
+  --field-line: rgba(143,163,191,0.07);
+  --field-haze: rgba(76,194,255,0.07);
+  --field-select: rgba(238,241,245,0.85);
+  --iso-shade: #04060A;
+  --mat-plinth: #283246;
+  --mat-stone: #C9D0DB;
+  --mat-metal: #718095;
+  --mat-ink: #303848;
+  --mat-coin: #B89A5E;
+  --mat-rice: #EAE6DC;
+  --mat-fish: #E48A6C;
+  --mat-nori: #22302A;
+  --mat-crate: #8A6E4E;
+  --worker-suit: #D5DBE4;
+  --worker-head: #F1F3F6;
+  --worker-shadow: rgba(4,6,10,0.45);
+
+  /* Each project's ground and landmark accent. Dark and
+     desaturated on purpose: identity recedes, status speaks. */
+  --terrain-track: #23384A;     --tint-track: #5E86B0;
+  --terrain-calendar: #3A3326;  --tint-calendar: #B0707E;
+  --terrain-book: #2C3042;      --tint-book: #8A6A4E;
+  --terrain-vault: #213428;     --tint-vault: #8C96A4;
+  --terrain-rocket: #22264A;    --tint-rocket: #7F95D8;
+  --terrain-sushi: #3A2A2A;     --tint-sushi: #C9765F;
+
+  /* The hub goes wide only where a docked brief fits beside the
+     field. The same query is WIDE_QUERY in the script. */
+  --layout-wide: 1160px;
+  --brief-dock: 380px;
 }
 
 /* =========================================================
@@ -659,6 +706,344 @@ body.scroll-locked{
 }
 
 /* =========================================================
+   MISSION CONTROL — hub, field, brief, editors
+   ---------------------------------------------------------
+   The product's own presentation. Everything here reads the
+   domain tokens (layer 4) and the foundation's scale; nothing
+   restyles a foundation primitive.
+   ========================================================= */
+
+/* ---- Signals: one class sets the hue for a status or an attention.
+   Colour is never alone — every use carries the word and the shape. */
+.sig-planning{ --sig: var(--sig-planning); }
+.sig-building{ --sig: var(--sig-building); }
+.sig-release_ready{ --sig: var(--sig-release); }
+.sig-stable{ --sig: var(--sig-stable); }
+.sig-paused{ --sig: var(--sig-paused); }
+.sig-needs_qa{ --sig: var(--sig-qa); }
+.sig-needs_decision{ --sig: var(--sig-decision); }
+.sig-blocked{ --sig: var(--sig-blocked); }
+
+/* ---- Project identity: the ground and accent a project is drawn in. */
+.theme-track{ --terrain: var(--terrain-track); --tint: var(--tint-track); }
+.theme-calendar{ --terrain: var(--terrain-calendar); --tint: var(--tint-calendar); }
+.theme-book{ --terrain: var(--terrain-book); --tint: var(--tint-book); }
+.theme-vault{ --terrain: var(--terrain-vault); --tint: var(--tint-vault); }
+.theme-rocket{ --terrain: var(--terrain-rocket); --tint: var(--tint-rocket); }
+.theme-sushi{ --terrain: var(--terrain-sushi); --tint: var(--tint-sushi); }
+
+.chip{
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px var(--space-sm); border-radius: var(--radius-pill);
+  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
+  color: var(--sig, var(--text-dim)); background: var(--surface-raised);
+  border: 1px solid var(--border);
+}
+.chip svg{ flex-shrink: 0; }
+/* Sample state is a fact about the data, not a status, so it wears no hue. */
+.sample-tag{
+  display: inline-flex; align-items: center;
+  padding: 1px var(--space-xs); border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint);
+  vertical-align: middle; white-space: nowrap;
+}
+
+.glyph-tile{
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: var(--radius-md);
+  background: var(--terrain); color: var(--tint);
+  box-shadow: inset 0 1px 0 var(--edge-hi);
+}
+.glyph-tile.large{ width: 48px; height: 48px; border-radius: var(--radius-lg); }
+
+/* ---- HUD: quiet counts, not a dashboard ---- */
+.hud{
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: var(--space-sm);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: inset 0 1px 0 var(--edge-hi);
+}
+.hud-item{
+  min-width: 0; padding: var(--space-md) var(--space-xs);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  border-left: 1px solid var(--border-quiet);
+}
+.hud-item:first-child{ border-left: none; }
+.hud-value{
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-display); font-size: var(--fs-section); font-weight: 700;
+  line-height: var(--lh-tight); font-variant-numeric: tabular-nums; color: var(--text);
+}
+.hud-value svg{ color: var(--sig); }
+.hud-item.is-alert .hud-value{ color: var(--sig); }
+.hud-item.is-zero .hud-value{ color: var(--text-faint); }
+.hud-item.is-zero .hud-value svg{ color: var(--text-faint); }
+.hud-label{
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint);
+}
+
+/* ---- Needs attention ---- */
+.attention-row{ border-left: 3px solid var(--sig); }
+.attention-row .attn-mark{ flex-shrink: 0; display: flex; color: var(--sig); }
+.attention-clear{
+  display: flex; align-items: center; gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px dashed var(--border); border-radius: var(--radius-md);
+  color: var(--text-dim); font-size: var(--fs-support);
+}
+.attention-clear svg{ color: var(--sig-stable); flex-shrink: 0; }
+
+/* ---- The project field ----
+   Named .project-field, never .field: that is the foundation's form-field
+   class, and sharing it painted this floor behind every input. */
+.project-field{
+  position: relative; overflow: hidden;
+  padding: var(--space-lg) var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-quiet); border-radius: var(--radius-xl);
+  background:
+    radial-gradient(ellipse at 50% 38%, var(--field-haze), transparent 70%),
+    repeating-linear-gradient(30deg, var(--field-line) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(150deg, var(--field-line) 0 1px, transparent 1px 24px),
+    var(--field-floor);
+}
+.field-grid{
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: var(--space-xs); row-gap: var(--space-sm); align-items: start;
+}
+/* The middle column sits half a step lower, so six platforms read as one
+   field rather than a table. A margin, not a transform: it moves the tap
+   target with the picture and pushes the rows apart, so nothing overlaps. */
+.field-grid .block:nth-child(3n+2){ margin-top: 30%; }
+
+.block{
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  width: 100%; min-height: var(--touch-min); margin: 0;
+  padding: 0 0 var(--space-xs);
+  background: none; border: none; border-radius: var(--radius-lg);
+  color: var(--text); text-align: center; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.platform{
+  display: block; width: 100%; height: auto; overflow: visible;
+  transition: transform var(--dur) var(--ease);
+}
+.block.is-selected .platform{ transform: translateY(-5%); }
+.block:active .platform{ transform: translateY(1%) scale(0.98); }
+.block.worker-quiet .platform{ opacity: 0.72; }
+.block-label{
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  max-width: 100%; margin-top: calc(-1 * var(--space-sm));
+}
+.block-name{
+  max-width: 100%; font-size: var(--fs-meta); font-weight: 700;
+  line-height: var(--lh-tight); color: var(--text-dim); overflow-wrap: anywhere;
+}
+.block.is-selected .block-name{ color: var(--text); }
+.block.is-selected .block-name::after{
+  content: ''; display: block; height: 2px; margin: 3px auto 0; width: 60%;
+  border-radius: var(--radius-pill); background: var(--field-select);
+}
+.block .chip{ padding: 1px 6px; }
+.block-sample{ font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-faint); letter-spacing: 0.06em; text-transform: uppercase; }
+.attn-marker{
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  box-shadow: var(--shadow-md); background: var(--surface);
+}
+
+/* Isometric faces: one material colour per primitive, shaded by face. */
+.platform .t{ fill: var(--c); }
+.platform .l{ fill: var(--c); opacity: 0.8; }
+.platform .r{ fill: var(--c); opacity: 0.62; }
+@supports (fill: color-mix(in srgb, red 50%, blue)){
+  .platform .l{ fill: color-mix(in srgb, var(--c) 72%, var(--iso-shade)); opacity: 1; }
+  .platform .r{ fill: color-mix(in srgb, var(--c) 50%, var(--iso-shade)); opacity: 1; }
+  .chip{
+    background: color-mix(in srgb, var(--sig, var(--text-dim)) 12%, transparent);
+    border-color: color-mix(in srgb, var(--sig, var(--text-dim)) 40%, transparent);
+  }
+}
+.m-plinth{ --c: var(--mat-plinth); }
+.m-terrain{ --c: var(--terrain); }
+.m-tint{ --c: var(--tint); }
+.m-stone{ --c: var(--mat-stone); }
+.m-metal{ --c: var(--mat-metal); }
+.m-ink{ --c: var(--mat-ink); }
+.m-coin{ --c: var(--mat-coin); }
+.m-rice{ --c: var(--mat-rice); }
+.m-fish{ --c: var(--mat-fish); }
+.m-nori{ --c: var(--mat-nori); }
+.m-crate{ --c: var(--mat-crate); }
+.m-signal{ --c: var(--sig); }
+.platform .ground-shadow{ fill: var(--iso-shade); opacity: 0.55; }
+.platform .select-ring{
+  fill: none; stroke: var(--field-select); stroke-width: 0.16;
+  stroke-dasharray: 0.7 0.45; stroke-linejoin: round;
+}
+.platform .beacon-light{ fill: var(--sig); }
+.platform .beacon-glow{ fill: var(--sig); opacity: 0.22; }
+.platform .w-body{ fill: var(--worker-suit); }
+.platform .w-head{ fill: var(--worker-head); }
+.platform .w-helmet, .platform .w-prop{ fill: var(--sig); }
+.platform .w-shadow{ fill: var(--worker-shadow); }
+.platform .w-line{ fill: none; stroke: var(--mat-stone); stroke-width: 0.16; stroke-linecap: round; }
+
+/* Motion is status-driven and small: attention breathes, a crew at work
+   bobs. The global reduced-motion rule switches all of it off. */
+.block.pulse .beacon-glow{
+  transform-box: fill-box; transform-origin: center;
+  animation: beacon-pulse 2.4s var(--ease) infinite;
+}
+@keyframes beacon-pulse{
+  0%, 100%{ opacity: 0.12; transform: scale(0.85); }
+  50%{ opacity: 0.36; transform: scale(1.15); }
+}
+.block.worker-working .worker{
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: worker-bob 1.4s var(--ease) infinite;
+}
+.block.worker-working .worker + .worker{ animation-delay: -0.7s; }
+@keyframes worker-bob{
+  0%, 100%{ transform: translateY(0); }
+  50%{ transform: translateY(-7%); }
+}
+
+/* ---- The focus bar: the selected project, one tap from its brief ---- */
+.focus-host{ margin-top: var(--space-md); }
+.focus-bar{
+  display: flex; align-items: center; gap: var(--space-md); width: 100%;
+  min-height: var(--touch-min); padding: var(--space-md) var(--space-lg);
+  background: var(--surface); color: var(--text); text-align: left; cursor: pointer;
+  border: 1px solid var(--border); border-left: 3px solid var(--sig);
+  border-radius: var(--radius-md); box-shadow: inset 0 1px 0 var(--edge-hi);
+}
+.focus-main{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.focus-name{ display: flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-title); font-weight: 600; }
+.chip-row{ display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.focus-next{
+  font-size: var(--fs-meta); color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.focus-go{
+  flex-shrink: 0; display: flex; align-items: center; gap: 2px;
+  color: var(--accent); font-size: var(--fs-support); font-weight: 600;
+}
+.focus-hint{ padding: var(--space-md); text-align: center; color: var(--text-faint); font-size: var(--fs-support); }
+
+/* ---- Quick brief ---- */
+.brief-head{ display: flex; align-items: flex-start; gap: var(--space-md); margin-bottom: var(--space-md); }
+.brief-titles{ min-width: 0; }
+.brief-name{ font-size: var(--fs-section); font-weight: 700; }
+.brief-name:focus{ outline: none; }
+.brief-purpose{ margin-top: 2px; color: var(--text-dim); font-size: var(--fs-support); }
+.brief-chips{ margin-bottom: var(--space-md); }
+.brief-sample-note{ margin-bottom: var(--space-md); color: var(--text-faint); font-size: var(--fs-meta); }
+.brief-rows{ margin: var(--space-sm) 0 var(--space-lg); }
+.detail-value.is-unknown{ color: var(--text-faint); }
+/* Sentences read as a paragraph under their label, not squeezed to the right. */
+.detail-row.stacked{ flex-direction: column; align-items: stretch; gap: var(--space-xs); }
+.detail-row.stacked .detail-value{ text-align: left; }
+.brief .notice{ margin-bottom: var(--space-md); }
+.brief .notice-error .notice-mark{ color: var(--sig-blocked); }
+.brief-tools[hidden]{ display: none; }
+
+.tools{
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+  gap: var(--space-sm); width: 100%;
+}
+.tool-link{
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 0; min-height: var(--touch-min); padding: var(--space-sm) var(--space-xs);
+  background: var(--surface-raised); color: var(--text); text-decoration: none;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  font-size: var(--fs-support); font-weight: 600;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.tool-link:active{ transform: scale(0.98); }
+.tool-icon{ display: flex; color: var(--accent); }
+.tool-text{ display: flex; flex-direction: column; align-items: center; min-width: 0; max-width: 100%; }
+.tool-host{
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 500; color: var(--text-faint);
+}
+.tools.docked{ grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: var(--space-md); }
+.tools.docked .tool-link{ flex-direction: row; justify-content: flex-start; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); }
+.tools.docked .tool-text{ align-items: flex-start; }
+.tools-empty{
+  margin-bottom: var(--space-md); padding: var(--space-md);
+  border: 1px dashed var(--border); border-radius: var(--radius-md);
+  color: var(--text-faint); font-size: var(--fs-support);
+}
+
+/* ---- Editors ---- */
+.status-picker{ display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--space-xs); }
+.status-option{
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--touch-min); padding: var(--space-sm);
+  background: var(--surface); color: var(--text-dim); cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  font-size: var(--fs-support); font-weight: 600;
+}
+.status-option svg{ color: var(--sig); flex-shrink: 0; }
+.status-option[aria-checked="true"]{
+  color: var(--text); background: var(--surface-raised);
+  border-color: var(--sig); box-shadow: inset 0 0 0 1px var(--sig);
+}
+.status-picker.field-error .status-option{ border-color: var(--danger); }
+.status-picker:focus{ outline: none; }
+
+/* A whole row is the switch, so the target is the row, not a 28px pill. */
+.switch-row{
+  width: 100%; background: none; color: var(--text); text-align: left; cursor: pointer;
+  border: none; border-bottom: 1px solid var(--border-quiet);
+}
+.switch-row:last-child{ border-bottom: none; }
+.switch-text{ display: flex; flex-direction: column; gap: 2px; }
+.switch-hint{ font-size: var(--fs-meta); color: var(--text-faint); }
+.switch-row[aria-checked="true"] .toggle{ background: var(--accent-soft); border-color: var(--accent); }
+.switch-row[aria-checked="true"] .toggle::after{ transform: translateX(20px); background: var(--accent); }
+
+.field-pair{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-md); }
+.notice .notice-mark{ display: flex; flex-shrink: 0; color: var(--text-faint); }
+.fallback-note{ font-size: var(--fs-meta); color: var(--text-faint); }
+.fallback-note code{ font-family: var(--font-mono); font-size: var(--fs-meta); color: var(--text-dim); }
+.editor-footer{ margin-top: var(--space-xl); }
+
+/* ---- A phone on its side ----
+   Width to spare and no height: one row of six keeps the whole field on
+   screen instead of two rows that need scrolling. */
+@media (orientation: landscape) and (max-height: 500px){
+  .field-grid{ grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .field-grid .block:nth-child(3n+2){ margin-top: 0; }
+  .field-grid .block:nth-child(even){ margin-top: 18%; }
+}
+
+/* ---- Wide: the brief docks beside the field ----
+   The same query is WIDE_QUERY in the script; a contract keeps them equal. */
+.hub-brief{ display: none; }
+@media (min-width: 900px) and (min-height: 600px){
+  .app-header, .tabbar, #view-home{ max-width: var(--layout-wide); }
+  .hub{
+    display: grid; grid-template-columns: minmax(0, 1fr) var(--brief-dock);
+    gap: var(--space-xl); align-items: start;
+  }
+  .hub-brief{
+    display: block; position: sticky; top: calc(var(--space-lg) + var(--inset-top));
+    max-height: calc(100dvh - var(--tabbar-h) - var(--inset-top) - var(--inset-bottom) - var(--space-2xl) - var(--space-2xl));
+    overflow-y: auto; overscroll-behavior: contain;
+    padding: var(--space-xl) var(--space-lg);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-xl); box-shadow: inset 0 1px 0 var(--edge-hi);
+  }
+  .focus-host{ display: none; }
+  .project-field{ padding: var(--space-xl) var(--space-lg) var(--space-lg); }
+  .block-name{ font-size: var(--fs-support); }
+}
+
+/* =========================================================
    RESPONSIVE
    ========================================================= */
 @media (min-width: 560px){
@@ -681,34 +1066,37 @@ body.scroll-locked{
 
   <header class="app-header">
     <div class="header-row">
-      <h1 class="app-title" id="appTitle">App Starter</h1>
+      <h1 class="app-title" id="appTitle">Mission Control</h1>
       <div class="header-actions">
         <button class="icon-btn" id="updatesBtn" aria-label="What's new" onclick="openUpdates()"></button>
       </div>
     </div>
   </header>
 
-  <!-- HOME — hierarchy, summary, one obvious primary action -->
+  <!-- HUB — what needs you first, then every project, then the one in focus.
+       On a wide screen the quick brief docks beside the field. -->
   <main class="view active" id="view-home">
     <div id="storageNotice"></div>
-    <div class="section-label">Overview</div>
-    <div class="stat-grid" id="homeStats"></div>
-    <div class="section-label">Recent</div>
-    <div id="homeRecent"></div>
-  </main>
-
-  <!-- ITEMS — list, filter, empty state -->
-  <main class="view" id="view-items">
-    <div class="segmented" role="tablist" aria-label="Filter items" id="itemFilter">
-      <button role="tab" aria-selected="true" data-filter="all" onclick="setItemFilter('all')">All</button>
-      <button role="tab" aria-selected="false" data-filter="active" onclick="setItemFilter('active')">Active</button>
-      <button role="tab" aria-selected="false" data-filter="done" onclick="setItemFilter('done')">Done</button>
+    <div id="sampleNotice"></div>
+    <div class="hub">
+      <section class="hub-main" aria-labelledby="hubHeading">
+        <h2 class="sr-only" id="hubHeading">Projects</h2>
+        <div class="hud" id="hud" role="group" aria-label="Summary"></div>
+        <div class="section-label" id="attentionHeading">Needs attention</div>
+        <div id="attentionList"></div>
+        <div class="section-label" id="fieldHeading">All projects</div>
+        <div class="project-field" id="projectField" role="group" aria-labelledby="fieldHeading"></div>
+        <div class="focus-host" id="focusBar"></div>
+      </section>
+      <section class="hub-brief" id="dockedBrief" aria-label="Quick brief"></section>
     </div>
-    <div id="itemList"></div>
   </main>
 
-  <!-- SETTINGS — nested pages, data ownership, honest danger zone -->
+  <!-- SETTINGS — private links, data ownership, about -->
   <main class="view" id="view-settings">
+    <div class="section-label">Private tool links</div>
+    <p class="page-intro">ChatGPT and Claude links are kept only on this device. They are never written into the code, the repository or the offline cache.</p>
+    <div class="list" id="linksList"></div>
     <div class="section-label">Data</div>
     <div class="list">
       <button class="list-row" onclick="openDataSettings()">
@@ -728,13 +1116,6 @@ body.scroll-locked{
         </span>
         <span class="list-row-arrow" aria-hidden="true"></span>
       </button>
-      <button class="list-row" onclick="openComponents()">
-        <span class="list-row-main">
-          <span class="list-row-title">Components</span>
-          <span class="list-row-desc">Every primitive this app ships</span>
-        </span>
-        <span class="list-row-arrow" aria-hidden="true"></span>
-      </button>
     </div>
     <div class="section-label">Identity</div>
     <div class="panel" id="identityPanel"></div>
@@ -742,10 +1123,7 @@ body.scroll-locked{
 
   <nav class="tabbar" aria-label="Main">
     <button class="tab-btn active" data-tab="home" onclick="switchTab('home')">
-      <span class="glyph" aria-hidden="true"></span>Home
-    </button>
-    <button class="tab-btn" data-tab="items" onclick="switchTab('items')">
-      <span class="glyph" aria-hidden="true"></span>Items
+      <span class="glyph" aria-hidden="true"></span>Hub
     </button>
     <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
       <span class="glyph" aria-hidden="true"></span>Settings
@@ -753,55 +1131,112 @@ body.scroll-locked{
   </nav>
 </div>
 
-<!-- ITEM DETAIL — a destination, so it is a page -->
-<div class="overlay overlay-page" id="itemDetailOverlay">
+<!-- QUICK BRIEF — on a phone, a page you step into and back out of. On a wide
+     screen the same brief is docked in the hub and this page stays closed. -->
+<div class="overlay overlay-page" id="briefOverlay">
   <div class="sheet">
     <div class="page-topbar">
-      <button class="icon-btn" onclick="closeItemDetail()" aria-label="Back"></button>
-      <div class="page-topbar-title">Item</div>
+      <button class="icon-btn" onclick="closeBrief()" aria-label="Back"></button>
+      <div class="page-topbar-title" id="briefTitle">Quick brief</div>
       <span class="topbar-spacer"></span>
     </div>
-    <div class="sheet-scroll" id="itemDetailBody"></div>
+    <div class="sheet-scroll" id="briefBody"></div>
+    <div class="sheet-actions brief-tools" id="briefTools" hidden></div>
+  </div>
+</div>
+
+<!-- UPDATE STATE — what you record here replaces the sample state -->
+<div class="overlay overlay-page" id="stateOverlay">
+  <div class="sheet">
+    <div class="page-topbar">
+      <button class="icon-btn" onclick="closeStateForm()" aria-label="Back"></button>
+      <div class="page-topbar-title" id="stateFormTitle">Update state</div>
+      <span class="topbar-spacer"></span>
+    </div>
+    <div class="sheet-scroll">
+      <p class="page-intro" id="stateFormIntro"></p>
+      <div class="field">
+        <span class="form-label" id="stateStatusLabel">Status</span>
+        <div class="status-picker" id="stateStatus" role="radiogroup" tabindex="-1"
+             aria-labelledby="stateStatusLabel" aria-describedby="stateStatusError"></div>
+        <div class="field-message" id="stateStatusError" role="alert"></div>
+      </div>
+      <div class="field">
+        <span class="form-label">Needs from you</span>
+        <button class="toggle-row switch-row" id="stateQa" role="switch" aria-checked="false" onclick="toggleSwitch('stateQa')">
+          <span class="switch-text">Needs QA<span class="switch-hint">It is ready for you to check</span></span>
+          <span class="toggle" aria-hidden="true"></span>
+        </button>
+        <button class="toggle-row switch-row" id="stateDecision" role="switch" aria-checked="false" onclick="toggleSwitch('stateDecision')">
+          <span class="switch-text">Needs a decision<span class="switch-hint">Work is waiting on a choice only you can make</span></span>
+          <span class="toggle" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="field">
+        <label for="stateBlocker">Blocker</label>
+        <input type="text" id="stateBlocker" maxlength="200" autocomplete="off" placeholder="Nothing is blocking it">
+        <div class="field-hint">A project is blocked exactly when this says why. Leave it empty when nothing is in the way.</div>
+      </div>
+      <div class="field-pair">
+        <div class="field">
+          <label for="stateVersion">Version</label>
+          <input type="text" id="stateVersion" maxlength="24" autocomplete="off" placeholder="e.g. 0.3.0">
+        </div>
+        <div class="field">
+          <label for="statePhase">Phase</label>
+          <input type="text" id="statePhase" maxlength="48" autocomplete="off" placeholder="e.g. Phase 2">
+        </div>
+      </div>
+      <div class="field">
+        <label for="stateTask">Current work</label>
+        <textarea id="stateTask" maxlength="280" placeholder="What is being worked on right now"></textarea>
+      </div>
+      <div class="field">
+        <label for="stateNext">Next action</label>
+        <input type="text" id="stateNext" maxlength="200" autocomplete="off" placeholder="The next concrete step">
+      </div>
+      <div class="editor-footer" id="stateFooter"></div>
+    </div>
     <div class="sheet-actions">
-      <button class="btn-secondary btn-danger" onclick="deleteItemFromDetail()">Delete</button>
-      <button class="btn-primary" onclick="editItemFromDetail()">Edit item</button>
+      <button class="btn-secondary" onclick="closeStateForm()">Cancel</button>
+      <button class="btn-primary" onclick="saveStateForm()">Save state</button>
     </div>
   </div>
 </div>
 
-<!-- ITEM FORM — create and edit are the same page -->
-<div class="overlay overlay-page" id="itemFormOverlay">
+<!-- TOOL LINKS — private, per project, on this device only -->
+<div class="overlay overlay-page" id="linksOverlay">
   <div class="sheet">
     <div class="page-topbar">
-      <button class="icon-btn" onclick="closeItemForm()" aria-label="Back"></button>
-      <div class="page-topbar-title" id="itemFormTitle">New item</div>
+      <button class="icon-btn" onclick="closeLinksForm()" aria-label="Back"></button>
+      <div class="page-topbar-title" id="linksFormTitle">Tool links</div>
       <span class="topbar-spacer"></span>
     </div>
     <div class="sheet-scroll">
+      <div class="notice" id="linksPrivacy"></div>
       <div class="field">
-        <label for="itemTitle">Title</label>
-        <input type="text" id="itemTitle" maxlength="80" placeholder="What is this?" autocomplete="off"
-               aria-describedby="itemTitleError">
-        <div class="field-message" id="itemTitleError" role="alert"></div>
+        <label for="linkChatgpt">ChatGPT conversation</label>
+        <input type="text" id="linkChatgpt" inputmode="url" autocomplete="off" autocapitalize="off"
+               autocorrect="off" spellcheck="false" placeholder="https://chatgpt.com/c/…"
+               aria-describedby="linkChatgptError linkChatgptHint">
+        <div class="field-message" id="linkChatgptError" role="alert"></div>
+        <div class="field-hint" id="linkChatgptHint">Use the conversation's own address. A public share link opens for anyone who has it.</div>
       </div>
       <div class="field">
-        <label for="itemNote">Note</label>
-        <textarea id="itemNote" maxlength="500" placeholder="Anything worth remembering."></textarea>
-        <div class="field-hint">Optional. Up to 500 characters.</div>
+        <label for="linkClaude">Claude Code session</label>
+        <input type="text" id="linkClaude" inputmode="url" autocomplete="off" autocapitalize="off"
+               autocorrect="off" spellcheck="false" placeholder="https://claude.ai/code/…"
+               aria-describedby="linkClaudeError linkClaudeHint">
+        <div class="field-message" id="linkClaudeError" role="alert"></div>
+        <div class="field-hint" id="linkClaudeHint">A session link: https://claude.ai/code/… or the app's claude://code/… form.</div>
       </div>
-      <div class="field">
-        <span class="form-label" id="itemStatusLabel">Status</span>
-        <div class="segmented" role="radiogroup" aria-labelledby="itemStatusLabel" id="itemStatusSeg">
-          <button role="radio" aria-checked="true" aria-selected="true" data-status="active"
-                  onclick="setFormStatus('active')">Active</button>
-          <button role="radio" aria-checked="false" aria-selected="false" data-status="done"
-                  onclick="setFormStatus('done')">Done</button>
-        </div>
-      </div>
+      <div class="section-label">If the session is gone</div>
+      <p class="fallback-note" id="linksFallback"></p>
+      <div class="editor-footer" id="linksFooter"></div>
     </div>
     <div class="sheet-actions">
-      <button class="btn-secondary" onclick="closeItemForm()">Cancel</button>
-      <button class="btn-primary" id="itemSaveBtn" onclick="saveItemForm()">Save item</button>
+      <button class="btn-secondary" onclick="closeLinksForm()">Cancel</button>
+      <button class="btn-primary" onclick="saveLinksForm()">Save links</button>
     </div>
   </div>
 </div>
@@ -850,6 +1285,7 @@ body.scroll-locked{
       </div>
       <input type="file" id="importInput" accept="application/json,.json" class="sr-only" onchange="importData(this)">
       <div class="field-hint" style="margin-top:var(--space-md)">Importing merges by id, so re-importing the same file changes nothing and an older backup can never delete newer records.</div>
+      <div class="field-hint" style="margin-top:var(--space-sm)">A backup includes your private ChatGPT and Claude links. Keep the file to yourself.</div>
       <div class="section-label">Danger zone</div>
       <div class="field-hint" style="margin-bottom:var(--space-md)">This permanently erases everything this app has stored. It cannot be undone.</div>
       <button class="btn-secondary btn-danger btn-block" onclick="resetAllData()">Reset all data</button>
@@ -866,18 +1302,6 @@ body.scroll-locked{
       <span class="topbar-spacer"></span>
     </div>
     <div class="sheet-scroll" id="updatesBody"></div>
-  </div>
-</div>
-
-<!-- COMPONENTS — the primitives, rendered from the same code the app uses -->
-<div class="overlay overlay-page" id="componentsOverlay">
-  <div class="sheet">
-    <div class="page-topbar">
-      <button class="icon-btn" onclick="closeComponents()" aria-label="Back"></button>
-      <div class="page-topbar-title">Components</div>
-      <span class="topbar-spacer"></span>
-    </div>
-    <div class="sheet-scroll" id="componentsBody"></div>
   </div>
 </div>
 
@@ -898,10 +1322,10 @@ body.scroll-locked{
    `npm run config:sync`. Nothing else.
    ========================================================= */
 const APP_CONFIG = {
-  id: 'app-starter',
-  name: 'App Starter',
-  shortName: 'Starter',
-  description: 'An opinionated, offline-capable mobile app foundation.',
+  id: 'mission-control',
+  name: 'Mission Control',
+  shortName: 'Mission Ctrl',
+  description: 'A personal command center for software projects.',
   themeColor: '#0B0F16',
   backgroundColor: '#0B0F16'
 };
@@ -942,21 +1366,23 @@ function validateAppId(id){
    5. Every entry should answer: what changed, why it matters, and
       what someone can do now that they could not before.
 
-   New products replace this array wholesale. See NEW-PROJECT.md.
+   New products replace this array wholesale; Mission Control's
+   history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
   {
     id: 'v0-1-0',
     version: '0.1.0',
-    title: 'Foundation',
-    date: '2026-08-31',
-    summary: 'The starter foundation: shell, overlays, storage, feedback and a demo domain.',
+    title: 'Command center',
+    date: '2026-09-28',
+    summary: 'Every project in one place: what needs you, where each one stands, and one tap to its tools.',
     newFeatures: [
-      'Mobile app shell with safe-area handling, bottom navigation and full-page detail flows',
-      'One overlay engine driving scroll lock, focus, stacking and accessibility for every sheet and page',
-      'Namespaced local storage with honest failure reporting and versioned migrations',
-      'Toast and confirmation primitives, replacing native browser dialogs',
-      'Installable as a progressive web app, and usable offline'
+      'A hub that answers what needs your attention first: blocked, waiting on a decision, or ready for QA',
+      'A project field with all six projects, each showing its status, what it needs and a small crew',
+      'A quick brief for each project: purpose, version, phase, current work, next step, blocker and last update',
+      'Record a project\'s real state on this device; until you do, it is clearly marked as a sample',
+      'ChatGPT, Claude, GitHub and live-app launchers, with your private links kept only on this device',
+      'The project you selected is still selected when you come back'
     ],
     improvements: [],
     fixes: []
@@ -973,11 +1399,15 @@ const STORAGE_NAMESPACE = APP_CONFIG.id + '.';
 const CACHE_NAMESPACE = APP_CONFIG.id + '-v' + APP_VERSION;
 
 const KEYS = {
-  schemaVersion: 'sys.schemaVersion',
-  backupPrefix:  'sys.backup.',
-  lastSeenUpdate:'ui.lastSeenUpdate',
-  items:         'data.items',
-  itemDraft:     'draft.item'
+  schemaVersion:   'sys.schemaVersion',
+  backupPrefix:    'sys.backup.',
+  dataPrefix:      'data.',
+  lastSeenUpdate:  'ui.lastSeenUpdate',
+  selectedProject: 'ui.selectedProject',
+  projectStates:   'data.projectStates',
+  privateLinks:    'data.privateLinks',
+  stateDraft:      'draft.projectState',
+  linksDraft:      'draft.projectLinks'
 };
 
 /* =========================================================
@@ -1457,16 +1887,11 @@ function svg(paths, size){
     'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
 }
 function checkIcon(s){ return svg('<path d="M3.2 8.4 6.4 11.6 12.8 4.8"/>', s); }
-function closeIcon(s){ return svg('<path d="M4 4l8 8M12 4l-8 8"/>', s); }
 function chevronRight(s){ return svg('<path d="M6 3.5 10.5 8 6 12.5"/>', s); }
 function chevronLeft(s){ return svg('<path d="M10 3.5 5.5 8 10 12.5"/>', s); }
-function plusIcon(s){ return svg('<path d="M8 3.4v9.2M3.4 8h9.2"/>', s); }
-function pencilIcon(s){ return svg('<path d="M11.1 2.9a1.55 1.55 0 0 1 2.2 2.2L5.6 12.8l-3 .8.8-3z"/>', s); }
-function trashIcon(s){ return svg('<path d="M2.8 4.4h10.4M6.2 4.4V3.2h3.6v1.2M4.4 4.4l.6 8.4h6l.6-8.4"/>', s); }
 function warnIcon(s){ return svg('<path d="M8 2.6 14.2 13H1.8L8 2.6Z"/><path d="M8 6.6v2.6"/><circle cx="8" cy="11.3" r="0.75" fill="currentColor" stroke="none"/>', s); }
 function infoIcon(s){ return svg('<circle cx="8" cy="8" r="5.8"/><path d="M8 7.4v3.4"/><circle cx="8" cy="5.2" r="0.75" fill="currentColor" stroke="none"/>', s); }
 function sparkIcon(s){ return svg('<path d="M8 2.4 9.4 6.6 13.6 8 9.4 9.4 8 13.6 6.6 9.4 2.4 8 6.6 6.6Z"/>', s); }
-function inboxIcon(s){ return svg('<path d="M2.4 8.6h3l1 2h3.2l1-2h3"/><path d="M3.6 3.4h8.8l1.6 5.2v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-4z"/>', s); }
 
 function tabIcon(name){ return svg((Domain.tabIcons && Domain.tabIcons[name]) || '', 18); }
 
@@ -1548,321 +1973,1311 @@ function renderAll(){
 }
 
 /* =========================================================
-   DEMO DOMAIN — Item
+   MISSION CONTROL — the product
    ---------------------------------------------------------
-   Deliberately close to nothing. It exists to prove the
-   infrastructure works and to show the intended patterns:
-   list, detail, create, edit, delete, validate, persist,
-   confirm, empty state, feedback.
+   Everything from here down to SETTINGS is Mission Control's
+   own domain. The foundation above reaches it only through the
+   four Domain seams, and nothing above reads anything below.
 
-   A new product replaces this whole section, down to the
-   SETTINGS banner, and reassigns the three Domain hooks above.
-   Nothing above this line reads anything below it.
+   THE MODEL
+   - IDENTITY is public and lives in source: PROJECT_REGISTRY.
+     Name, purpose, repository, live app, default branch, look.
+   - STATE is yours, entered on this device, under
+     data.projectStates: status, what it needs from you,
+     version, phase, current work, next step, and when you last
+     said so.
+   - Until you record a state, a project shows SAMPLE_STATE:
+     examples, labelled "sample" wherever they appear, with no
+     version and no phase, because an invented "v0.7" would read
+     as fact.
+   - PRIVATE LINKS (ChatGPT, Claude) live only in
+     data.privateLinks on this device: never in source, a test,
+     a log or the service-worker cache.
+   - Everything else — attention, the headline signal, the crew
+     on each platform, the counts — is derived when it is read
+     and never stored, so it cannot disagree with its source.
    ========================================================= */
-const ITEM_STATUSES = ['active', 'done'];
-const STATUS_LABEL = { active: 'Active', done: 'Done' };
 
-let items = [];
-let itemFilter = 'all';
-let editingItemId = null;
-let formStatus = 'active';
-let _draftTimer = null;
+/* Lifecycle: where a project is in its life. What it needs FROM YOU is
+   attention, kept separate on purpose — a project can be building and
+   waiting on a decision at once, and one word forced to carry both loses
+   whichever did not win. */
+const PROJECT_STATUSES = ['planning', 'building', 'release_ready', 'stable', 'paused'];
 
-function loadItems(){
-  const raw = Store.getJSON(KEYS.items, []);
-  items = Array.isArray(raw) ? raw.filter(isValidItem) : [];
+/* Most severe first. "Blocked" is not a flag anyone sets: a project is
+   blocked exactly when a blocker is written down, so the flag and its
+   reason can never disagree. */
+const ATTENTION_KINDS = ['blocked', 'needs_decision', 'needs_qa'];
+
+/* What the HUD counts as active: work is moving, or about to. */
+const ACTIVE_STATUSES = ['planning', 'building', 'release_ready'];
+
+/* The visual language: one entry per status and per attention. Each has a
+   word and a shape as well as its hue (the .sig-* class), so none of them
+   depends on colour. `worker` is the crew a platform shows for it — a still
+   placeholder now, the animation state later. */
+const SIGNALS = {
+  planning:       { label: 'Planning', short: 'Planning', worker: 'surveying',
+                    icon: '<circle cx="8" cy="8" r="5.6" stroke-dasharray="2.2 2"/><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"/>' },
+  building:       { label: 'Building', short: 'Building', worker: 'working',
+                    icon: '<path d="M12.8 6.2A5 5 0 0 0 3.7 5.4"/><path d="M3.2 9.8a5 5 0 0 0 9.1.8"/><path d="M3.4 2.8v2.8h2.8M12.6 13.2v-2.8H9.8"/>' },
+  release_ready:  { label: 'Release ready', short: 'Ready', worker: 'celebrating',
+                    icon: '<path d="M4 14.2V2.4"/><path d="M4 3h8l-2 2.7 2 2.7H4"/>' },
+  stable:         { label: 'Stable', short: 'Stable', worker: 'idle',
+                    icon: '<circle cx="8" cy="8" r="5.8"/><path d="M5.3 8.2 7.1 10l3.6-3.8"/>' },
+  paused:         { label: 'Paused', short: 'Paused', worker: 'quiet',
+                    icon: '<path d="M6 4.2v7.6M10 4.2v7.6"/>' },
+  needs_qa:       { label: 'Needs QA', short: 'QA', worker: 'inspecting',
+                    icon: '<path d="M5.6 3H4.4a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-1.2"/><rect x="5.6" y="2" width="4.8" height="2.2" rx=".6"/><path d="M5.8 9.2 7.3 10.7l3-3.2"/>' },
+  needs_decision: { label: 'Needs decision', short: 'Decision', worker: 'waiting',
+                    icon: '<path d="M8 1.8 14.2 8 8 14.2 1.8 8Z"/><path d="M6.6 6.6a1.45 1.45 0 1 1 2 1.35c-.45.2-.6.55-.6 1"/><circle cx="8" cy="10.9" r=".6" fill="currentColor" stroke="none"/>' },
+  blocked:        { label: 'Blocked', short: 'Blocked', worker: 'warning',
+                    icon: '<path d="M5.5 2h5L14 5.5v5L10.5 14h-5L2 10.5v-5Z"/><path d="M5.2 8h5.6"/>' }
+};
+
+/* =========================================================
+   PROJECT REGISTRY — public identity, in source
+   ---------------------------------------------------------
+   Six records, one shape. The field, the hub, the brief and
+   Settings are all drawn from this list; nothing is written
+   per project. Every URL here was read from GitHub, not
+   guessed, and passes the same link rule as everything else.
+   Personal Savings is a private repository with no Pages
+   site, so it has no live app — absent, not invented.
+
+   Nothing private belongs here. This file is public.
+   ========================================================= */
+const PROJECT_REGISTRY = [
+  {
+    id: 'loop',
+    name: 'LOOP',
+    shortDescription: 'Personal fitness app, live on iPhone.',
+    repositoryUrl: 'https://github.com/morecobrax-dot/loop',
+    liveUrl: 'https://morecobrax-dot.github.io/loop/',
+    defaultBranch: 'main',
+    visualTheme: 'track'
+  },
+  {
+    id: 'dayplan',
+    name: 'DayPlan',
+    shortDescription: 'Visual daily planner: what am I doing now, and what comes next?',
+    repositoryUrl: 'https://github.com/morecobrax-dot/dayplan',
+    liveUrl: 'https://morecobrax-dot.github.io/dayplan/',
+    defaultBranch: 'main',
+    visualTheme: 'calendar'
+  },
+  {
+    id: 'daily-verse',
+    name: 'Daily Verse',
+    shortDescription: 'Offline Bible reading and study app, now named New Covenant.',
+    repositoryUrl: 'https://github.com/morecobrax-dot/Daily-Verse',
+    liveUrl: 'https://morecobrax-dot.github.io/Daily-Verse/',
+    defaultBranch: 'main',
+    visualTheme: 'book'
+  },
+  {
+    id: 'personal-savings',
+    name: 'Personal Savings',
+    shortDescription: 'Private record of income, spending and money put aside.',
+    repositoryUrl: 'https://github.com/morecobrax-dot/personal-savings',
+    liveUrl: null,
+    defaultBranch: 'main',
+    visualTheme: 'vault'
+  },
+  {
+    id: 'space-kindergarten',
+    name: 'Space Kindergarten',
+    shortDescription: 'Space-adventure literacy game for kindergarten children on iPad.',
+    repositoryUrl: 'https://github.com/morecobrax-dot/space-kindergarten',
+    liveUrl: 'https://morecobrax-dot.github.io/space-kindergarten/',
+    defaultBranch: 'main',
+    visualTheme: 'rocket'
+  },
+  {
+    id: 'capybara-sushi',
+    name: 'Capy Sushi',
+    shortDescription: 'Cozy children\'s sushi-slicing game with a capybara chef.',
+    repositoryUrl: 'https://github.com/morecobrax-dot/Capybara-Sushi',
+    liveUrl: 'https://morecobrax-dot.github.io/Capybara-Sushi/',
+    defaultBranch: 'main',
+    visualTheme: 'sushi'
+  }
+];
+
+/* Placeholder state, shown until you record a real one. It exists so the
+   status system can be seen working on the first day, and it says "sample"
+   everywhere it appears. The spread is chosen to show every kind of
+   attention and three lifecycles; it describes nothing true about any of
+   these projects. */
+const SAMPLE_TEXT = {
+  currentTask: 'Example: what is being worked on right now.',
+  nextAction: 'Example: the next concrete step.'
+};
+const SAMPLE_STATE = {
+  'loop':               { status: 'stable' },
+  'dayplan':            { status: 'paused' },
+  'daily-verse':        { status: 'building' },
+  'personal-savings':   { status: 'building', needsDecision: true },
+  'space-kindergarten': { status: 'building', needsQa: true },
+  'capybara-sushi':     { status: 'building', blocker: 'Example: what is stopping the work.' }
+};
+
+/* Each project's mark for lists and the brief. Its platform in the field
+   carries the same identity as a landmark (LANDMARKS below). */
+const PROJECT_GLYPHS = {
+  track:    '<ellipse cx="8" cy="8" rx="6" ry="3.8"/><ellipse cx="8" cy="8" rx="2.9" ry="1.4"/>',
+  calendar: '<rect x="2.6" y="3.4" width="10.8" height="10" rx="1.4"/><path d="M2.6 6.6h10.8M5.4 2v2.6M10.6 2v2.6"/>',
+  book:     '<path d="M8 4.2C6.6 3.2 4.6 2.9 2.4 3.2v9.2c2.2-.3 4.2 0 5.6 1 1.4-1 3.4-1.3 5.6-1V3.2c-2.2-.3-4.2 0-5.6 1Z"/><path d="M8 4.2v9.2"/>',
+  vault:    '<ellipse cx="8" cy="4.4" rx="4.6" ry="1.8"/><path d="M3.4 4.4v3.2c0 1 2 1.8 4.6 1.8s4.6-.8 4.6-1.8V4.4M3.4 7.6v3.4c0 1 2 1.8 4.6 1.8s4.6-.8 4.6-1.8V7.6"/>',
+  rocket:   '<path d="M8 1.8c2 1.6 3 3.8 3 6.4v2.6H5V8.2c0-2.6 1-4.8 3-6.4Z"/><path d="M5 9.4 3 11.6v1.6l2-.8M11 9.4l2 2.2v1.6l-2-.8M6.8 13.4h2.4"/><circle cx="8" cy="6.4" r="1"/>',
+  sushi:    '<ellipse cx="8" cy="6" rx="5" ry="2.4"/><path d="M3 6v4c0 1.3 2.2 2.4 5 2.4s5-1.1 5-2.4V6"/><ellipse cx="8" cy="6" rx="1.8" ry=".9"/>'
+};
+
+/* The four ways out of Mission Control, in the order a work session uses
+   them. `kind` names the link rule each one is held to. GitHub and the live
+   app come from the public registry; ChatGPT and Claude only from this
+   device. The icons are generic on purpose: no brand marks. */
+const TOOLS = [
+  { key: 'chatgpt', label: 'ChatGPT', kind: 'chatgpt',
+    icon: '<path d="M2.6 3.4h10.8v7.2H7.4l-3 2.4v-2.4H2.6Z"/><path d="M5.2 6.2h5.6M5.2 8.2h3.4"/>' },
+  { key: 'claude', label: 'Claude', kind: 'claude',
+    icon: '<rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M4.8 6.4 6.8 8.2 4.8 10M8.6 10h2.6"/>' },
+  { key: 'github', label: 'GitHub', kind: 'https',
+    icon: '<circle cx="4.6" cy="3.6" r="1.4"/><circle cx="4.6" cy="12.4" r="1.4"/><circle cx="11.4" cy="5.2" r="1.4"/><path d="M4.6 5v6M11.4 6.6c0 2.6-2.4 3.1-4.4 3.5-1 .2-1.8.6-2.2 1.3"/>' },
+  { key: 'live', label: 'Live app', kind: 'https',
+    icon: '<circle cx="8" cy="8" r="5.8"/><path d="M2.2 8h11.6M8 2.2c1.7 1.6 2.6 3.6 2.6 5.8S9.7 12.2 8 13.8M8 2.2C6.3 3.8 5.4 5.8 5.4 8s.9 4.2 2.6 5.8"/>' }
+];
+const LOCK_ICON = '<rect x="3.4" y="7" width="9.2" height="6.6" rx="1.4"/><path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7"/>';
+
+function projectGlyph(theme, size){ return svg(PROJECT_GLYPHS[theme] || '', size); }
+function signalIcon(key, size){ return svg((SIGNALS[key] && SIGNALS[key].icon) || '', size); }
+
+/* =========================================================
+   LINK RULE
+   ---------------------------------------------------------
+   Every destination Mission Control opens passes one gate: when
+   it is saved, and again when it is drawn — a value that passed
+   yesterday, or came back in a backup, is re-checked before it
+   becomes something you can tap.
+
+   The grammar is written out here rather than handed to the URL
+   API so it is identical in every browser and under test, and
+   small enough to audit:
+   - https only; a Claude link may also use the app's documented
+     claude://code/… form
+   - no username or password inside the link
+   - no token, key, password or signature among its parameters
+   - no whitespace, quotes or angle brackets, and a length cap
+   ========================================================= */
+const LINK_MAX = 2048;
+const LINK_SCHEMES = { chatgpt: ['https'], claude: ['https', 'claude'], https: ['https'] };
+const SECRET_PARAM = /^(access_?token|id_?token|refresh_?token|token|api_?key|apikey|key|secret|client_?secret|password|passwd|pwd|auth|authorization|session_?token|sig|signature|code)$/i;
+const HOST_PATTERN = /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)(?::(\d{1,5}))?$/i;
+
+function parseToolLink(raw, kind){
+  const schemes = LINK_SCHEMES[kind] || LINK_SCHEMES.https;
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if(!text) return { ok: false, empty: true, error: null };
+  const fail = error => ({ ok: false, empty: false, error: error });
+  if(text.length > LINK_MAX) return fail('That is too long to be a conversation or session link.');
+  if(/[\s"'<>`\\]/.test(text) || /[\u0000-\u001f\u007f]/.test(text)){
+    return fail('A link cannot contain spaces, quotes or angle brackets.');
+  }
+  const m = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/i.exec(text);
+  if(!m) return fail('Paste the whole link, starting with https://');
+  const scheme = m[1].toLowerCase();
+  if(schemes.indexOf(scheme) === -1){
+    return fail(schemes.length > 1 ? 'Use an https:// link, or a claude://code/ app link.' : 'Use an https:// link.');
+  }
+  const authority = m[2], rest = m[3];
+  if(authority.indexOf('@') !== -1) return fail('A link with a username or password in it is not stored.');
+  let host;
+  if(scheme === 'https'){
+    const h = HOST_PATTERN.exec(authority);
+    if(!h) return fail('That does not look like a web address.');
+    host = h[1].toLowerCase().replace(/^www\./, '');
+  } else {
+    /* claude://code is the one documented app route. */
+    if(authority.toLowerCase() !== 'code' || (rest && !/^[/?]/.test(rest))){
+      return fail('Claude app links start with claude://code');
+    }
+    host = 'Claude app';
+  }
+  const hashAt = rest.indexOf('#');
+  const beforeHash = hashAt === -1 ? rest : rest.slice(0, hashAt);
+  const hash = hashAt === -1 ? '' : rest.slice(hashAt + 1);
+  const queryAt = beforeHash.indexOf('?');
+  const query = queryAt === -1 ? '' : beforeHash.slice(queryAt + 1);
+  if(carriesSecret(query) || carriesSecret(hash)){
+    return fail('This link carries a token or password. Copy the plain conversation or session link instead.');
+  }
+  return { ok: true, empty: false, error: null, url: text, scheme: scheme, host: host };
 }
-function isValidItem(it){
-  return it && typeof it === 'object' && typeof it.id === 'string' && typeof it.title === 'string';
+
+function carriesSecret(params){
+  if(!params) return false;
+  return params.split('&').some(pair => {
+    let name = pair.split('=')[0];
+    try{ name = decodeURIComponent(name); }catch(e){}
+    return SECRET_PARAM.test(name);
+  });
 }
-function persistItems(){
-  const ok = Store.setJSON(KEYS.items, items);
+
+/* The link a view may render: the stored value only if it still passes
+   today. Anything else is treated as not configured. */
+function usableLink(raw, kind){
+  const r = parseToolLink(raw, kind);
+  return r.ok ? r.url : null;
+}
+
+/* A future launcher can start a NEW Claude Code session when a saved
+   session link has gone stale. Everything it needs is public and derivable
+   — the repository and its default branch — so it is computed, never
+   stored. The documented form is claude.ai/code/new with `repo` and
+   `branch` parameters. Nothing launches it yet. */
+function claudeFallbackFor(p){
+  const m = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)\/?$/.exec((p && p.repositoryUrl) || '');
+  if(!m || !p.defaultBranch) return null;
+  return { repo: m[1] + '/' + m[2], branch: p.defaultBranch };
+}
+
+/* =========================================================
+   STATE AND PRIVATE LINKS — this device only
+   ========================================================= */
+const STATE_LIMITS = { blocker: 200, version: 24, phase: 48, currentTask: 280, nextAction: 200 };
+
+let projectStates = {};          // id -> the state you recorded
+let privateLinks = {};           // id -> { chatgptUrl, claudeUrl }
+/* Stored records this version cannot read. Kept aside and written back
+   untouched: data is never deleted for being unfamiliar. */
+let projectStatesForeign = [];
+let privateLinksForeign = [];
+let selectedId = null;
+
+function isKnownProject(id){ return typeof id === 'string' && PROJECT_REGISTRY.some(p => p.id === id); }
+function registryEntry(id){ return PROJECT_REGISTRY.find(p => p.id === id) || null; }
+
+function cleanText(v, max){
+  if(typeof v !== 'string') return null;
+  const t = v.replace(/\s+/g, ' ').trim();
+  return t ? t.slice(0, max) : null;
+}
+
+function normalizeState(raw){
+  if(!raw || typeof raw !== 'object' || !isKnownProject(raw.id)) return null;
+  if(PROJECT_STATUSES.indexOf(raw.status) === -1) return null;
+  return {
+    id: raw.id,
+    status: raw.status,
+    needsQa: raw.needsQa === true,
+    needsDecision: raw.needsDecision === true,
+    blocker: cleanText(raw.blocker, STATE_LIMITS.blocker),
+    version: cleanText(raw.version, STATE_LIMITS.version),
+    phase: cleanText(raw.phase, STATE_LIMITS.phase),
+    currentTask: cleanText(raw.currentTask, STATE_LIMITS.currentTask),
+    nextAction: cleanText(raw.nextAction, STATE_LIMITS.nextAction),
+    updatedAt: typeof raw.updatedAt === 'string' && raw.updatedAt ? raw.updatedAt : null
+  };
+}
+
+function normalizeLinks(raw){
+  if(!raw || typeof raw !== 'object' || !isKnownProject(raw.id)) return null;
+  const pick = v => (typeof v === 'string' && v.trim()) ? v.trim() : null;
+  return {
+    id: raw.id,
+    chatgptUrl: pick(raw.chatgptUrl),
+    claudeUrl: pick(raw.claudeUrl),
+    updatedAt: typeof raw.updatedAt === 'string' && raw.updatedAt ? raw.updatedAt : null
+  };
+}
+
+/* Records are read the way backup import merges them — one per project,
+   the newest winning — so a merged file and a local save agree. */
+function readRecords(key, normalize){
+  const raw = Store.getJSON(key, []);
+  const own = {}, foreign = [];
+  (Array.isArray(raw) ? raw : []).forEach(r => {
+    const rec = normalize(r);
+    if(!rec){ foreign.push(r); return; }
+    const cur = own[rec.id];
+    if(!cur || (rec.updatedAt || '') > (cur.updatedAt || '')) own[rec.id] = rec;
+  });
+  return { own: own, foreign: foreign };
+}
+function writeRecords(key, own, foreign){
+  const list = PROJECT_REGISTRY.map(p => own[p.id]).filter(Boolean).concat(foreign);
+  const ok = Store.setJSON(key, list);
   if(!ok) toast('Could not save — this browser is not storing data.', 'error');
   return ok;
 }
-function newId(){
-  return 'i_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+
+function loadProjectStates(){
+  const r = readRecords(KEYS.projectStates, normalizeState);
+  projectStates = r.own; projectStatesForeign = r.foreign;
 }
-function findItem(id){ return items.find(i => i.id === id) || null; }
+function persistProjectStates(){ return writeRecords(KEYS.projectStates, projectStates, projectStatesForeign); }
 
-function visibleItems(){
-  const sorted = items.slice().sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-  if(itemFilter === 'all') return sorted;
-  return sorted.filter(i => i.status === itemFilter);
+function loadPrivateLinks(){
+  const r = readRecords(KEYS.privateLinks, normalizeLinks);
+  privateLinks = r.own; privateLinksForeign = r.foreign;
+}
+function persistPrivateLinks(){ return writeRecords(KEYS.privateLinks, privateLinks, privateLinksForeign); }
+
+/* The focus survives a relaunch. An id the registry does not know is
+   ignored rather than repaired: nothing is selected, and nothing is
+   written until you choose. */
+function loadSelection(){
+  const id = Store.get(KEYS.selectedProject);
+  selectedId = isKnownProject(id) ? id : null;
 }
 
-function setItemFilter(f){
-  if(ITEM_STATUSES.indexOf(f) === -1 && f !== 'all') return;
-  itemFilter = f;
-  document.querySelectorAll('#itemFilter button').forEach(b =>
-    b.setAttribute('aria-selected', String(b.dataset.filter === f)));
-  renderItems();
+function hydrateMissionControl(){
+  loadProjectStates();
+  loadPrivateLinks();
+  loadSelection();
 }
 
-function renderHome(){
-  const stats = document.getElementById('homeStats');
-  if(stats){
-    const done = items.filter(i => i.status === 'done').length;
-    stats.innerHTML =
-      statHtml(items.length, 'Items') +
-      statHtml(items.length - done, 'Active') +
-      statHtml(done, 'Done');
-  }
+/* =========================================================
+   DERIVED VIEW — computed on read, never stored
+   ========================================================= */
+function sampleStateFor(id){
+  const s = SAMPLE_STATE[id] || {};
+  return {
+    id: id, status: s.status, needsQa: s.needsQa === true, needsDecision: s.needsDecision === true,
+    blocker: s.blocker || null, version: null, phase: null,
+    currentTask: SAMPLE_TEXT.currentTask, nextAction: SAMPLE_TEXT.nextAction, updatedAt: null
+  };
+}
 
-  const recent = document.getElementById('homeRecent');
-  if(!recent) return;
-  if(!items.length){
-    recent.innerHTML = emptyStateHtml({
-      mark: inboxIcon(30),
-      title: 'Nothing here yet',
-      body: 'Items you create show up here, newest first. This demo exists to prove the ' +
-            'shell, storage and forms actually work.',
-      action: 'Create your first item'
-    });
+function attentionOf(state){
+  const out = [];
+  if(state.blocker) out.push('blocked');
+  if(state.needsDecision) out.push('needs_decision');
+  if(state.needsQa) out.push('needs_qa');
+  return out;
+}
+
+function projectView(id){
+  const p = registryEntry(id);
+  if(!p) return null;
+  const real = projectStates[id] || null;
+  const state = real || sampleStateFor(id);
+  const attention = attentionOf(state);
+  const signal = attention.length ? attention[0] : state.status;
+  const links = privateLinks[id] || null;
+  const tools = {
+    chatgpt: links ? usableLink(links.chatgptUrl, 'chatgpt') : null,
+    claude:  links ? usableLink(links.claudeUrl, 'claude') : null,
+    github:  usableLink(p.repositoryUrl, 'https'),
+    live:    usableLink(p.liveUrl, 'https')
+  };
+  return {
+    id: p.id, name: p.name, shortDescription: p.shortDescription, visualTheme: p.visualTheme,
+    isSample: !real,
+    status: state.status, attention: attention, signal: signal, workerState: SIGNALS[signal].worker,
+    needsQa: state.needsQa, needsDecision: state.needsDecision, blocker: state.blocker,
+    version: state.version, phase: state.phase,
+    currentTask: state.currentTask, nextAction: state.nextAction,
+    lastUpdated: real ? real.updatedAt : null,
+    tools: tools,
+    brokenLinks: links ? ['chatgpt', 'claude'].filter(k => links[k + 'Url'] && !tools[k]) : [],
+    claudeFallback: claudeFallbackFor(p)
+  };
+}
+function allViews(){ return PROJECT_REGISTRY.map(p => projectView(p.id)); }
+
+function hudCounts(views){
+  const needing = kind => views.filter(v => v.attention.indexOf(kind) !== -1).length;
+  return {
+    projects: views.length,
+    active: views.filter(v => ACTIVE_STATUSES.indexOf(v.status) !== -1).length,
+    needsQa: needing('needs_qa'),
+    needsDecision: needing('needs_decision'),
+    blocked: needing('blocked')
+  };
+}
+
+/* Blocked first, then decisions, then QA; registry order breaks ties
+   (Array.prototype.sort is stable). */
+function attentionQueue(views){
+  return views.filter(v => v.attention.length)
+    .sort((a, b) => ATTENTION_KINDS.indexOf(a.attention[0]) - ATTENTION_KINDS.indexOf(b.attention[0]));
+}
+
+/* =========================================================
+   SELECTION AND LAYOUT
+   ---------------------------------------------------------
+   One tap focuses a project; a second tap on the same one (or
+   Enter, which a button turns into the same click) opens its
+   brief. On a phone the brief is a page; where the screen is
+   wide enough it is already docked beside the field.
+   ========================================================= */
+const WIDE_QUERY = '(min-width: 900px) and (min-height: 600px)';
+function isWideLayout(){
+  try{ return !!(window.matchMedia && window.matchMedia(WIDE_QUERY).matches); }
+  catch(e){ return false; }
+}
+
+function tapProject(id){
+  if(!isKnownProject(id)) return;
+  if(id === selectedId){ openBrief(); return; }
+  selectProject(id);
+}
+
+function selectProject(id, opts){
+  if(!isKnownProject(id)) return false;
+  const keepFocus = isBlockFocused();
+  selectedId = id;
+  Store.set(KEYS.selectedProject, id);
+  renderHub();
+  if(keepFocus) Field.focus(id);
+  if(!(opts && opts.quiet) && !isWideLayout()) revealFocusBar();
+  return true;
+}
+
+function isBlockFocused(){
+  const a = document.activeElement;
+  return !!(a && a.classList && a.classList.contains('block'));
+}
+
+function revealFocusBar(){
+  const bar = document.getElementById('focusBar');
+  if(!bar) return;
+  try{ bar.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' }); }catch(e){}
+}
+
+/* From a Needs-attention row. The row has already said what is wrong, so
+   it goes straight to the brief, without scrolling the hub behind it. */
+function openProjectBrief(id){
+  if(!isKnownProject(id)) return;
+  if(id !== selectedId) selectProject(id, { quiet: true });
+  openBrief();
+}
+
+function openBrief(){
+  const v = selectedId ? projectView(selectedId) : null;
+  if(!v) return;
+  if(isWideLayout()){
+    const name = document.getElementById('dockedBriefName');
+    if(name) try{ name.focus({ preventScroll: false }); }catch(e){}
     return;
   }
-  const rows = visibleItemsFor(items).slice(0, 3).map(itemRowHtml).join('');
-  recent.innerHTML = '<div class="list">' + rows + '</div>' +
-    '<button class="btn-primary btn-block" style="margin-top:var(--space-lg)" onclick="openItemForm()">' +
-    plusIcon(15) + ' New item</button>';
+  renderBriefPage(v);
+  if(isOverlayOpen('briefOverlay')) return;
+  pushOverlayHistory();
+  openOverlay('briefOverlay');
 }
-function visibleItemsFor(list){
-  return list.slice().sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+function closeBrief(){
+  if(!isOverlayOpen('briefOverlay')) return;
+  closeOverlay('briefOverlay');
+  releaseOverlayHistory();
 }
 
-function renderItems(){
-  const host = document.getElementById('itemList');
-  if(!host) return;
-  const list = visibleItems();
+function isOverlayOpen(id){
+  const ov = document.getElementById(id);
+  return !!(ov && ov.classList.contains('open'));
+}
 
-  if(!list.length){
-    host.innerHTML = emptyStateHtml({
-      mark: inboxIcon(30),
-      title: itemFilter === 'all' ? 'No items yet' : 'Nothing ' + STATUS_LABEL[itemFilter].toLowerCase(),
-      body: itemFilter === 'all'
-        ? 'Create one to see the list, detail page and form working together.'
-        : 'Change the filter above, or create an item.',
-      action: 'New item'
-    });
-    return;
+/* Rotating an iPad into the wide layout docks the brief; a brief page
+   still open over it would then be the same thing twice. */
+function watchLayout(){
+  try{
+    if(!window.matchMedia) return;
+    const mq = window.matchMedia(WIDE_QUERY);
+    const onChange = () => { if(mq.matches) closeBrief(); };
+    if(mq.addEventListener) mq.addEventListener('change', onChange);
+    else if(mq.addListener) mq.addListener(onChange);
+  }catch(e){}
+}
+
+/* =========================================================
+   PROJECT FIELD — the 2.5D renderer, behind a 3D-ready seam
+   ---------------------------------------------------------
+   The field is drawn by exactly one renderer, through three
+   calls: mount(host) once, draw(scene) whenever anything
+   changes, focus(id) to bring one project forward. The scene
+   is a derived, render-only description (ids, names, signals,
+   crews, themes, selection), so a renderer never reads Store,
+   never decides a status and never owns the selection.
+
+   Phase 1 ships IsoField: an inline SVG platform inside one
+   real <button> per project. No canvas, no dependency.
+
+   A Phase 2 WebGL renderer implements the same three calls —
+   one canvas, one scene, a group per project, geometry and
+   materials shared, LANDMARKS rebuilt from boxes, cylinders and
+   cones — and keeps a button per project as its hit and
+   accessibility layer. Nothing outside this section changes.
+   ========================================================= */
+function fieldScene(views){
+  return views.map(v => ({
+    id: v.id, name: v.name, theme: v.visualTheme,
+    status: v.status, signal: v.signal, attention: v.attention.slice(),
+    workerState: v.workerState, isSample: v.isSample,
+    selected: v.id === selectedId
+  }));
+}
+
+const IsoField = {
+  host: null,
+  mount(host){ this.host = host || null; },
+  draw(scene){
+    if(!this.host) return;
+    this.host.innerHTML = '<div class="field-grid">' + scene.map(isoBlockHtml).join('') + '</div>';
+  },
+  focus(id){
+    const b = document.getElementById('block-' + id);
+    if(b) try{ b.focus({ preventScroll: true }); }catch(e){}
   }
-  host.innerHTML = '<div class="list">' + list.map(itemRowHtml).join('') + '</div>' +
-    '<button class="btn-primary btn-block" style="margin-top:var(--space-lg)" onclick="openItemForm()">' +
-    plusIcon(15) + ' New item</button>';
+};
+let Field = IsoField;
+
+function isoBlockHtml(b){
+  const pulse = ATTENTION_KINDS.indexOf(b.signal) !== -1;
+  const spoken = [b.name, SIGNALS[b.status].label]
+    .concat(b.attention.map(k => SIGNALS[k].label))
+    .concat(b.isSample ? ['sample state'] : []).join('. ');
+  const marker = b.attention.length
+    ? '<span class="chip attn-marker sig-' + b.attention[0] + '">' + signalIcon(b.attention[0], 11) +
+      escapeHtml(SIGNALS[b.attention[0]].short) +
+      (b.attention.length > 1 ? ' +' + (b.attention.length - 1) : '') + '</span>'
+    : '';
+  return '<button class="block theme-' + b.theme + ' sig-' + b.signal + ' worker-' + b.workerState +
+      (b.selected ? ' is-selected' : '') + (pulse ? ' pulse' : '') + '"' +
+      ' id="block-' + escapeAttr(b.id) + '" aria-pressed="' + b.selected + '"' +
+      ' aria-label="' + escapeAttr(spoken) + '" onclick="tapProject(\'' + escapeAttr(b.id) + '\')">' +
+    platformSvg(b) + marker +
+    '<span class="block-label">' +
+      '<span class="block-name">' + escapeHtml(b.name) + '</span>' +
+      statusChipHtml(b.status, true) +
+      (b.isSample ? '<span class="block-sample">Sample</span>' : '') +
+    '</span>' +
+  '</button>';
 }
 
-function itemRowHtml(it){
-  const badge = '<span class="badge badge-' + it.status + '">' + STATUS_LABEL[it.status] + '</span>';
-  return '<button class="list-row" onclick="openItemDetail(\'' + escapeAttr(it.id) + '\')">' +
+/* ---------- isometric drawing ----------
+   Platform units: the plinth is 10 x 10, x runs to the lower right,
+   y to the lower left, z is up. True isometric, so one unit reads the
+   same length along every axis. */
+const ISO_X = 0.8660254, ISO_Y = 0.5;
+const PLINTH = 10, PLINTH_H = 2.2, TERRAIN_H = 0.32;
+const TOP = PLINTH_H + TERRAIN_H;
+/* The top of the frame leaves a clear band above the tallest landmark and
+   the beacon's glow, where the attention marker floats without covering
+   either. */
+const PLATFORM_VIEWBOX = '-9.8 -8 19.6 19';
+
+function isoPt(x, y, z){ return [(x - y) * ISO_X, (x + y) * ISO_Y - z]; }
+function n2(v){ return v.toFixed(2); }
+function isoPoly(points, cls){
+  return '<polygon class="' + cls + '" points="' + points.map(p => n2(p[0]) + ',' + n2(p[1])).join(' ') + '"/>';
+}
+
+function isoBox(x, y, z, w, d, h, mat){
+  const P = isoPt;
+  const top   = [P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)];
+  const left  = [P(x, y + d, z + h), P(x + w, y + d, z + h), P(x + w, y + d, z), P(x, y + d, z)];
+  const right = [P(x + w, y, z + h), P(x + w, y + d, z + h), P(x + w, y + d, z), P(x + w, y, z)];
+  return '<g class="' + mat + '">' + isoPoly(left, 'l') + isoPoly(right, 'r') + isoPoly(top, 't') + '</g>';
+}
+
+/* A circle of radius r on the ground plane projects to an axis-aligned
+   ellipse, rx = r·√(3/2), ry = r·√(1/2). The side is split at its front
+   so each half takes its own face shade. */
+function isoCyl(cx, cy, z, r, h, mat){
+  const c = isoPt(cx, cy, z);
+  const sx = c[0], yb = c[1], yt = yb - h;
+  const rx = r * 1.2247449, ry = r * 0.7071068;
+  const arc = (x2, y2, sweep) => ' A' + n2(rx) + ' ' + n2(ry) + ' 0 0 ' + sweep + ' ' + n2(x2) + ' ' + n2(y2);
+  const left = 'M' + n2(sx - rx) + ' ' + n2(yt) + ' L' + n2(sx - rx) + ' ' + n2(yb) +
+    arc(sx, yb + ry, 0) + ' L' + n2(sx) + ' ' + n2(yt + ry) + arc(sx - rx, yt, 1) + 'Z';
+  const right = 'M' + n2(sx) + ' ' + n2(yt + ry) + ' L' + n2(sx) + ' ' + n2(yb + ry) +
+    arc(sx + rx, yb, 0) + ' L' + n2(sx + rx) + ' ' + n2(yt) + arc(sx, yt + ry, 1) + 'Z';
+  return '<g class="' + mat + '"><path class="l" d="' + left + '"/><path class="r" d="' + right + '"/>' +
+    '<ellipse class="t" cx="' + n2(sx) + '" cy="' + n2(yt) + '" rx="' + n2(rx) + '" ry="' + n2(ry) + '"/></g>';
+}
+
+function isoCone(cx, cy, z, r, h, mat){
+  const c = isoPt(cx, cy, z);
+  const sx = c[0], yb = c[1], apex = yb - h;
+  const rx = r * 1.2247449, ry = r * 0.7071068;
+  const arc = (x2, y2) => ' A' + n2(rx) + ' ' + n2(ry) + ' 0 0 0 ' + n2(x2) + ' ' + n2(y2);
+  const left = 'M' + n2(sx - rx) + ' ' + n2(yb) + arc(sx, yb + ry) + ' L' + n2(sx) + ' ' + n2(apex) + 'Z';
+  const right = 'M' + n2(sx) + ' ' + n2(yb + ry) + arc(sx + rx, yb) + ' L' + n2(sx) + ' ' + n2(apex) + 'Z';
+  return '<g class="' + mat + '"><path class="l" d="' + left + '"/><path class="r" d="' + right + '"/></g>';
+}
+
+/* A round plate on a face that looks down-left (a y = constant plane). */
+function isoDiscY(cx, yPlane, cz, r, mat){
+  const pts = [];
+  for(let i = 0; i < 20; i++){
+    const a = (i / 20) * Math.PI * 2;
+    pts.push(isoPt(cx + r * Math.cos(a), yPlane, cz + r * Math.sin(a)));
+  }
+  return '<g class="' + mat + '">' + isoPoly(pts, 'l') + '</g>';
+}
+
+/* Each project's landmark, as data: primitives in platform units, z
+   measured from the platform's surface, drawn in the order listed (back
+   to front). The same lists can become meshes in Phase 2. */
+const LANDMARKS = {
+  track: [
+    ['cyl', 5, 5, 0, 3.4, 0.28, 'm-tint'],
+    ['cyl', 5, 5, 0.28, 2.3, 0.01, 'm-terrain'],
+    ['box', 4.35, 4.35, 0, 1.3, 1.3, 1.5, 'm-stone'],
+    ['box', 4.55, 4.55, 1.5, 0.9, 0.9, 0.35, 'm-tint']
+  ],
+  calendar: [
+    ['box', 3.0, 3.4, 0, 3.8, 3.0, 3.0, 'm-stone'],
+    ['box', 3.0, 3.4, 3.0, 3.8, 3.0, 0.9, 'm-tint'],
+    ['cyl', 3.9, 4.9, 3.9, 0.22, 0.55, 'm-ink'],
+    ['cyl', 5.9, 4.9, 3.9, 0.22, 0.55, 'm-ink']
+  ],
+  book: [
+    ['box', 4.3, 4.3, 0, 1.4, 1.4, 1.6, 'm-ink'],
+    ['box', 2.8, 3.3, 1.6, 2.15, 3.4, 0.3, 'm-stone'],
+    ['box', 4.93, 3.3, 1.6, 0.24, 3.4, 0.46, 'm-tint'],
+    ['box', 5.15, 3.3, 1.6, 2.15, 3.4, 0.3, 'm-stone']
+  ],
+  vault: [
+    ['box', 2.6, 2.8, 0, 3.6, 3.3, 3.2, 'm-metal'],
+    ['discY', 4.4, 6.1, 1.6, 1.05, 'm-ink'],
+    ['cyl', 8.3, 4.6, 0, 0.8, 0.8, 'm-coin'],
+    ['cyl', 7.4, 6.5, 0, 0.95, 1.5, 'm-coin']
+  ],
+  rocket: [
+    ['box', 3.4, 3.4, 0, 3.2, 3.2, 0.34, 'm-ink'],
+    ['cyl', 5, 5, 0.34, 0.95, 1.9, 'm-stone'],
+    ['cyl', 5, 5, 2.24, 1.0, 0.42, 'm-tint'],
+    ['cyl', 5, 5, 2.66, 0.95, 1.2, 'm-stone'],
+    ['cone', 5, 5, 3.86, 0.95, 1.7, 'm-tint'],
+    ['box', 4.86, 5.95, 0.34, 0.28, 0.75, 1.15, 'm-tint'],
+    ['box', 5.95, 4.86, 0.34, 0.75, 0.28, 1.15, 'm-tint']
+  ],
+  sushi: [
+    ['cyl', 5, 4.6, 0, 2.0, 1.6, 'm-nori'],
+    ['cyl', 5, 4.6, 1.6, 1.75, 0.01, 'm-rice'],
+    ['cyl', 5, 4.6, 1.61, 0.72, 0.01, 'm-fish'],
+    ['cyl', 2.9, 7.3, 0, 1.15, 1.0, 'm-nori'],
+    ['cyl', 2.9, 7.3, 1.0, 0.98, 0.01, 'm-rice'],
+    ['cyl', 2.9, 7.3, 1.01, 0.4, 0.01, 'm-fish']
+  ]
+};
+
+function landmarkPart(p){
+  const kind = p[0];
+  if(kind === 'box') return isoBox(p[1], p[2], TOP + p[3], p[4], p[5], p[6], p[7]);
+  if(kind === 'cyl') return isoCyl(p[1], p[2], TOP + p[3], p[4], p[5], p[6]);
+  if(kind === 'cone') return isoCone(p[1], p[2], TOP + p[3], p[4], p[5], p[6]);
+  if(kind === 'discY') return isoDiscY(p[1], p[2], TOP + p[3], p[4], p[5]);
+  return '';
+}
+
+/* The status beacon stands on the right-hand corner, clear of every
+   landmark: its light is the signal's hue, and it breathes only when the
+   project needs you. */
+function beaconSvg(){
+  const light = isoPt(8.64, 1.44, TOP + 5.3);
+  return isoBox(8.5, 1.3, TOP, 0.28, 0.28, 5.0, 'm-ink') +
+    '<circle class="beacon-glow" cx="' + n2(light[0]) + '" cy="' + n2(light[1]) + '" r="1.5"/>' +
+    '<circle class="beacon-light" cx="' + n2(light[0]) + '" cy="' + n2(light[1]) + '" r="0.58"/>';
+}
+
+/* A crew member, standing on the platform's surface. Drawn upright in
+   screen space; its helmet wears the signal's hue. `prop` adds the one
+   thing its state is holding. */
+function workerSvg(x, y, prop, seated){
+  const p = isoPt(x, y, TOP), sx = p[0], sy = p[1];
+  const body = seated ? 1.0 : 1.42;
+  return '<g class="worker">' +
+    '<ellipse class="w-shadow" cx="' + n2(sx) + '" cy="' + n2(sy) + '" rx="0.62" ry="0.28"/>' +
+    '<rect class="w-body" x="' + n2(sx - 0.4) + '" y="' + n2(sy - body - 0.08) + '" width="0.8" height="' + n2(body) + '" rx="0.36"/>' +
+    '<circle class="w-head" cx="' + n2(sx) + '" cy="' + n2(sy - body - 0.5) + '" r="0.38"/>' +
+    '<path class="w-helmet" d="M' + n2(sx - 0.42) + ' ' + n2(sy - body - 0.56) + 'a0.42 0.42 0 0 1 0.84 0Z"/>' +
+    (prop ? prop(sx, sy - body) : '') +
+  '</g>';
+}
+
+/* One still placeholder per worker state. Phase 2 animates the same states. */
+function crewSvg(state){
+  if(state === 'working'){
+    return isoBox(5.9, 7.7, TOP, 0.9, 0.9, 0.9, 'm-crate') + workerSvg(7.3, 8.7) + workerSvg(8.8, 7.1);
+  }
+  if(state === 'inspecting'){
+    return workerSvg(8.0, 8.2, (x, y) =>
+      '<rect class="w-prop" x="' + n2(x + 0.3) + '" y="' + n2(y + 0.1) + '" width="0.55" height="0.72" rx="0.08"/>');
+  }
+  if(state === 'waiting'){
+    return isoBox(8.8, 6.6, TOP, 0.16, 0.16, 2.0, 'm-stone') +
+      isoBox(8.3, 6.62, TOP + 1.5, 1.2, 0.12, 0.9, 'm-signal') + workerSvg(7.3, 8.7);
+  }
+  if(state === 'warning'){
+    return workerSvg(8.8, 6.6) + isoBox(5.6, 8.9, TOP, 3.2, 0.32, 0.85, 'm-signal');
+  }
+  if(state === 'idle'){
+    return isoBox(7.2, 8.0, TOP, 1.6, 0.6, 0.45, 'm-crate') + workerSvg(8.0, 8.9, null, true);
+  }
+  if(state === 'celebrating'){
+    const tip = isoPt(8.79, 6.89, TOP + 3.2);
+    return isoBox(8.7, 6.8, TOP, 0.18, 0.18, 3.2, 'm-stone') +
+      '<polygon class="w-prop" points="' + n2(tip[0]) + ',' + n2(tip[1]) + ' ' + n2(tip[0] + 1.7) + ',' +
+        n2(tip[1] + 0.5) + ' ' + n2(tip[0]) + ',' + n2(tip[1] + 1.0) + '"/>' +
+      workerSvg(7.3, 8.8);
+  }
+  if(state === 'surveying'){
+    const head = isoPt(8.9, 7.1, TOP + 1.5);
+    const feet = [isoPt(8.4, 7.6, TOP), isoPt(9.4, 7.4, TOP), isoPt(9.0, 6.5, TOP)];
+    return '<path class="w-line" d="' + feet.map(f => 'M' + n2(head[0]) + ' ' + n2(head[1]) +
+      'L' + n2(f[0]) + ' ' + n2(f[1])).join('') + '"/>' +
+      isoBox(8.7, 6.9, TOP + 1.5, 0.45, 0.45, 0.4, 'm-signal') + workerSvg(7.3, 8.7);
+  }
+  return '';   // quiet: a paused platform has no crew
+}
+
+function platformSvg(b){
+  const lm = LANDMARKS[b.theme] || [];
+  return '<svg class="platform" viewBox="' + PLATFORM_VIEWBOX + '" aria-hidden="true" focusable="false">' +
+    '<ellipse class="ground-shadow" cx="0" cy="6.3" rx="9.3" ry="4.2"/>' +
+    (b.selected ? isoPoly([isoPt(-0.5, -0.5, 0), isoPt(10.5, -0.5, 0), isoPt(10.5, 10.5, 0),
+                           isoPt(-0.5, 10.5, 0)], 'select-ring') : '') +
+    isoBox(0, 0, 0, PLINTH, PLINTH, PLINTH_H, 'm-plinth') +
+    isoBox(0.35, 0.35, PLINTH_H, PLINTH - 0.7, PLINTH - 0.7, TERRAIN_H, 'm-terrain') +
+    beaconSvg() +
+    lm.map(landmarkPart).join('') +
+    crewSvg(b.workerState) +
+  '</svg>';
+}
+
+/* =========================================================
+   HUB
+   ========================================================= */
+function renderMissionControl(){
+  const views = allViews();
+  renderHub(views);
+  renderLinksList(views);
+}
+
+function renderHub(given){
+  const views = given || allViews();
+  renderSampleNotice(views);
+  renderHud(views);
+  renderAttention(views);
+  if(!Field.host) Field.mount(document.getElementById('projectField'));
+  Field.draw(fieldScene(views));
+  renderFocusBar(views);
+  renderDockedBrief(views);
+  if(isOverlayOpen('briefOverlay')){
+    const v = views.find(x => x.id === selectedId);
+    if(v) renderBriefPage(v);
+  }
+}
+
+function renderSampleNotice(views){
+  const el = document.getElementById('sampleNotice');
+  if(!el) return;
+  const n = views.filter(v => v.isSample).length;
+  if(!n){ el.innerHTML = ''; return; }
+  const body = n === views.length
+    ? 'Every status here is an example until you record the real one. Open a project and choose Update state.'
+    : n + ' of ' + views.length + ' projects still show sample state. Their statuses are examples, not facts.';
+  el.innerHTML = '<div class="notice"><span class="notice-mark" aria-hidden="true">' + infoIcon(17) + '</span>' +
+    '<span><strong>Sample state</strong>' + escapeHtml(body) + '</span></div>';
+}
+
+function renderHud(views){
+  const el = document.getElementById('hud');
+  if(!el) return;
+  const c = hudCounts(views);
+  el.innerHTML =
+    hudItemHtml(c.projects, 'Projects', null) +
+    hudItemHtml(c.active, 'Active', null) +
+    hudItemHtml(c.needsQa, 'QA', 'needs_qa') +
+    hudItemHtml(c.needsDecision, 'Decision', 'needs_decision') +
+    hudItemHtml(c.blocked, 'Blocked', 'blocked');
+}
+function hudItemHtml(n, label, kind){
+  const cls = 'hud-item' + (kind ? ' sig-' + kind + (n ? ' is-alert' : '') : '') + (n === 0 ? ' is-zero' : '');
+  return '<div class="' + cls + '"><span class="hud-value">' + (kind ? signalIcon(kind, 13) : '') + n + '</span>' +
+    '<span class="hud-label">' + escapeHtml(label) + '</span></div>';
+}
+
+function renderAttention(views){
+  const el = document.getElementById('attentionList');
+  if(!el) return;
+  const queue = attentionQueue(views);
+  el.innerHTML = queue.length
+    ? '<div class="list">' + queue.map(attentionRowHtml).join('') + '</div>'
+    : '<div class="attention-clear">' + checkIcon(16) + '<span>Nothing needs you right now.</span></div>';
+}
+function attentionRowHtml(v){
+  const kind = v.attention[0];
+  const reasons = [kind === 'blocked' ? 'Blocked: ' + v.blocker : SIGNALS[kind].label]
+    .concat(v.attention.slice(1).map(k => SIGNALS[k].label));
+  return '<button class="list-row attention-row sig-' + kind + '" onclick="openProjectBrief(\'' + escapeAttr(v.id) + '\')">' +
+    '<span class="attn-mark" aria-hidden="true">' + signalIcon(kind, 18) + '</span>' +
     '<span class="list-row-main">' +
-      '<span class="list-row-title">' + escapeHtml(it.title) + '</span>' +
-      '<span class="list-row-desc">' + escapeHtml(it.note || 'No note') + '</span>' +
-    '</span>' + badge +
+      '<span class="list-row-title">' + escapeHtml(v.name) + (v.isSample ? ' ' + sampleTagHtml() : '') + '</span>' +
+      '<span class="list-row-desc">' + escapeHtml(reasons.join(' · ')) + '</span>' +
+    '</span>' +
     '<span class="list-row-arrow" aria-hidden="true">' + chevronRight(15) + '</span>' +
   '</button>';
 }
 
-function statHtml(value, label){
-  return '<div class="stat"><span class="stat-value">' + value + '</span>' +
-         '<span class="stat-label">' + escapeHtml(label) + '</span></div>';
+function sampleTagHtml(){ return '<span class="sample-tag">Sample</span>'; }
+function statusChipHtml(key, short){
+  return '<span class="chip sig-' + key + '">' + signalIcon(key, 11) +
+    escapeHtml(short ? SIGNALS[key].short : SIGNALS[key].label) + '</span>';
+}
+function chipsHtml(v, short){
+  return statusChipHtml(v.status, short) + v.attention.map(k => statusChipHtml(k, short)).join('');
 }
 
-function emptyStateHtml(o){
-  return '<div class="empty-state">' +
-    (o.mark ? '<span class="empty-mark" aria-hidden="true">' + o.mark + '</span>' : '') +
-    '<span class="empty-title">' + escapeHtml(o.title) + '</span>' +
-    '<span class="empty-body">' + escapeHtml(o.body) + '</span>' +
-    (o.action ? '<button class="btn-primary" onclick="openItemForm()">' + escapeHtml(o.action) + '</button>' : '') +
-  '</div>';
+function renderFocusBar(views){
+  const el = document.getElementById('focusBar');
+  if(!el) return;
+  const v = views.find(x => x.id === selectedId);
+  if(!v){
+    el.innerHTML = '<p class="focus-hint">Tap a project to focus it. Tap it again for its brief.</p>';
+    return;
+  }
+  el.innerHTML = '<button class="focus-bar sig-' + v.signal + '" onclick="openBrief()">' +
+    '<span class="glyph-tile theme-' + v.visualTheme + '" aria-hidden="true">' + projectGlyph(v.visualTheme, 18) + '</span>' +
+    '<span class="focus-main">' +
+      '<span class="focus-name">' + escapeHtml(v.name) + (v.isSample ? sampleTagHtml() : '') + '</span>' +
+      '<span class="chip-row">' + chipsHtml(v, false) + '</span>' +
+      (v.nextAction ? '<span class="focus-next">Next: ' + escapeHtml(v.nextAction) + '</span>' : '') +
+    '</span>' +
+    '<span class="focus-go">Brief' + chevronRight(15) + '</span>' +
+  '</button>';
 }
 
-/* ---------- detail ---------- */
-let detailItemId = null;
+/* =========================================================
+   QUICK BRIEF — one renderer, two places
+   ========================================================= */
+function briefHtml(v, docked){
+  const rows = [
+    ['Status', SIGNALS[v.status].label],
+    ['Version', v.version],
+    ['Phase', v.phase],
+    ['Current work', v.currentTask, true],
+    ['Next action', v.nextAction, true],
+    ['Last updated', v.lastUpdated ? formatDate(v.lastUpdated) : null]
+  ];
+  return '<article class="brief">' +
+    '<div class="brief-head">' +
+      '<span class="glyph-tile large theme-' + v.visualTheme + '" aria-hidden="true">' + projectGlyph(v.visualTheme, 26) + '</span>' +
+      '<div class="brief-titles">' +
+        '<h2 class="brief-name" id="' + (docked ? 'dockedBriefName' : 'briefName') + '" tabindex="-1">' + escapeHtml(v.name) + '</h2>' +
+        '<p class="brief-purpose">' + escapeHtml(v.shortDescription) + '</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="chip-row brief-chips">' + chipsHtml(v, false) + (v.isSample ? sampleTagHtml() : '') + '</div>' +
+    (v.isSample ? '<p class="brief-sample-note">Sample state: none of this is real yet. Choose Update state to record where this project actually is.</p>' : '') +
+    (v.blocker ? '<div class="notice notice-error"><span class="notice-mark" aria-hidden="true">' + signalIcon('blocked', 17) +
+      '</span><span><strong>Blocked</strong>' + escapeHtml(v.blocker) + '</span></div>' : '') +
+    (docked ? (anyTool(v) ? toolsHtml(v, true) : toolsEmptyHtml()) : (anyTool(v) ? '' : toolsEmptyHtml())) +
+    '<div class="brief-rows">' + rows.map(r => briefRowHtml(r[0], r[1], r[2])).join('') + '</div>' +
+    '<div class="list">' +
+      manageRowHtml('Update state', v.isSample ? 'Record where this project really is' : 'Status, what it needs, work and next step', 'openStateForm', v.id) +
+      manageRowHtml('Tool links', linksSummary(v), 'openLinksForm', v.id) +
+    '</div>' +
+  '</article>';
+}
 
-function openItemDetail(id){
-  const it = findItem(id);
-  if(!it) return;
-  detailItemId = id;
-  const body = document.getElementById('itemDetailBody');
-  body.innerHTML =
-    '<h2>' + escapeHtml(it.title) + '</h2>' +
-    '<div class="sheet-sub"><span class="badge badge-' + it.status + '">' +
-      STATUS_LABEL[it.status] + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">Note</span></div>' +
-    '<div class="detail-value block" style="margin-bottom:var(--space-lg)">' +
-      escapeHtml(it.note || '—') + '</div>' +
-    '<div class="detail-row"><span class="detail-label">Created</span>' +
-      '<span class="detail-value">' + formatDate(it.createdAt) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">Updated</span>' +
-      '<span class="detail-value">' + formatDate(it.updatedAt) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">Id</span>' +
-      '<span class="detail-value" style="font-family:var(--font-mono)">' + escapeHtml(it.id) + '</span></div>';
-  pushOverlayHistory();
-  openOverlay('itemDetailOverlay');
+function briefRowHtml(label, value, stacked){
+  return '<div class="detail-row' + (stacked ? ' stacked' : '') + '"><span class="detail-label">' + escapeHtml(label) + '</span>' +
+    '<span class="detail-value' + (value ? '' : ' is-unknown') + '">' + (value ? escapeHtml(value) : 'Not recorded') + '</span></div>';
 }
-function closeItemDetail(){
-  closeOverlay('itemDetailOverlay');
-  releaseOverlayHistory();
-  detailItemId = null;
+
+function manageRowHtml(title, desc, fn, id){
+  return '<button class="list-row" onclick="' + fn + '(\'' + escapeAttr(id) + '\')">' +
+    '<span class="list-row-main"><span class="list-row-title">' + escapeHtml(title) + '</span>' +
+    '<span class="list-row-desc">' + escapeHtml(desc) + '</span></span>' +
+    '<span class="list-row-arrow" aria-hidden="true">' + chevronRight(15) + '</span></button>';
 }
-function editItemFromDetail(){
-  const id = detailItemId;
-  closeItemDetail();
-  openItemForm(id);
+
+function anyTool(v){ return TOOLS.some(t => v.tools[t.key]); }
+function toolsEmptyHtml(){
+  return '<p class="tools-empty">No tools are linked yet. Add ChatGPT and Claude links under Tool links.</p>';
 }
-async function deleteItemFromDetail(){
-  const it = findItem(detailItemId);
-  if(!it) return;
-  const ok = await confirmAction({
-    title: 'Delete this item?',
-    message: '"' + it.title + '" will be removed from this device. This cannot be undone.',
-    confirmLabel: 'Delete',
-    destructive: true
+function toolsHtml(v, docked){
+  const items = TOOLS.filter(t => v.tools[t.key]);
+  if(!items.length) return '';
+  return '<div class="tools' + (docked ? ' docked' : '') + '">' + items.map(t => toolLinkHtml(t, v)).join('') + '</div>';
+}
+
+/* A real link, never a scripted jump: the platform decides how to hand a
+   universal link to the ChatGPT or Claude app. Web links open in a new
+   context with no opener and no referrer; the claude:// app form is handed
+   straight to the system. Only the host is ever shown, never the path —
+   the part that identifies a conversation stays off the screen. */
+function toolLinkHtml(t, v){
+  const link = parseToolLink(v.tools[t.key], t.kind);
+  if(!link.ok) return '';
+  const web = link.scheme === 'https';
+  return '<a class="tool-link tool-' + t.key + '" href="' + escapeAttr(link.url) + '"' +
+    (web ? ' target="_blank" rel="noopener noreferrer"' : ' rel="noreferrer"') +
+    ' aria-label="' + escapeAttr('Open ' + v.name + ' in ' + t.label + ', ' + link.host) + '">' +
+    '<span class="tool-icon" aria-hidden="true">' + svg(t.icon, 18) + '</span>' +
+    '<span class="tool-text" aria-hidden="true"><span class="tool-label">' + escapeHtml(t.label) + '</span>' +
+    '<span class="tool-host">' + escapeHtml(link.host) + '</span></span></a>';
+}
+
+function linksSummary(v){
+  if(v.brokenLinks.length) return 'A saved link needs fixing';
+  const set = [];
+  if(v.tools.chatgpt) set.push('ChatGPT');
+  if(v.tools.claude) set.push('Claude');
+  return set.length ? set.join(' and ') + ' set on this device' : 'No private links on this device';
+}
+
+function renderBriefPage(v){
+  const title = document.getElementById('briefTitle');
+  const body = document.getElementById('briefBody');
+  const bar = document.getElementById('briefTools');
+  if(title) title.textContent = v.name;
+  if(body) body.innerHTML = briefHtml(v, false);
+  if(bar){
+    const tools = toolsHtml(v, false);
+    bar.innerHTML = tools;
+    if(tools) bar.removeAttribute('hidden'); else bar.setAttribute('hidden', '');
+  }
+}
+
+function renderDockedBrief(views){
+  const el = document.getElementById('dockedBrief');
+  if(!el) return;
+  const v = views.find(x => x.id === selectedId);
+  el.innerHTML = v ? briefHtml(v, true) : emptyStateHtml({
+    mark: svg(Domain.tabIcons.home, 30),
+    title: 'No project in focus',
+    body: 'Tap a platform in the field, or a row under Needs attention, to see its brief here.'
   });
-  if(!ok) return;
-  items = items.filter(i => i.id !== it.id);
-  persistItems();
-  closeItemDetail();
-  renderAll();
-  toast('Item deleted', 'success');
 }
 
-/* ---------- form ---------- */
-function openItemForm(id){
-  editingItemId = id || null;
-  const it = id ? findItem(id) : null;
-  document.getElementById('itemFormTitle').textContent = it ? 'Edit item' : 'New item';
-  document.getElementById('itemSaveBtn').textContent = it ? 'Save changes' : 'Create item';
+function renderLinksList(views){
+  const el = document.getElementById('linksList');
+  if(!el) return;
+  el.innerHTML = views.map(v =>
+    '<button class="list-row" onclick="openLinksForm(\'' + escapeAttr(v.id) + '\')">' +
+      '<span class="glyph-tile theme-' + v.visualTheme + '" aria-hidden="true">' + projectGlyph(v.visualTheme, 17) + '</span>' +
+      '<span class="list-row-main"><span class="list-row-title">' + escapeHtml(v.name) + '</span>' +
+      '<span class="list-row-desc">' + escapeHtml(linksSummary(v)) + '</span></span>' +
+      '<span class="list-row-arrow" aria-hidden="true">' + chevronRight(15) + '</span>' +
+    '</button>').join('');
+}
 
-  const draft = !it ? Store.getJSON(KEYS.itemDraft, null) : null;
-  const source = it || draft || { title: '', note: '', status: 'active' };
+/* =========================================================
+   EDITORS — state and private links
+   ---------------------------------------------------------
+   Leaving an editor on purpose (Cancel, Back, the device back
+   gesture) abandons the edit, and its draft goes with it. A
+   draft exists for the one case you did not choose: the page
+   being torn down underneath an open editor — which on a phone
+   is exactly what a trip to ChatGPT can do.
+   ========================================================= */
+let editingStateId = null;
+let editingLinksId = null;
+let formState = null;              // status and switches while the state editor is open
+let _formDraftTimer = null;
 
-  document.getElementById('itemTitle').value = source.title || '';
-  document.getElementById('itemNote').value = source.note || '';
-  setFormStatus(source.status === 'done' ? 'done' : 'active');
-  clearFieldError('itemTitle');
+function valueOf(id){ const el = document.getElementById(id); return el ? el.value : ''; }
+function setValue(id, v){ const el = document.getElementById(id); if(el) el.value = v || ''; }
 
-  if(draft && !it) toast('Restored your unsaved draft', 'neutral');
+/* One draft slot per editor, tagged with its project, and read back only
+   by the same editor for the same project. */
+function takeDraft(key, id){
+  const d = Store.getJSON(key, null);
+  return (d && typeof d === 'object' && d.id === id && d.values && typeof d.values === 'object') ? d.values : null;
+}
+/* Only a draft that belongs to this project is discarded: closing one
+   project's editor must not erase unsaved work left in another's. */
+function discardDraft(key, id){
+  const d = Store.getJSON(key, null);
+  if(d === null || !d || typeof d !== 'object' || d.id === id) Store.remove(key);
+}
+function scheduleFormDraft(){
+  if(_formDraftTimer) clearTimeout(_formDraftTimer);
+  _formDraftTimer = setTimeout(flushFormDrafts, 250);
+}
+function flushFormDrafts(){
+  if(_formDraftTimer){ clearTimeout(_formDraftTimer); _formDraftTimer = null; }
+  if(isOverlayOpen('stateOverlay') && isKnownProject(editingStateId)){
+    Store.setJSON(KEYS.stateDraft, { id: editingStateId, values: readStateForm() });
+  }
+  if(isOverlayOpen('linksOverlay') && isKnownProject(editingLinksId)){
+    Store.setJSON(KEYS.linksDraft, { id: editingLinksId,
+      values: { chatgptUrl: valueOf('linkChatgpt'), claudeUrl: valueOf('linkClaude') } });
+  }
+}
 
+/* ---------- state ---------- */
+function openStateForm(id){
+  const p = registryEntry(id);
+  if(!p) return;
+  editingStateId = id;
+  const real = projectStates[id] || null;
+  const draft = takeDraft(KEYS.stateDraft, id);
+  /* A project still on sample state opens EMPTY. Pre-filling the examples
+     would let one tap on Save turn them into recorded fact. */
+  fillStateForm(draft || real || {});
+  document.getElementById('stateFormTitle').textContent = p.name;
+  document.getElementById('stateFormIntro').textContent = real
+    ? (real.updatedAt ? 'Last recorded ' + formatDate(real.updatedAt) + '. ' : '') + 'Saving replaces it on this device.'
+    : p.name + ' is showing sample state. What you save here replaces it, on this device.';
+  const footer = document.getElementById('stateFooter');
+  if(footer){
+    footer.innerHTML = real
+      ? '<button class="btn-secondary btn-danger btn-block" onclick="clearProjectState()">Clear recorded state</button>' +
+        '<div class="field-hint">The project goes back to sample state on this device. Its tool links stay.</div>'
+      : '';
+  }
+  clearFieldError('stateStatus');
+  if(draft) toast('Restored your unsaved changes', 'neutral');
   pushOverlayHistory();
-  openOverlay('itemFormOverlay');
+  openOverlay('stateOverlay');
 }
 
-/* Leaving without saving keeps the draft; saving discards it. Flushing on the
-   way out of a SAVED form would write the still-populated fields straight back
-   into the draft key that save had just cleared, and the next new item would
-   open pre-filled with the last one. */
-function closeItemForm(){
-  flushDraft();
-  finishItemForm();
-}
-function finishItemForm(){
-  if(_draftTimer){ clearTimeout(_draftTimer); _draftTimer = null; }
-  closeOverlay('itemFormOverlay');
-  releaseOverlayHistory();
-  editingItemId = null;
-}
-function discardDraft(){
-  if(_draftTimer){ clearTimeout(_draftTimer); _draftTimer = null; }
-  Store.remove(KEYS.itemDraft);
+function fillStateForm(s){
+  formState = {
+    status: PROJECT_STATUSES.indexOf(s.status) === -1 ? null : s.status,
+    needsQa: s.needsQa === true,
+    needsDecision: s.needsDecision === true
+  };
+  renderStatusPicker();
+  setSwitch('stateQa', formState.needsQa);
+  setSwitch('stateDecision', formState.needsDecision);
+  setValue('stateBlocker', s.blocker);
+  setValue('stateVersion', s.version);
+  setValue('statePhase', s.phase);
+  setValue('stateTask', s.currentTask);
+  setValue('stateNext', s.nextAction);
 }
 
-function setFormStatus(s){
-  if(ITEM_STATUSES.indexOf(s) === -1) return;
-  formStatus = s;
-  document.querySelectorAll('#itemStatusSeg button').forEach(b => {
-    const on = b.dataset.status === s;
-    b.setAttribute('aria-checked', String(on));
-    b.setAttribute('aria-selected', String(on));
-  });
+function renderStatusPicker(){
+  const el = document.getElementById('stateStatus');
+  if(!el || !formState) return;
+  el.innerHTML = PROJECT_STATUSES.map(s =>
+    '<button class="status-option sig-' + s + '" id="statusOpt-' + s + '" role="radio"' +
+    ' aria-checked="' + (formState.status === s) + '" onclick="pickStatus(\'' + s + '\')">' +
+    signalIcon(s, 15) + escapeHtml(SIGNALS[s].label) + '</button>').join('');
 }
 
-function readItemForm(){
+function pickStatus(s){
+  if(!formState || PROJECT_STATUSES.indexOf(s) === -1) return;
+  formState.status = s;
+  renderStatusPicker();
+  const opt = document.getElementById('statusOpt-' + s);
+  if(opt) try{ opt.focus({ preventScroll: true }); }catch(e){}
+  clearFieldError('stateStatus');
+  scheduleFormDraft();
+}
+
+function setSwitch(id, on){
+  const el = document.getElementById(id);
+  if(el) el.setAttribute('aria-checked', String(!!on));
+}
+function toggleSwitch(id){
+  const key = id === 'stateQa' ? 'needsQa' : id === 'stateDecision' ? 'needsDecision' : null;
+  if(!formState || !key) return;
+  formState[key] = !formState[key];
+  setSwitch(id, formState[key]);
+  scheduleFormDraft();
+}
+
+function readStateForm(){
   return {
-    title: document.getElementById('itemTitle').value.trim(),
-    note: document.getElementById('itemNote').value.trim(),
-    status: formStatus
+    status: formState ? formState.status : null,
+    needsQa: !!(formState && formState.needsQa),
+    needsDecision: !!(formState && formState.needsDecision),
+    blocker: valueOf('stateBlocker'),
+    version: valueOf('stateVersion'),
+    phase: valueOf('statePhase'),
+    currentTask: valueOf('stateTask'),
+    nextAction: valueOf('stateNext')
   };
 }
 
-function saveItemForm(){
-  const data = readItemForm();
-  if(!data.title){
-    showFieldError('itemTitle', 'Give this item a title so you can find it again.');
+function saveStateForm(){
+  const id = editingStateId;
+  if(!isKnownProject(id)) return;
+  const values = readStateForm();
+  /* Validate before anything moves: no status, no save, and the editor
+     stays open with the reason next to the control. */
+  if(!values.status){
+    showFieldError('stateStatus', 'Choose where this project is: planning, building, release ready, stable or paused.');
     return;
   }
-  const now = new Date().toISOString();
-  if(editingItemId){
-    const it = findItem(editingItemId);
-    if(it){ it.title = data.title; it.note = data.note; it.status = data.status; it.updatedAt = now; }
-  } else {
-    items.push({ id: newId(), title: data.title, note: data.note, status: data.status,
-                 createdAt: now, updatedAt: now });
-  }
-  const saved = persistItems();
-  discardDraft();
-  const wasEdit = !!editingItemId;
-  finishItemForm();
-  renderAll();
-  if(saved) toast(wasEdit ? 'Item updated' : 'Item created', 'success');
+  const record = normalizeState(Object.assign({}, values, { id: id, updatedAt: new Date().toISOString() }));
+  if(!record) return;
+  projectStates[id] = record;
+  projectStatesForeign = projectStatesForeign.filter(r => !(r && r.id === id));
+  const saved = persistProjectStates();
+  discardDraft(KEYS.stateDraft, editingStateId);
+  finishStateForm();
+  renderMissionControl();
+  if(saved) toast(registryEntry(id).name + ' updated', 'success');
 }
 
-/* Drafts live under their own key, never inside the committed collection.
-   That separation is what makes a half-typed item structurally incapable of
-   showing up in the list or a count. */
-function scheduleDraftSave(){
-  if(editingItemId) return;                 // an edit in progress is not a draft
-  if(_draftTimer) clearTimeout(_draftTimer);
-  _draftTimer = setTimeout(flushDraft, 250);
+function closeStateForm(){
+  if(!isOverlayOpen('stateOverlay')) return;
+  discardDraft(KEYS.stateDraft, editingStateId);
+  finishStateForm();
 }
-function flushDraft(){
-  if(_draftTimer){ clearTimeout(_draftTimer); _draftTimer = null; }
-  if(editingItemId) return;
-  const ov = document.getElementById('itemFormOverlay');
-  if(!ov || !ov.classList.contains('open')) return;
-  const data = readItemForm();
-  if(!data.title && !data.note){ Store.remove(KEYS.itemDraft); return; }
-  Store.setJSON(KEYS.itemDraft, data);
+function finishStateForm(){
+  if(_formDraftTimer){ clearTimeout(_formDraftTimer); _formDraftTimer = null; }
+  closeOverlay('stateOverlay');
+  releaseOverlayHistory();
+  editingStateId = null;
+  formState = null;
 }
 
-function showFieldError(inputId, message){
-  const el = document.getElementById(inputId);
-  const msg = document.getElementById(inputId + 'Error');
-  if(!el) return;
-  el.classList.add('field-error');
-  el.setAttribute('aria-invalid', 'true');
-  if(msg){ msg.textContent = message; msg.classList.add('show'); }
-  try{ el.focus({ preventScroll: false }); }catch(e){}
-  el.addEventListener('input', function clear(){
-    clearFieldError(inputId);
-    el.removeEventListener('input', clear);
-  }, { once: true });
-}
-function clearFieldError(inputId){
-  const el = document.getElementById(inputId);
-  const msg = document.getElementById(inputId + 'Error');
-  if(el){ el.classList.remove('field-error'); el.removeAttribute('aria-invalid'); }
-  if(msg){ msg.textContent = ''; msg.classList.remove('show'); }
-}
-
-/* ---------- this demo claims the foundation's three seams ---------- */
-Domain.tabIcons = {
-  home:     '<path d=\"M2.6 7.2 8 2.6l5.4 4.6\"/><path d=\"M4 7.6v5.2a.8.8 0 0 0 .8.8h6.4a.8.8 0 0 0 .8-.8V7.6\"/>',
-  items:    '<path d=\"M2.6 4.4h10.8M2.6 8h10.8M2.6 11.6h10.8\"/>',
-  settings: '<circle cx=\"8\" cy=\"8\" r=\"2.2\"/><path d=\"M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6\"/>'
-};
-Domain.hydrate = loadItems;
-Domain.render  = () => { renderHome(); renderItems(); };
-Domain.wire    = () => {
-  const form = document.getElementById('itemFormOverlay');
-  if(!form) return;
-  form.addEventListener('input', scheduleDraftSave);
-  form.addEventListener('change', scheduleDraftSave);
-  /* Last-chance flush if the page is torn down mid-edit. */
-  window.addEventListener('visibilitychange', () => {
-    if(document.visibilityState === 'hidden') flushDraft();
+async function clearProjectState(){
+  const id = editingStateId;
+  const p = registryEntry(id);
+  if(!p || !projectStates[id]) return;
+  const ok = await confirmAction({
+    title: 'Clear the recorded state?',
+    message: p.name + ' will show sample state again until you record a new one. Its tool links are not affected.',
+    confirmLabel: 'Clear state',
+    destructive: true
   });
-  window.addEventListener('pagehide', flushDraft);
+  if(!ok || !projectStates[id]) return;
+  delete projectStates[id];
+  persistProjectStates();
+  discardDraft(KEYS.stateDraft, editingStateId);
+  finishStateForm();
+  renderMissionControl();
+  toast(p.name + ' is back to sample state', 'success');
+}
+
+/* ---------- private links ---------- */
+function openLinksForm(id){
+  const p = registryEntry(id);
+  if(!p) return;
+  editingLinksId = id;
+  const stored = privateLinks[id] || null;
+  const draft = takeDraft(KEYS.linksDraft, id);
+  const src = draft || stored || {};
+  document.getElementById('linksFormTitle').textContent = p.name;
+  setValue('linkChatgpt', src.chatgptUrl);
+  setValue('linkClaude', src.claudeUrl);
+  clearFieldError('linkChatgpt');
+  clearFieldError('linkClaude');
+  const privacy = document.getElementById('linksPrivacy');
+  if(privacy){
+    privacy.innerHTML = '<span class="notice-mark" aria-hidden="true">' + svg(LOCK_ICON, 17) + '</span>' +
+      '<span><strong>Only on this device</strong>These links are never written into the code, the repository ' +
+      'or the offline cache. A backup file you export from Settings does include them, so keep that file to yourself.</span>';
+  }
+  const fallback = document.getElementById('linksFallback');
+  if(fallback){
+    const f = claudeFallbackFor(p);
+    fallback.innerHTML = f
+      ? 'Not active yet. A later version can start a new Claude Code session on <code>' + escapeHtml(f.repo) +
+        '</code> at <code>' + escapeHtml(f.branch) + '</code> when the saved session is unavailable.'
+      : 'Not active yet, and this project has no repository to start a new session from.';
+  }
+  const footer = document.getElementById('linksFooter');
+  if(footer){
+    footer.innerHTML = stored
+      ? '<button class="btn-secondary btn-danger btn-block" onclick="removeProjectLinks()">Remove these links</button>'
+      : '';
+  }
+  if(draft) toast('Restored your unsaved changes', 'neutral');
+  pushOverlayHistory();
+  openOverlay('linksOverlay');
+  /* A saved link that no longer passes is shown with its reason, so it can
+     be fixed rather than silently dropped. */
+  if(!draft && stored){
+    [['linkChatgpt', stored.chatgptUrl, 'chatgpt'], ['linkClaude', stored.claudeUrl, 'claude']].forEach(f => {
+      const r = parseToolLink(f[1], f[2]);
+      if(!r.ok && !r.empty) showFieldError(f[0], r.error, { focus: false });
+    });
+  }
+}
+
+function saveLinksForm(){
+  const id = editingLinksId;
+  if(!isKnownProject(id)) return;
+  const chat = parseToolLink(valueOf('linkChatgpt'), 'chatgpt');
+  const claude = parseToolLink(valueOf('linkClaude'), 'claude');
+  clearFieldError('linkChatgpt');
+  clearFieldError('linkClaude');
+  const bad = [];
+  if(!chat.ok && !chat.empty) bad.push(['linkChatgpt', chat.error]);
+  if(!claude.ok && !claude.empty) bad.push(['linkClaude', claude.error]);
+  if(bad.length){
+    bad.forEach((b, i) => showFieldError(b[0], b[1], { focus: i === 0 }));
+    return;
+  }
+  const had = !!privateLinks[id];
+  if(chat.empty && claude.empty){
+    if(!had){ finishLinksForm(); toast('Nothing to save', 'neutral'); return; }
+    delete privateLinks[id];
+  } else {
+    privateLinks[id] = { id: id, chatgptUrl: chat.ok ? chat.url : null, claudeUrl: claude.ok ? claude.url : null,
+                         updatedAt: new Date().toISOString() };
+  }
+  privateLinksForeign = privateLinksForeign.filter(r => !(r && r.id === id));
+  const saved = persistPrivateLinks();
+  discardDraft(KEYS.linksDraft, editingLinksId);
+  finishLinksForm();
+  renderMissionControl();
+  if(saved) toast(privateLinks[id] ? 'Links saved on this device' : 'Links removed from this device', 'success');
+}
+
+function closeLinksForm(){
+  if(!isOverlayOpen('linksOverlay')) return;
+  discardDraft(KEYS.linksDraft, editingLinksId);
+  finishLinksForm();
+}
+function finishLinksForm(){
+  if(_formDraftTimer){ clearTimeout(_formDraftTimer); _formDraftTimer = null; }
+  closeOverlay('linksOverlay');
+  releaseOverlayHistory();
+  editingLinksId = null;
+}
+
+async function removeProjectLinks(){
+  const id = editingLinksId;
+  const p = registryEntry(id);
+  if(!p || !privateLinks[id]) return;
+  const ok = await confirmAction({
+    title: 'Remove these links?',
+    message: 'The ChatGPT and Claude links for ' + p.name + ' will be erased from this device. ' +
+             'The conversations themselves are not touched.',
+    confirmLabel: 'Remove links',
+    destructive: true
+  });
+  if(!ok || !privateLinks[id]) return;
+  delete privateLinks[id];
+  persistPrivateLinks();
+  discardDraft(KEYS.linksDraft, editingLinksId);
+  finishLinksForm();
+  renderMissionControl();
+  toast('Links removed from this device', 'success');
+}
+
+/* ---------- Mission Control claims the foundation's four seams ---------- */
+Domain.tabIcons = {
+  home:     '<path d="M8 1.8 13.6 5v6L8 14.2 2.4 11V5Z"/><path d="M2.4 5 8 8.2 13.6 5M8 8.2v6"/>',
+  settings: '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6"/>'
+};
+Domain.hydrate = hydrateMissionControl;
+Domain.render  = renderMissionControl;
+Domain.wire    = () => {
+  ['stateOverlay', 'linksOverlay'].forEach(id => {
+    const ov = document.getElementById(id);
+    if(!ov) return;
+    ov.addEventListener('input', scheduleFormDraft);
+    ov.addEventListener('change', scheduleFormDraft);
+  });
+  window.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'hidden') flushFormDrafts();
+  });
+  window.addEventListener('pagehide', flushFormDrafts);
+  watchLayout();
 };
 
 /* =========================================================
@@ -1875,13 +3290,24 @@ function openDataSettings(){
 }
 function closeDataSettings(){ closeOverlay('dataOverlay'); releaseOverlayHistory(); }
 
+/* Records are counted by shape — anything under data. that is a list of
+   things with an id — so this page never needs to know what a product
+   stores. It used to read the demo's own list, which meant deleting the
+   demo broke the page that exists to show you your data. */
 function renderDataStats(){
   const el = document.getElementById('dataStats');
   if(!el) return;
   const keys = Store.listKeys();
-  let bytes = 0;
-  keys.forEach(k => { const v = Store.get(k); if(v) bytes += v.length; });
-  el.innerHTML = statHtml(items.length, 'Records') +
+  let bytes = 0, records = 0;
+  keys.forEach(k => {
+    const v = Store.get(k);
+    if(v) bytes += v.length;
+    if(k.indexOf(KEYS.dataPrefix) === 0){
+      const list = Store.getJSON(k, null);
+      if(Array.isArray(list)) records += list.filter(isRecord).length;
+    }
+  });
+  el.innerHTML = statHtml(records, 'Records') +
                  statHtml(keys.length, 'Keys') +
                  statHtml(bytes < 1024 ? bytes + ' B' : (bytes / 1024).toFixed(1) + ' KB', 'Stored');
 }
@@ -1998,8 +3424,10 @@ async function resetAllData(){
   });
   if(!ok) return;
   Store.listKeys().forEach(k => Store.remove(k));
-  items = [];
   Store.set(KEYS.schemaVersion, String(DATA_SCHEMA_VERSION));
+  /* The product re-reads an empty store through its own seam, rather than
+     this page reaching in to empty a list it should not know about. */
+  Domain.hydrate();
   renderAll();
   renderDataStats();
   toast('All data erased', 'success');
@@ -2052,95 +3480,6 @@ function renderUpdates(){
 }
 
 /* =========================================================
-   COMPONENTS — every primitive, rendered by the app's own code
-   ========================================================= */
-function openComponents(){
-  renderComponents();
-  pushOverlayHistory();
-  openOverlay('componentsOverlay');
-}
-function closeComponents(){ closeOverlay('componentsOverlay'); releaseOverlayHistory(); }
-
-function renderComponents(){
-  const host = document.getElementById('componentsBody');
-  if(!host) return;
-  host.innerHTML =
-    '<p class="page-intro">Every primitive this app ships. If one is not used here or ' +
-      'by the demo, it should not exist.</p>' +
-
-    '<div class="section-label">Buttons</div>' +
-    '<div style="display:flex;gap:var(--space-sm);flex-wrap:wrap">' +
-      '<button class="btn-primary">Primary</button>' +
-      '<button class="btn-secondary">Secondary</button>' +
-      '<button class="btn-secondary btn-danger">Destructive</button>' +
-      '<button class="icon-btn" aria-label="Edit">' + pencilIcon(17) + '</button>' +
-    '</div>' +
-
-    '<div class="section-label">Feedback</div>' +
-    '<div style="display:flex;gap:var(--space-sm);flex-wrap:wrap">' +
-      TOAST_VARIANTS.map(v =>
-        '<button class="btn-secondary" onclick="toast(\'A ' + v + ' message\',\'' + v + '\')">' +
-        v.charAt(0).toUpperCase() + v.slice(1) + '</button>').join('') +
-    '</div>' +
-    '<button class="btn-secondary btn-block" style="margin-top:var(--space-sm)" ' +
-      'onclick="demoConfirm()">Open a confirmation</button>' +
-
-    '<div class="section-label">Status</div>' +
-    '<div style="display:flex;gap:var(--space-sm);flex-wrap:wrap;align-items:center">' +
-      '<span class="badge">Neutral</span>' +
-      '<span class="badge badge-active">Active</span>' +
-      '<span class="badge badge-done">Done</span>' +
-    '</div>' +
-
-    '<div class="section-label">Progress</div>' +
-    '<div class="progress-bar" style="margin-bottom:var(--space-lg)"><span style="width:62%"></span></div>' +
-    '<div style="display:flex;align-items:center;gap:var(--space-lg)">' +
-      progressRing(62, 56) +
-      '<span class="detail-value">62% complete</span>' +
-    '</div>' +
-
-    '<div class="section-label">Notices</div>' +
-    '<div class="notice"><span aria-hidden="true">' + infoIcon(17) + '</span>' +
-      '<span><strong>Neutral</strong>Something worth knowing.</span></div>' +
-    '<div class="notice notice-warning"><span aria-hidden="true">' + warnIcon(17) + '</span>' +
-      '<span><strong>Warning</strong>Something needs attention.</span></div>' +
-    '<div class="notice notice-error"><span aria-hidden="true">' + warnIcon(17) + '</span>' +
-      '<span><strong>Error</strong>Something failed, and here is what to do.</span></div>' +
-
-    '<div class="section-label">Loading</div>' +
-    '<div class="loading"><span class="spinner" aria-hidden="true"></span>Loading</div>' +
-
-    '<div class="section-label">Stats</div>' +
-    '<div class="stat-grid">' + statHtml(12, 'Records') + statHtml('4.2 KB', 'Stored') + '</div>' +
-
-    '<div class="section-label">Empty state</div>' +
-    '<div class="panel">' + emptyStateHtml({
-      mark: inboxIcon(30), title: 'Nothing here yet',
-      body: 'What this area is, why it is empty, and one obvious action.'
-    }) + '</div>';
-}
-
-async function demoConfirm(){
-  const ok = await confirmAction({
-    title: 'Confirm this action?',
-    message: 'Confirmations are for consequential decisions. Everything else gets a toast.',
-    confirmLabel: 'Do it'
-  });
-  toast(ok ? 'Confirmed' : 'Cancelled', ok ? 'success' : 'neutral');
-}
-
-function progressRing(percent, size){
-  const px = size || 56, r = (px / 2) - 4, c = 2 * Math.PI * r;
-  const offset = c * (1 - Math.max(0, Math.min(100, percent)) / 100);
-  return '<svg class="progress-ring" width="' + px + '" height="' + px + '" ' +
-    'viewBox="0 0 ' + px + ' ' + px + '" role="img" aria-label="' + percent + ' percent">' +
-    '<circle class="progress-ring-track" cx="' + px/2 + '" cy="' + px/2 + '" r="' + r + '"/>' +
-    '<circle class="progress-ring-fill" cx="' + px/2 + '" cy="' + px/2 + '" r="' + r + '" ' +
-      'style="stroke-dasharray:' + c.toFixed(2) + ';stroke-dashoffset:' + offset.toFixed(2) + '"/>' +
-  '</svg>';
-}
-
-/* =========================================================
    IDENTITY PANEL — proves config is derived, not typed
    ========================================================= */
 function renderIdentity(){
@@ -2176,6 +3515,49 @@ function formatDate(iso){
     if(isNaN(d.getTime())) return '—';
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   }catch(e){ return '—'; }
+}
+
+/* Shared markup helpers. They lived inside the starter's demo, which meant
+   Settings broke the moment the demo was deleted; the foundation uses them,
+   so the foundation owns them. */
+function statHtml(value, label){
+  return '<div class="stat"><span class="stat-value">' + escapeHtml(value) + '</span>' +
+         '<span class="stat-label">' + escapeHtml(label) + '</span></div>';
+}
+
+/* What the area is, why it is empty, and at most one action — named by the
+   caller, never assumed. */
+function emptyStateHtml(o){
+  return '<div class="empty-state">' +
+    (o.mark ? '<span class="empty-mark" aria-hidden="true">' + o.mark + '</span>' : '') +
+    '<span class="empty-title">' + escapeHtml(o.title) + '</span>' +
+    '<span class="empty-body">' + escapeHtml(o.body) + '</span>' +
+    (o.action && o.onclick ? '<button class="btn-primary" onclick="' + escapeAttr(o.onclick) + '">' +
+      escapeHtml(o.action) + '</button>' : '') +
+  '</div>';
+}
+
+/* An error is announced (the message is a role="alert"), tied to its field
+   (aria-describedby names the message) and marked on the field itself.
+   Focus moves to it unless the caller is flagging several at once. */
+function showFieldError(inputId, message, opts){
+  const el = document.getElementById(inputId);
+  const msg = document.getElementById(inputId + 'Error');
+  if(!el) return;
+  el.classList.add('field-error');
+  el.setAttribute('aria-invalid', 'true');
+  if(msg){ msg.textContent = message; msg.classList.add('show'); }
+  if(!opts || opts.focus !== false){ try{ el.focus({ preventScroll: false }); }catch(e){} }
+  el.addEventListener('input', function clear(){
+    clearFieldError(inputId);
+    el.removeEventListener('input', clear);
+  }, { once: true });
+}
+function clearFieldError(inputId){
+  const el = document.getElementById(inputId);
+  const msg = document.getElementById(inputId + 'Error');
+  if(el){ el.classList.remove('field-error'); el.removeAttribute('aria-invalid'); }
+  if(msg){ msg.textContent = ''; msg.classList.remove('show'); }
 }
 
 /* Honest surfacing: if storage cannot persist, say so plainly rather than

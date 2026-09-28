@@ -6,8 +6,9 @@
 
    `verify` is the one command to remember. It is the gate before
    any commit or deploy: it proves the contracts hold, that the
-   static PWA files still match APP_CONFIG, and that no domain
-   residue has crept back in.
+   static PWA files still match APP_CONFIG, that no domain residue
+   has crept back in, and that no private link, credential or local
+   path is in the tree.
 
    Exit code 0 = pass, 1 = failure. Failures are listed at the end.
 
@@ -40,13 +41,20 @@ const SUITES = [
   C.testStress,
   C.testSourcesOfTruth,
   C.testPortability,
-  C.testContamination
+  C.testContamination,
+  /* Mission Control's own contracts, after the foundation they stand on. */
+  C.testRegistry,
+  C.testStatusModel,
+  C.testPrivateLinks,
+  C.testHub,
+  C.testFieldSeam,
+  C.testSecrets
 ];
 
 async function main(){
   const started = Date.now();
   console.log('\n' + '='.repeat(64));
-  console.log('  STARTER CONTRACTS — tier: ' + TIER);
+  console.log('  MISSION CONTROL CONTRACTS — tier: ' + TIER);
   console.log('='.repeat(64));
 
   for(const suite of SUITES){

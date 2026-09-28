@@ -1,70 +1,80 @@
-# app-starter
+# Mission Control
 
-An opinionated foundation for local-first, installable mobile web applications.
+A personal command center for software projects. It answers one question
+before any other:
 
-It exists so that building a new product means answering *"what should this
-product do?"* rather than solving mobile navigation, overlays, safe areas,
-forms, storage namespacing and PWA installation again from scratch.
+> **What needs my attention?**
+
+Then it shows every project at a glance — what it is, where it stands, what
+is being worked on, what comes next — and opens the right tool in one tap:
+the ChatGPT conversation, the Claude Code session, the GitHub repository or
+the live app.
+
+It is built for one person, installed on an iPhone and an iPad as a web app,
+and works offline.
 
 ---
 
-## What it is
+## What it does
 
-One HTML file, one service worker, one manifest, two icons. No framework, no
-build step, no dependencies. `npm` is used only for the test and config
-tooling — the app itself runs by opening `index.html`.
+- **Hub.** Quiet counts across the top (projects, active, needs QA, needs a
+  decision, blocked), then a *Needs attention* list — blocked first, then
+  decisions, then QA — then the project field.
+- **Project field.** Six projects as isometric platforms, drawn from data.
+  Each shows its name, a landmark, its lifecycle status, a beacon lit in its
+  signal colour, a floating marker when it needs you, and a small crew whose
+  pose follows its state. Tap once to focus a project; tap again (or press
+  Enter) for its brief.
+- **Quick brief.** Purpose, version, phase, status, current work, next action,
+  the blocker if there is one, and when it was last updated — plus the tools
+  that are actually set up. On a phone it is a page; on an iPad in landscape
+  or a desktop it docks beside the field.
+- **Update state.** Record a project's real state on this device. Until you
+  do, it shows sample state, labelled as a sample everywhere it appears.
+- **Private tool links.** A ChatGPT conversation link and a Claude Code
+  session link per project, kept only on this device.
+- The project you focused on is still focused when you come back.
 
-```
-index.html              the entire application: tokens, shell, engine, demo
-sw.js                   offline shell, cache identity derived from APP_CONFIG
-manifest.webmanifest    install metadata, derived from APP_CONFIG
-icon-192/512.png        placeholder icons — replace them
-scripts/config.js       sync / verify static files against APP_CONFIG
-scripts/contamination.js permanent domain-residue guard
-test/harness.js         loads the app into a Node vm with a DOM stub
-test/contracts.js       the contract suite
-test/run.js             the runner
-```
+## What is public and what is not
 
-## What it includes
+This repository and its GitHub Pages site are **public**.
 
-- **App shell** — header, bottom navigation, full-page detail flows, safe-area
-  handling on all four edges, landscape and text-scaling behaviour that has
-  been through real devices.
-- **One overlay engine** — a single `MutationObserver` owning background scroll
-  lock, focus trapping and restoration, open-order stacking and ARIA state, for
-  every sheet and page. Adding a surface cannot forget any of it.
-- **Namespaced storage** — one adapter, every key prefixed with `APP_ID`,
-  honest reporting when a write cannot land, versioned migrations, and the rule
-  that absent data stays absent.
-- **Toast and confirmation** — non-blocking feedback and one confirmation
-  sheet. No `alert()`, `confirm()` or `prompt()` anywhere, enforced by a test.
-- **A design system that is enforced** — four token layers, with contracts that
-  fail the build on a raw `font-family` or an off-scale `font-size`.
-- **PWA** — installable, offline-capable, fully relative paths, and a cache
-  identity that cannot collide with another app on the same origin.
-- **A demo domain** — a small `Item` collection proving list, detail, create,
-  edit, delete, validate, persist, confirm and empty state.
-- **Contracts** — a few hundred assertions defending the foundation, not
-  thousands defending a domain.
+| Kind | Where it lives | Public? |
+|---|---|---|
+| Project identity: name, purpose, repository, live URL, look | `PROJECT_REGISTRY` in `index.html` | Yes |
+| Project state: status, attention, version, phase, work, next step | `data.projectStates` on your device | No |
+| ChatGPT and Claude links | `data.privateLinks` on your device | No |
+| The project in focus | `ui.selectedProject` on your device | No |
 
-## What it deliberately does not include
+Private links are never written into source, a test, a log or the offline
+cache, and the screens show only a link's host, never its path.
+`npm run verify` includes a secret scan that fails on anything that looks like
+a real conversation or session link, an API key or token, or a local machine
+path. A backup file exported from Settings *does* include your links, because
+it is your data; keep that file to yourself.
 
-No authentication, no backend, no database, no account system, no API layer, no
-router, no state-management library, no component framework, no CSS framework,
-no icon package, no charting, no date library, no analytics.
+All of your apps on `github.io` share one browser origin. Mission Control's
+storage is namespaced (`mission-control.`), so they cannot collide, but any
+page on that origin could read it. Prefer ChatGPT conversation links over
+public share links.
 
-Those belong to a product, not to a foundation. Add them when a product
-actually needs them.
+## The status model
+
+A project has a **lifecycle status** — planning, building, release ready,
+stable or paused — and, separately, **what it needs from you**: QA, a decision,
+or nothing. It is **blocked** exactly when a blocker is written down, so the
+flag and its reason can never disagree. The headline signal is the most
+severe thing it needs, otherwise its lifecycle. Every signal has a word and a
+shape as well as a colour.
 
 ## Run it
 
 ```bash
-npx --yes http-server -p 8181 -c-1 .
+npx --yes http-server -a 127.0.0.1 -p 8398 -c-1 .
 ```
 
-Then open `http://localhost:8181`. A service worker needs `http(s)`, so opening
-the file directly works but will not exercise offline behaviour.
+Then open `http://127.0.0.1:8398`. A service worker needs `http(s)`, so
+opening the file directly works but will not exercise offline behaviour.
 
 ## Verify it
 
@@ -72,27 +82,40 @@ the file directly works but will not exercise offline behaviour.
 npm run verify
 ```
 
-That is the one command to remember. It runs the contract suite, checks that
-the static PWA files still match `APP_CONFIG`, and scans for domain residue.
-Run it before every commit and every deploy.
+That is the one command to remember: the contract suite, the check that the
+static PWA files still match `APP_CONFIG`, the domain-residue scan and the
+secret scan. Run it before every commit and every deploy.
 
 ```bash
 npm test              # contracts only
 npm run config:verify # identity drift only
 npm run contamination # residue scan only
+npm run secrets       # private links, keys, tokens, local paths
 npm run config:sync   # write derived values into the static files
 ```
 
-## Start a new product
+## Where things are
 
-Read [NEW-PROJECT.md](NEW-PROJECT.md). The short version: set `APP_ID`, run
-`npm run config:sync`, replace the demo domain.
+```
+index.html              the whole app: tokens, shell, engine, Mission Control
+sw.js                   offline shell; cache name derived from APP_CONFIG
+manifest.webmanifest    install metadata, derived from APP_CONFIG
+icon-192/512.png        app icons
+scripts/config.js       sync / verify static files against APP_CONFIG
+scripts/contamination.js domain-residue guard
+scripts/secrets.js      private-link and credential guard
+test/harness.js         loads the app into a Node vm with a DOM stub
+test/contracts.js       the contract suite
+test/run.js             the runner
+```
 
 ## The rest of the documentation
 
-- [PRODUCT-DESIGN.md](PRODUCT-DESIGN.md) — the UX and visual rules this
-  foundation encodes, and the anti-patterns it refuses.
-- [STARTER-ARCHITECTURE.md](STARTER-ARCHITECTURE.md) — how the pieces fit and
-  where new domain code goes.
-- [NEW-PROJECT.md](NEW-PROJECT.md) — turning this into a real product.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — how the pieces fit, the product model,
+  and the seam a 3D field will plug into.
+- [PRODUCT-DESIGN.md](PRODUCT-DESIGN.md) — the UX and visual rules, including
+  Mission Control's own.
 - [CLAUDE.md](CLAUDE.md) — development method for AI coding sessions.
+
+Mission Control was built from the author's `app-starter` template. It owns
+its code: there is no dependency on the template and nothing is shared back.

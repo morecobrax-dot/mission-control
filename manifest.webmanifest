@@ -1,7 +1,7 @@
 {
-  "name": "App Starter",
-  "short_name": "Starter",
-  "description": "An opinionated, offline-capable mobile app foundation.",
+  "name": "Mission Control",
+  "short_name": "Mission Ctrl",
+  "description": "A personal command center for software projects.",
   "id": "./",
   "start_url": "./index.html",
   "scope": "./",
