@@ -251,6 +251,30 @@ than the snapshot kept.
 when it last asked. The screen says "updated" only of the first, so asking
 again never makes old news look new.
 
+**Publishers' gate** (`scripts/project-status.js`). One checker, kept here and
+copied byte for byte into every publishing repository (contract 1, checker
+revision 1 — its git blob is the same in all of them). Each publisher's
+`npm run verify` runs it first. It fails, with the reason and the fix, when the
+file breaks the contract above, names another project, carries a key beyond
+it or anything matching `scripts/secrets.js`, or when `version` is not that
+repository's release version. It only reads. Contract 27 holds it to this
+reader: the same constants, the same refused characters across every code
+point, the same secret rules, and 26 shared cases that both sides must read
+alike — nothing a publisher may publish is refused here. Where a repository
+declares its release version lives in its own `package.json`
+(`"projectStatus": { appId, version: { file, list, pick, prefix } }`).
+
+**What `version` means.** The publisher's canonical release version on the
+same commit (the newest release-notes entry), and nothing more. It changes in
+the commit that changes the release version and at no other time. An equal
+version never means deployed, QA passed or stable: production verification
+belongs to each project's release workflow, and the other fields say what
+its author declares. The gate cannot see whether those words are still true
+or whether unpublished work exists; each project's instructions make the
+review part of completing a milestone, and its paste-back report must say
+"Mission Control status reviewed and published". The gate runs locally — no
+publisher has CI — so nothing enforces it on GitHub.
+
 ## Private links
 
 The ChatGPT and Claude links live only in `data.privateLinks`. One link rule
@@ -406,7 +430,7 @@ foundation expects them.
 | A project's name, purpose, repository or live URL | `PROJECT_REGISTRY` |
 | A new project | one record in `PROJECT_REGISTRY`, after the six required ones; `publicRepo: true` only if its repository is public |
 | A project's published status | `PROJECT-STATUS.json` in that project's repository — never in this one |
-| The status file's contract | `STATUS_KEYS`, `validateStatusFile` — and contract 27; a new shape is a new `schemaVersion` |
+| The status file's contract | `STATUS_KEYS`, `validateStatusFile` and `scripts/project-status.js` together — contract 27 holds them equal; a new shape is a new `schemaVersion`; then copy the checker unchanged to every publisher |
 | How often repositories are asked | `STATUS_FRESH_MS`, `STATUS_RETRY_MS`, `STATUS_BACKOFF_MS` — and contract 29 |
 | A project's look | its `visualTheme`, the `--terrain-*`/`--tint-*` tokens, and `LANDMARKS` |
 | What a backup may carry | `BACKUP_FIELDS` — and contract 26 |

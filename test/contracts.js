@@ -1989,7 +1989,7 @@ function testSecrets(){
   const fsx = require('fs'), px = require('path');
   const sources = ['index.html', 'sw.js', 'manifest.webmanifest', 'package.json', 'README.md', 'ARCHITECTURE.md', 'CLAUDE.md',
     'PRODUCT-DESIGN.md', 'test/contracts.js', 'test/harness.js', 'test/run.js', 'scripts/config.js',
-    'scripts/contamination.js', 'scripts/secrets.js'];
+    'scripts/contamination.js', 'scripts/secrets.js', 'scripts/project-status.js'];
   const hidden = [];
   sources.forEach(f => {
     const s = fsx.readFileSync(px.join(H.ROOT, f), 'utf8');
@@ -2299,6 +2299,56 @@ function testStatusContract(){
     check(without('phase')).detail);
   const twoMissing = without('version'); delete twoMissing.currentTask;
   T('several missing keys are all named', /missing version, currentTask\./.test(check(twoMissing).detail || ''), check(twoMissing).detail);
+
+  sub('the publishers\' checker is this contract, not a second reading of it');
+  /* scripts/project-status.js runs in every publishing repository. A
+     publisher's file that it passes but this reader refuses is exactly how a
+     project goes dark in Mission Control, so the two are held equal here. */
+  const P = require('../scripts/project-status.js');
+  const sortedPairs = o => Object.keys(o).sort().map(k => k + '=' + o[k]).join();
+  T('the same contract version, keys and statuses',
+    P.CONTRACT === c.STATUS_SCHEMA_VERSION && P.KEYS.join() === c.STATUS_KEYS.join() && P.STATUSES.join() === c.PROJECT_STATUSES.join());
+  T('the same text limits, size limit and clock allowance',
+    sortedPairs(P.TEXT_LIMITS) === sortedPairs(c.STATE_LIMITS) && P.MAX_BYTES === c.STATUS_MAX_BYTES && P.FUTURE_MS === c.STATUS_FUTURE_MS);
+  T('the same time grammar', P.ISO_TIME.source === c.ISO_TIME.source && P.ISO_TIME.flags === c.ISO_TIME.flags);
+  let sameChars = true;
+  for(let code = 0; code <= 0xFFFF && sameChars; code++){
+    const s = String.fromCharCode(code);
+    if(P.BAD_TEXT.test(s) !== c.STATUS_BAD_TEXT.test(s)) sameChars = false;
+  }
+  T('the same characters refused, across every code point', sameChars);
+  const SECRETS = require('../scripts/secrets.js').RULES;
+  T('the secret rules are scripts/secrets.js, rule for rule',
+    P.SECRET_RULES.length === SECRETS.length && P.SECRET_RULES.every((r, i) => r.label === SECRETS[i].label &&
+      r.re.source === SECRETS[i].re.source && r.re.flags === SECRETS[i].re.flags));
+  T('it only reads: nothing in it writes a file', !/writeFile|appendFile|rename|unlink|rmSync|mkdir/.test(
+    require('fs').readFileSync(require('path').join(H.ROOT, 'scripts/project-status.js'), 'utf8')));
+  const readerOutcome = text => {
+    if(Buffer.byteLength(text, 'utf8') > c.STATUS_MAX_BYTES) return 'too-large';
+    let data;
+    try{ data = JSON.parse(text); }catch(e){ return 'invalid'; }
+    const v = c.validateStatusFile(data, P.CASE_APP, P.CASE_NOW);
+    return v.ok ? 'ok' : v.outcome;
+  };
+  P.CASES.forEach(k => {
+    const text = k.text();
+    const read = readerOutcome(text);
+    const found = P.checkStatus(text, { appId: P.CASE_APP, release: P.CASE_RELEASE, now: P.CASE_NOW }).map(p => p.code);
+    T('shared case, ' + k.name + ': Mission Control reads it as ' + k.reader + ', a publisher ' +
+      (k.publisher === 'pass' ? 'may publish it' : 'is stopped (' + k.publisher + ')'),
+      read === k.reader && (k.publisher === 'pass' ? found.length === 0 : found.indexOf(k.publisher) !== -1),
+      JSON.stringify({ read: read, found: found }));
+    T('  and nothing a publisher may publish is refused by the reader', found.length > 0 || read === 'ok');
+  });
+  const fixtureRoot = require('path').join(H.ROOT, 'test');
+  T('a release version is read from where a repository declares it',
+    P.releaseVersion(H.ROOT, { file: 'index.html', list: 'const APP_UPDATES = [', pick: 'first' }) === c.APP_VERSION);
+  T('the last entry, and a spelled prefix, when the notes are oldest-first',
+    P.releaseVersion(H.ROOT, { file: 'index.html', list: 'const APP_UPDATES = [', pick: 'last' }) === '0.1.0' &&
+    (() => { try{ P.releaseVersion(H.ROOT, { file: 'index.html', list: 'const APP_UPDATES = [', pick: 'first', prefix: 'v' }); return false; }
+             catch(e){ return /does not start with/.test(e.message); } })());
+  T('and never from outside the repository',
+    (() => { try{ P.releaseVersion(fixtureRoot, { file: '../index.html', list: 'x' }); return false; }catch(e){ return true; } })());
 
   sub('the answer itself is bounded, and every way it ends has a name');
   const res = (status, text, extra) => Object.assign({ status: status, ok: status >= 200 && status < 300,

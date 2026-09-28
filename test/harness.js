@@ -338,7 +338,7 @@ const BRIDGE = [
   'projectStates', 'privateLinks', 'projectStatesForeign', 'privateLinksForeign', 'selectedId',
   'STATUS_FILE', 'STATUS_HOST', 'STATUS_SCHEMA_VERSION', 'STATUS_KEYS', 'STATUS_MAX_BYTES', 'STATUS_TIMEOUT_MS',
   'STATUS_FRESH_MS', 'STATUS_RETRY_MS', 'STATUS_BACKOFF_MS', 'STATUS_FUTURE_MS', 'STATUS_TRANSIENT',
-  'STATUS_UNREADABLE', 'CHECK_OUTCOMES', 'CHECK_PROBLEMS', 'REPO_URL',
+  'STATUS_UNREADABLE', 'CHECK_OUTCOMES', 'CHECK_PROBLEMS', 'REPO_URL', 'ISO_TIME', 'STATUS_BAD_TEXT',
   'stateSources', 'stateSourcesForeign', 'repoStatus', 'repoStatusForeign', 'statusInFlight',
   'editingStateId', 'editingLinksId', 'formState', 'Field', 'IsoField',
   'currentTab',

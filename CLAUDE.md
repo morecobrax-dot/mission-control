@@ -239,3 +239,12 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
 47. **A toast is never touched.** It has no controls and `pointer-events:
     none`, so it can never take a tap meant for what lies beneath it.
     Contract 8.
+48. **The publishers' checker lives here, and only here.**
+    `scripts/project-status.js` is copied byte for byte into every
+    publishing repository and must stay identical to the reader: change the
+    contract in `validateStatusFile` and the checker together, keep contract
+    27 green, bump `CHECKER_REVISION`, then copy the file unchanged to each
+    publisher (never edit a copy there). Its secret rules are generated from
+    `scripts/secrets.js`, not retyped. `version` in a status file is the
+    publisher's release version and claims nothing about deployment, QA or
+    stability.

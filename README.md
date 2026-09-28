@@ -158,9 +158,16 @@ minutes. The file uses the same words and limits as the state editor:
   published does not appear.
 
 Each connected repository says in its own workflow documentation when to
-update the file: when implementation is completed, when QA is required, when
-a decision or blocker is identified or cleared, and when a release is
-verified — never on a push alone.
+review the file — implementation completed, QA required, a decision or
+blocker identified or cleared, a release cut, a release verified (never on a
+push alone) — and each one's `npm run verify` runs this repository's
+`scripts/project-status.js` first. That checker is identical everywhere. It
+stops a file that breaks the contract, names another project, carries
+anything private, or whose `version` is not the repository's release version;
+it never edits the file. `version` means only which release the status talks
+about — never that it is deployed, tested or stable. The gate runs on the
+author's machine; no publisher has CI, so nothing enforces it on GitHub, and
+no check can tell whether the words are still true.
 
 ## Run it
 
