@@ -19,7 +19,7 @@
       "REVISION",
       "WebGLRenderer",
       "Scene",
-      "OrthographicCamera",
+      "PerspectiveCamera",
       "Group",
       "Mesh",
       "BufferGeometry",
@@ -39,7 +39,6 @@
       "Color",
       "Vector3",
       "Matrix4",
-      "Quaternion",
       "Euler",
       "HemisphereLight",
       "DirectionalLight",
@@ -48,6 +47,6 @@
     ]
   },
   "file": "three.min.js",
-  "bytes": 542546,
-  "sha256": "5cf0665111fd7f5929976264e310cba4c7cdbc5b34f7fa78eff84c3ba6dac557"
+  "bytes": 542528,
+  "sha256": "936e2def2b20cbd913c52109dfd0207d4bb335611a166e97955e4d8301df1918"
 }

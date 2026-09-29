@@ -44,12 +44,12 @@ const ESBUILD_ARGS = ['--bundle', '--format=esm', '--minify', '--target=es2020,s
 
 /* Everything field/render3d.js imports, and nothing else. */
 const EXPORTS = [
-  'REVISION', 'WebGLRenderer', 'Scene', 'OrthographicCamera', 'Group', 'Mesh',
+  'REVISION', 'WebGLRenderer', 'Scene', 'PerspectiveCamera', 'Group', 'Mesh',
   'BufferGeometry', 'Float32BufferAttribute',
   'BoxGeometry', 'CylinderGeometry', 'ConeGeometry', 'SphereGeometry', 'TorusGeometry',
   'RingGeometry', 'PlaneGeometry', 'CircleGeometry',
   'MeshLambertMaterial', 'MeshPhongMaterial', 'MeshBasicMaterial', 'CanvasTexture',
-  'Color', 'Vector3', 'Matrix4', 'Quaternion', 'Euler',
+  'Color', 'Vector3', 'Matrix4', 'Euler',
   'HemisphereLight', 'DirectionalLight', 'AdditiveBlending', 'SRGBColorSpace'
 ];
 

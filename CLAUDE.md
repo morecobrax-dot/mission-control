@@ -185,8 +185,10 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     fed by `fieldScene()`, one renderer at a time. A renderer never reads
     `Store`, never fetches, never decides a status and never owns the
     selection: it reports a tap, and the next draw says what is selected.
-    `WorldField` (`field/render3d.js`) is the field and keeps a real button
-    per project; `IsoField` is its fallback for the rest of a visit when the
+    `WorldField` (`field/render3d.js`) is the field — one island, one
+    perspective camera that never turns — and keeps a real button per
+    project; a tap on the island is hit-tested in `field/world.js`, never by a
+    box per district. `IsoField` is its fallback for the rest of a visit when the
     world cannot run. Each has its own host in one box, and the flat field
     stays drawn and is the one you can touch until the world has drawn its
     first frame. The camera's frame is never stored.
@@ -257,13 +259,20 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     `scripts/secrets.js`, not retyped. `version` in a status file is the
     publisher's release version and claims nothing about deployment, QA or
     stability.
-49. **The world is one loop, on demand.** Nothing draws while the world is
-    hidden, covered, off screen or lost; ambient motion is capped and
-    settles; Reduce Motion makes every move instant and stills every crew.
-    Status lights only the beacon and the helmet, and only when known — no
-    record, no light, no worker. A place is a place, never a progress bar:
-    no levels, counts or completion. A crew's acknowledgment plays on the
-    change itself, never on a reload.
+49. **The world is one loop, on demand, and a frame never measures.**
+    Nothing draws while the world is hidden, covered, off screen or lost; it
+    draws at up to about 60 frames a second, lowers its resolution rather
+    than its frame rate, and life settles after five untouched minutes.
+    Labels and the sign move by transform and are measured only when their
+    words or room change — never read layout in a frame. Reduce Motion makes
+    every move instant and stills every crew and every place. Status lights
+    only the beacon and the helmet, and only when known — no record, no
+    light, no worker. A place's life moves only while its project is known to
+    be under way (never unrecorded, blocked or paused). A place is a place,
+    never a progress bar: no levels, counts or completion, and its life never
+    speeds up or counts with anything. The sign says only what the record
+    holds. A crew's acknowledgment plays on the change itself, never on a
+    reload.
 50. **Three.js is vendored, pinned and made one way.** Change it only with
     `scripts/vendor-three.js` (version, tarball integrity and esbuild pinned);
     never edit `vendor/three/three.min.js` — contract 30 holds it to its

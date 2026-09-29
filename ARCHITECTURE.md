@@ -312,26 +312,31 @@ Field.unmount()      // hand the host to another renderer
 
 `scene` is `fieldScene(views)`: ids, names, themes, statuses, signals,
 attention, worker states, whether a state is recorded, the words a label says
-(`spoken`, and `badge`: one status, attention first) and the selection — a
-render-only description. A renderer never reads storage, never fetches, never
-decides a status and never owns the selection: a tap calls `tapProject()`,
-and the next draw says what is selected. Contracts 24 and 30 check all of it.
+(`spoken`, and `badge`: one status, attention first), the selected project's
+`sign` (its status and everything that needs you, in the brief's words and
+shapes) and the selection — a render-only description. A renderer never
+reads storage, never fetches, never decides a status and never owns the
+selection: a tap calls `tapProject()`, and the next draw says what is
+selected. Contracts 24 and 30 check all of it.
 
-**The field is `WorldField`: a miniature 3D world.** It lives outside the
+**The field is `WorldField`: one miniature island.** It lives outside the
 page script, in two ES modules the page imports after its first paint:
 
 - `field/world.js` — everything decided rather than drawn, with no Three.js
-  and no DOM, so the contracts import and test it in Node: the layout (tile
-  centres in registry order; columns and stagger chosen per view so tiles are
-  as large as they can be), the camera (overview, focus, reveal, bounded
-  panning, all in 2D view units because the camera never turns), the gesture
-  arbiter (tap, pan, cancel), the crew's poses, and every place as data —
-  boxes, cylinders, cones, balls, rings and tori named by colour token.
+  and no DOM, so the contracts import and test it in Node: where each
+  district stands (a grid in registry order, back to front, its columns
+  chosen per view), the island round them and what grows on it, the
+  perspective camera as arithmetic (overview, focus, reveal, bounded panning,
+  projection and hit-testing), the gesture arbiter (tap, pan, cancel), the
+  crew's poses, and every place and its life as data — boxes, cylinders,
+  cones, balls, rocks, rings and tori named by colour token.
 - `field/render3d.js` — turns it into pixels with Three.js: one canvas, one
-  scene, one orthographic camera at a fixed isometric angle. Each place's
-  parts merge into one geometry per finish (matte, metal, glow), built once
-  per look and shared; stations and hand props are built once for every
-  tile. A status change swaps a material or a visibility; nothing is rebuilt.
+  scene, one perspective camera at a fixed yaw and pitch. Each place's parts
+  merge into one geometry per finish (matte, metal, glow), built once per
+  look and shared; stations, hand props and life elements are built once.
+  The island and its growth are one mesh each, rebuilt only when the layout
+  changes shape. A status change swaps a material or a visibility; nothing
+  is rebuilt.
 
 Three.js 0.186.1 is vendored in `vendor/three/`: a subset of only the
 classes the world imports, tree-shaken and minified by esbuild,
@@ -349,7 +354,7 @@ while the module downloads and the world is made behind it. Until the world's
 first frame is on screen its view is invisible, so it takes no taps and no
 focus. Its `onReady` then calls `adoptWorld()`, which in one step unmounts the
 flat field, makes the world the field and moves keyboard focus from a flat
-platform to the same project's tile; a selection made while loading carries
+platform to the same project's button; a selection made while loading carries
 over. Any failure — the import, the context, a render, or a lost context not
 restored within 2.5 s — calls `stopWorld()`: the world is destroyed and the
 flat field, never removed while loading, is what remains, for the rest of the
@@ -358,61 +363,91 @@ visit.
 retry loop. `destroy()` disposes every geometry, material and texture,
 releases the context and removes its DOM.
 
-**One loop, on demand.** The module's one `requestAnimationFrame` loop runs
-only while the camera moves or something is animating, and only while the
-world is on screen, uncovered (no overlay — the page's `scroll-locked`), the
-page visible and the context alive. Ambient motion (a working crew, a
-breathing attention beacon) is capped at 30 fps and settles into still poses
-60 s after the last touch. Under Reduce Motion every camera move is instant
-and nothing loops. The drawing buffer is at most 2 device pixels per CSS
-pixel and 2.5 million pixels.
+**One loop, on demand, and nothing measured in it.** The module's one
+`requestAnimationFrame` loop runs only while the camera moves, a sign rises
+or something is alive, and only while the world is on screen, uncovered (no
+overlay — the page's `scroll-locked`), the page visible and the context
+alive. It draws at up to about 60 frames a second (never faster on a 120 Hz
+screen), and life settles into still poses five minutes after the last touch.
+A frame only moves things: labels and the sign move by `transform`, and are
+measured when their words or their room change, never in a frame (0.3.1 read
+label sizes on every frame of a zoom). When frames keep arriving slowly, the
+drawing resolution steps down (2, 1.75, 1.5, 1.25, 1 device pixels per CSS
+pixel) and never back up in that visit. Under Reduce Motion every camera move
+is instant and nothing loops. The drawing buffer is at most 2 device pixels
+per CSS pixel and 2.5 million pixels.
 
-**Composition.** Places are packed by what they really occupy. Each place's
-height on screen is measured from its recipe (`placeTop`), and each label's
-height is measured on the page; a row sits as high as it can without a roof
-reaching a label above it in the same column, so a low place or a short name
-never pays for the tallest. Labels tuck over the front corner of their
-plinth. The arrangement (columns, and whether odd columns drop part of a row
-into a staggered field) is whichever makes the places largest in the box
-the world has, settled in a few passes because labels are px. All places
-stand on one shared ground, a step above the floor, wide enough that its
-edges show only where the world ends; it joins nothing to anything.
+**Composition.** One island, seen in depth: nearer districts are drawn
+larger than farther ones. Districts stand in registry order, back to front,
+left to right; the number of columns is whichever draws the smallest
+district in view largest in the box the world has (an arrangement that shows
+every district beats one that pans). Framing uses each place's real height
+(`placeHeight`, measured from its recipe, its beacon, its crew and its life)
+and each label's measured size, so a low place or a short name never pays
+for the tallest. The overview shows every district and label as large as
+fits, never drawing a district in view below a readable width; a larger
+island starts at the first district and pans. Trees, pines, shrubs, rocks,
+flowers and a pond or two grow between the districts from a fixed seed —
+never on a pad and never tall near one — and join nothing to anything.
 
-**Camera and touch.** A fixed isometric view: no orbit, no zoom gesture. Two
-framings — the overview (every place and label at the largest scale that
-fits, never below a readable minimum; a larger world pans instead) and focus
-(one place, close) — with 380 ms interruptible moves. The viewport alone has
-`touch-action: none`: a drag inside it pans (bounded to the world), a drag
+**Camera and touch.** A fixed yaw and pitch through a gentle lens: no orbit,
+no zoom gesture. Two framings — the overview and focus (one place, its label
+and its sign, close) — with 420 ms interruptible flights. The camera looks
+only at the island: its target stays within a pad of the outer districts.
+The viewport alone has `touch-action: none`: a drag inside it pans, a drag
 outside scrolls the page. One arbiter decides every touch: under 8 px it is a
-tap; past that it is a pan for good and the click it would make is swallowed,
-so a drag never selects or opens a brief. Pointer cancel and lost capture end
-a gesture with no tap. The camera's frame is transient: never stored.
-Resizing, rotating or docking reframes in the same mode with the same
-selection; a reload starts at the overview with the stored selection.
+tap; past that it is a pan for good. A tap on the island is hit-tested
+against each district's drawn outline (its pad and its roof); where two
+overlap the nearer wins, and open grass selects nothing. The click that a
+pan or an island tap also makes is swallowed for a moment, so a label the
+camera has just moved under the finger never takes it; a keyboard's click
+always goes through. Pointer cancel and lost capture end a gesture with no
+tap. The camera's frame is transient: never stored. Resizing, rotating or
+docking reframes in the same mode with the same selection; a reload starts
+at the overview with the stored selection.
 
-**The button layer.** Every project keeps a real `<button>` in registry
-order, moved onto its tile each frame: its tap target is the place's own
-shape (`clip-path`, so a box's empty corners take no taps), its label is at
-least 44 px tall, and its accessible name says every status. A label is type,
-not a box: the name, then one status — a chip only for what needs you,
-otherwise the status word in its colour — with a soft edge of the floor's
-colour for contrast. Only the selected project's label has a backing. A label that would overlap another is hidden and takes no
-taps (the focused and selected labels win), as is one out of view; keyboard
-focus shows a hidden label and pans its tile into view. Overview appears
-whenever the whole world is not in view.
+**The button layer and the sign.** Every project keeps a real `<button>` in
+registry order, holding its label, moved under its district each frame: it
+is the keyboard's stop and the accessible name, which says every status. A
+label is type, not a box: the name, then one status — a chip only for what
+needs you, otherwise the status word in its colour — at least 44 px tall.
+Only the selected project's label has a backing. A label that can be read
+takes a tap; one that would overlap another is hidden and takes none (the
+focused label, the sign and the selected label win, in that order), as is
+one whose district has left the view. Keyboard focus shows a hidden label
+and brings its district into view, even one behind the camera. The selected
+project wears a sign over the back of its place, where its tallest
+structures stand: its status and everything that needs you, with the words
+and shapes the brief uses, a blocker in its own words, and "Tap again for
+the brief". It rises in once when the selection changes, stays whole inside
+the view (its stem still points at the roof), takes no taps and is hidden
+from assistive tech, which the button and the dock already tell. Overview
+appears whenever the whole island is not in view.
 
-**Places and crews.** Each look has a place: a training hall inside a running
-track, a scheduling studio with a timeline wall, a library corner with a
-lectern, a vault with coins and a ledger, a launchpad, a sushi counter with
-its capybara chef, and a plainly generic module. Identity (the ground, the
-seam of light round each plinth, the accents) is the project's own
-`--terrain-*`/`--tint-*`; status lights only the beacon's lamp and halo and
-the worker's helmet, and only when a state is known — with no record the lamp
-is dark and there is no worker. The crew's station and pose come from
-`workerState` alone (building works at a bench, QA holds a clipboard, a
-decision points at a console, blocked stands at a barrier, stable tends a
-valve, paused sits dimmed, planning leans over a blueprint, release ready
-raises an arm once, on the change itself — never on a reload).
+**Places, crews and life.** Each look has a place: a training hall inside a
+running track, a scheduling studio with a timeline wall, a library corner
+with a lectern and a pond, a vault with coins and a ledger, a launchpad, a
+sushi counter with its capybara chef, and a plainly generic module — each
+with windows, doors, lamps, planters, benches and props. Identity (the
+ground, the seam of light round each pad, the accents) is the project's own
+`--terrain-*`/`--tint-*`; the island is `--land-*` and `--mat-*` earth and
+plant tokens, each at least ΔE 20 from every status hue; status lights only
+the beacon's lamp and halo and the worker's helmet, and only when a state is
+known — with no record the lamp is dark and there is no worker. The crew's
+station and pose come from `workerState` alone (building works at a bench,
+QA holds a clipboard, a decision points at a console, blocked stands at a
+barrier, stable tends a valve, paused sits dimmed, planning leans over a
+blueprint, release ready raises an arm once, on the change itself — never on
+a reload). Each place also has its own life (`life` in its recipe): runners
+lap the track, the studio's clock turns and its now-line slides, pages turn
+and a lamp glows in the library, the vault wheel spins and a coin drops,
+lights climb the gantry and steam rises at the launchpad, plates ride the
+sushi belt past the chef's knife. Life moves only while the project is known
+to be under way — building, in QA, awaiting a decision, stable (more slowly),
+planning or release ready — and holds still where no state is recorded,
+where work is blocked or paused, and under Reduce Motion, where it shows its
+first moment. It is a place, never a measure: it does not speed up, grow or
+count with anything.
 
 **`IsoField` is the fallback**: one `<button>` per project containing an
 inline isometric SVG platform, landmarks as data (`LANDMARKS`), CSS motion

@@ -201,8 +201,18 @@
   --light-sky: #B9C7DE;
   --light-ground: #1A2231;
   --world-label: rgba(11,15,22,0.72);
-  /* The ground every place stands on, a step above the floor. */
-  --field-ground: #0F1622;
+  /* The island every place stands on and what grows there: muted, earthy
+     and at least ΔE 20 from every status hue (contract 30 measures it), so
+     the land is never read as a state. */
+  --land-grass: #4A6B3F;
+  --land-grass-edge: #3B5634;
+  --land-soil: #5A4232;
+  --land-rock: #5E5147;
+  --mat-leaf: #5B7F3E;
+  --mat-leaf-dark: #2F4F37;
+  --mat-bark: #6B4A33;
+  --mat-petal: #E7A7B8;
+  --mat-petal-light: #F3E3C0;
 
   /* Each project's ground and landmark accent. The grounds stay dark and
      every accent is at least ΔE 20 (CIELAB) from every status hue above —
@@ -1020,9 +1030,10 @@ body.scroll-locked{
 
 /* ---- The 3D world ----
    field/render3d.js draws into #worldHost, laid over the field's own box:
-   one transparent canvas over the field's floor, and above it one real
-   button per project (its tap target, its name and its keyboard stop),
-   moved onto its tile each frame. While the world loads, the flat field in
+   one island on a transparent canvas over the field's floor, and above it
+   one real button per project (its label, its name and its keyboard stop),
+   moved under its district each frame, and the selected project's sign.
+   While the world loads, the flat field in
    the same box stays drawn and stays the one you can touch; the world takes
    over only once its first frame is on screen. The box's height is what
    the screen has left (fitField() measures it); this is its fallback. */
@@ -1047,21 +1058,22 @@ body.scroll-locked{
 .world-view.is-panning{ cursor: grabbing; }
 .world-canvas{ position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .world-layer{ position: absolute; inset: 0; pointer-events: none; }
-/* The button itself takes no taps: its tile's shape and its label do, so
-   a box's empty corners never catch a tap meant for a neighbour. */
+/* One real button per project: its keyboard stop and accessible name,
+   holding its label. render3d.js moves it under its district by transform
+   alone, every frame, and measures it only when its words change. A tap on
+   the island is hit-tested against the districts drawn there; a label that
+   can be read takes a tap too, and one that cannot takes none. */
 .world-tile{
   position: absolute; left: 0; top: 0; margin: 0; padding: 0;
   background: none; border: none; color: var(--text); pointer-events: none;
-  -webkit-tap-highlight-color: transparent;
+  will-change: transform; -webkit-tap-highlight-color: transparent;
 }
 .world-tile:focus-visible{ outline: none; }
-.world-hit{ position: absolute; inset: 0; pointer-events: auto; cursor: pointer; }
 /* A label is part of the scene: no box, just type with a soft edge of the
-   floor's own colour so it reads over a plinth. The name leads; one status
+   floor's own colour so it reads over grass. The name leads; one status
    follows — a chip only when it needs you. The selected project alone gets
    a backing, so it stands out without every label competing. */
 .world-label{
-  position: absolute; top: calc(100% - var(--label-tuck, 0px)); left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   width: max-content; max-width: var(--label-max, 140px); min-height: var(--touch-min);
   padding: 2px var(--space-sm); border-radius: var(--radius-md);
@@ -1086,11 +1098,38 @@ body.scroll-locked{
   border-radius: var(--radius-pill); background: var(--field-select);
 }
 .world-badge .chip{ padding: 1px 6px; }
-/* A label that would cover another, or has left the view, is not there:
-   it cannot be read, so it cannot be tapped. */
+/* A label that would cover another, or whose district has left the view,
+   is not there: it cannot be read, so it cannot be tapped. */
 .world-tile.is-hidden .world-label{ opacity: 0; pointer-events: none; }
-.world-tile.is-off .world-hit{ pointer-events: none; }
+.world-tile.is-off .world-label{ opacity: 0; pointer-events: none; }
 .world-tile:focus-visible .world-label{ opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The sign over the selected project: its status and what needs you,
+   rising in once when it is chosen (at once under Reduce Motion, by the
+   global rule). It belongs to the scene: it takes no taps, and the dock and
+   the project's button already say the same to assistive tech. */
+.world-sign{ position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; will-change: transform; }
+.world-sign-card{
+  position: absolute; left: 0; bottom: 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  width: max-content; max-width: 230px;
+  padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md);
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-md);
+  opacity: 0; transform: translate(-50%, 10px) scale(0.9); transform-origin: 50% 100%;
+  transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease);
+}
+.world-sign-stem{
+  position: absolute; left: -1px; bottom: 0; width: 2px; height: 9px;
+  background: var(--border); opacity: 0; transition: opacity var(--dur-slow) var(--ease);
+}
+.world-sign.is-in .world-sign-card{ opacity: 1; transform: translate(-50%, 0) scale(1); }
+.world-sign.is-in .world-sign-stem{ opacity: 1; }
+.world-sign.is-away .world-sign-card, .world-sign.is-away .world-sign-stem{ opacity: 0; }
+.world-sign-chips{ display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-xs); }
+.world-sign-why{
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-meta); color: var(--text);
+}
+.world-sign-hint{ font-size: var(--fs-micro); color: var(--text-dim); }
 .world-overview{
   position: absolute; top: var(--space-sm); right: var(--space-sm);
   display: inline-flex; align-items: center; gap: var(--space-xs);
@@ -1615,6 +1654,25 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-4-0',
+    version: '0.4.0',
+    title: 'One island, alive',
+    date: '2026-09-28',
+    summary: 'The projects now share one island seen through a real camera, each place is more detailed and busier while its work is under way, and the world moves smoothly.',
+    newFeatures: [
+      'Every project is a district on one island with trees, ponds and rocks between them, seen in depth: nearer places are larger',
+      'Tap a project and a sign rises over it with its status and everything that needs you, in words and shapes; tap again for its brief',
+      'Each place has its own life while its work is under way: runners lap the track, a clock turns in the studio, pages turn in the library, the vault wheel spins, the launchpad lights climb its gantry and plates ride the sushi belt. Nothing moves where no state is recorded, where work is blocked or paused, or when Reduce Motion is on'
+    ],
+    improvements: [
+      'Every place has more detail: windows, doors, lamps, planters, benches and props',
+      'Dragging, tapping and the animations are smoother: the world draws at up to 60 frames a second, never measures the page while it moves, and lowers its own resolution on a device that cannot keep up'
+    ],
+    fixes: [
+      'Zooming to a project could make the page recalculate its layout on every frame'
+    ]
+  },
   {
     id: 'v0-3-1',
     version: '0.3.1',
@@ -3316,8 +3374,20 @@ function fieldScene(views){
     status: v.status, signal: v.signal, attention: v.attention.slice(),
     workerState: v.workerState, recorded: v.recorded,
     spoken: fieldSpoken(v), badge: fieldBadgeHtml(v),
+    sign: v.id === selectedId ? fieldSignHtml(v) : '',
     selected: v.id === selectedId
   }));
+}
+
+/* The sign over the selected project in the world: its status and
+   everything that needs you, with the words and shapes the brief uses; a
+   blocker in its own words; and what a second tap does. Only what the
+   record holds: no count, score or measure it cannot support. */
+function fieldSignHtml(v){
+  const blocker = v.attention.indexOf('blocked') !== -1 && v.blocker
+    ? '<span class="world-sign-why">' + escapeHtml(v.blocker) + '</span>' : '';
+  return '<span class="world-sign-chips">' + chipsHtml(v, false) + '</span>' + blocker +
+    '<span class="world-sign-hint">Tap again for the brief</span>';
 }
 
 /* A project's accessible name: its name, then every status it has. */

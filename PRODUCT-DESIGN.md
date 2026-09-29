@@ -168,11 +168,19 @@ The product's own rules, on top of everything above.
   once and is the focus: the top stays compact so every place and label
   is on the first screen of a phone, a phone on its side and an iPad, above
   the tab bar.
-- **A world you look at, not one you fly.** A fixed isometric view: no orbit,
-  no zoom gesture. Tap focuses, Overview shows everything, a drag inside the
-  world looks around within its bounds, and the page scrolls everywhere
-  else. A drag never opens anything. Moves are short and can be interrupted;
-  with Reduce Motion they are instant.
+- **One island you look at, not one you fly.** Every project is a district
+  on one island, seen through a fixed camera with gentle depth: no orbit, no
+  zoom gesture, and nothing joins one project to another. Tap focuses,
+  Overview shows everything, a drag inside the world looks around the island,
+  and the page scrolls everywhere else. A drag never opens anything. Moves
+  are short and can be interrupted; with Reduce Motion they are instant.
+- **Smooth before rich.** A frame only moves things; it never measures the
+  page. Detail and life never cost a tap its response: on a device that
+  cannot keep up, the world draws at a lower resolution rather than slower.
+- **The first tap says where things stand.** A sign rises over the tapped
+  place with its status and everything that needs you, in the brief's words
+  and shapes, and says that a second tap opens the brief. It shows only what
+  the record holds: no count, score or trend it cannot support.
 - **The selection is always actionable.** The selected project's name, its
   one dominant status and a Brief action sit in a slim dock under the world,
   above the tab bar, whatever was panned, focused, rotated or reopened. It is
@@ -193,6 +201,11 @@ The product's own rules, on top of everything above.
 - **The crew shows the state and nothing else.** A worker's station and pose
   come from the state alone. No record, no worker. A release-ready worker
   raises an arm once, when it becomes ready — never again on a reload.
+- **A place is alive only while its work is.** Each place does its own thing
+  — runners on the track, plates on the belt, pages turning — only while its
+  project is known to be under way. Where nothing is recorded, where work is
+  blocked or paused, and under Reduce Motion, it holds still. Life never
+  speeds up, grows or counts with anything.
 - **One focus.** One tap focuses a project, a second opens its brief. The
   focus is remembered, because it is what you come back to.
 - **Unknown is not a status.** A project with no recorded state says "Needs

@@ -1824,16 +1824,40 @@ function testFieldSeam(){
   T('the flat renderer is exactly mount, draw, focus and unmount', calls(c.IsoField) === 'draw,focus,mount,unmount');
   T('and so is the world renderer', calls(c.WorldField) === 'draw,focus,mount,unmount');
   T('the hub draws through the seam', /Field\.draw\(fieldScene\(views\)\)/.test(src) && !/(IsoField|WorldField)\.draw\(/.test(src));
-  const renderer = (src.match(/PROJECT FIELD — one renderer at a time[\s\S]*?\n   HUB\n/) || [''])[0];
+  const renderer = (src.match(/PROJECT FIELD — one renderer at a time[\s\S]*?\r?\n   HUB\r?\n/) || [''])[0];
   T('the renderer section is found', renderer.length > 2000);
   T('the renderer never reads or writes storage', !/Store\./.test(stripComments(renderer)));
   T('the renderer never changes the selection', !/selectedId\s*=(?!=)/.test(stripComments(renderer)));
   const scene = c.fieldScene(c.allViews());
   T('the scene carries only what drawing needs', Object.keys(scene[0]).sort().join() ===
-    'attention,badge,id,name,recorded,selected,signal,spoken,status,theme,workerState');
+    'attention,badge,id,name,recorded,selected,sign,signal,spoken,status,theme,workerState');
   T('the page adds no script file and no package dependency: the world is a module the page imports',
     !/<canvas/.test(H.readApp()) && !/<script[^>]*\bsrc=/.test(H.readApp()) &&
     Object.keys(H.readPkg().dependencies || {}).length === 0 && Object.keys(H.readPkg().devDependencies || {}).length === 0);
+
+  sub('the sign over the selected project says what the record holds, and nothing more');
+  const signApp = H.loadApp(), sc = signApp.ctx;
+  const signOf = id => (sc.fieldScene(sc.allViews()).find(x => x.id === id) || {}).sign;
+  const plain = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const firstId = sc.PROJECT_REGISTRY[0].id, secondId = sc.PROJECT_REGISTRY[1].id;
+  sc.tapProject(firstId); sc.__flush();
+  T('only the selected project carries a sign', sc.fieldScene(sc.allViews()).filter(x => x.sign).map(x => x.id).join() === firstId);
+  T('with no record it says Needs update, and names no status', /Needs update/.test(plain(signOf(firstId))) &&
+    !/Building|Planning|Stable|Paused|Blocked|Needs QA|Needs decision|Release ready/.test(plain(signOf(firstId))));
+  sc.openStateForm(firstId); sc.pickStatus('building'); sc.toggleSwitch('stateQa'); sc.saveStateForm(); sc.__flush();
+  T('recorded, it names the status and everything that needs you, each with its shape',
+    /Building/.test(plain(signOf(firstId))) && /Needs QA/.test(plain(signOf(firstId))) && (signOf(firstId).match(/<svg/g) || []).length === 2);
+  T('it says what a second tap does', /Tap again for the brief/.test(plain(signOf(firstId))));
+  sc.openStateForm(firstId); sc.pickStatus('building');
+  const blockerField = signApp.dom.document.getElementById('stateBlocker');
+  if(blockerField) blockerField.value = 'Waiting on <b>FAKE</b> review 2';
+  sc.saveStateForm(); sc.__flush();
+  T('a blocker is said in its own words, as text', !!blockerField && (/Waiting on &lt;b&gt;FAKE&lt;\/b&gt; review 2/.test(signOf(firstId)) && /Blocked/.test(plain(signOf(firstId)))));
+  T('beyond the blocker\'s own words it shows no number: nothing the record cannot support',
+    !/\d/.test(plain(signOf(firstId)).replace(/Waiting on &lt;b&gt;FAKE&lt;\/b&gt; review 2/, '')));
+  sc.tapProject(secondId); sc.__flush();
+  T('choosing another project moves the sign to it', !signOf(firstId) && !!signOf(secondId));
+  T('no errors', signApp.errors.length === 0, signApp.errors.join(' | '));
 
   sub('platforms are drawn from data');
   T('every landmark is a list of known primitives', Object.keys(c.LANDMARKS).every(k =>
@@ -2871,116 +2895,221 @@ async function testWorld(){
   const colours = new Set(Object.keys(W.PALETTE).concat(['tint', 'terrain']));
   const parts = [];
   Object.keys(W.ENVIRONMENTS).forEach(k => W.ENVIRONMENTS[k].parts.forEach(p => parts.push(['place ' + k, p])));
+  Object.keys(W.ENVIRONMENTS).forEach(k => (W.ENVIRONMENTS[k].life || []).forEach(el => (el.parts || []).forEach(p => parts.push(['life ' + k, p]))));
   Object.keys(W.STATIONS).forEach(k => W.STATIONS[k].parts.forEach(p => parts.push(['station ' + k, p])));
   Object.keys(W.HAND_PROPS).forEach(k => W.HAND_PROPS[k].forEach(p => parts.push(['hand ' + k, p])));
+  Object.keys(W.SCENERY).forEach(k => W.SCENERY[k].forEach(p => parts.push(['growth ' + k, p])));
   const bad = parts.filter(([, p]) => !colours.has(p.c) || W.SHAPES.indexOf(p.s) === -1 || W.FINISHES.indexOf(p.m) === -1 ||
     !p.p.every(Number.isFinite) || !p.d.every(v => v === null || v === undefined || (Number.isFinite(v) && v > 0)));
   T('every part is a known shape, finish and colour, with real dimensions', bad.length === 0,
     bad.slice(0, 3).map(b => b[0] + ' ' + JSON.stringify(b[1])).join(' | '));
-  T('a station is the same for every project: no project colour', parts.filter(([w, p]) => !/^place/.test(w) && (p.c === 'tint' || p.c === 'terrain')).length === 0);
+  T('a station or the island\'s growth is the same everywhere: no project colour',
+    parts.filter(([w, p]) => /^(station|hand|growth)/.test(w) && (p.c === 'tint' || p.c === 'terrain')).length === 0);
   T('glow is only ever the light of a place', parts.filter(([, p]) => p.m === 'glow').every(([, p]) => ['window', 'screen', 'tint', 'paper'].indexOf(p.c) !== -1));
+  /* CIE76, as contract 24: the island and what grows on it are never read
+     as a state. */
+  const lab = h => {
+    const n = parseInt(h.slice(1), 16);
+    const lin = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+    const x = f((lin[0] * 0.4124 + lin[1] * 0.3576 + lin[2] * 0.1805) / 0.95047), y = f(lin[0] * 0.2126 + lin[1] * 0.7152 + lin[2] * 0.0722),
+          z = f((lin[0] * 0.0193 + lin[1] * 0.1192 + lin[2] * 0.9505) / 1.08883);
+    return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+  };
+  const hexOf = name => { const m = new RegExp(name + ':\\s*(#[0-9A-Fa-f]{6})').exec(style); return m ? m[1] : null; };
+  const sigHex = [...style.matchAll(/--sig-[a-z]+:\s*(#[0-9A-Fa-f]{6})/g)].map(m => m[1]);
+  const land = ['grass', 'grassEdge', 'soil', 'rock', 'leaf', 'leafDark', 'bark', 'petal', 'petalLight'].map(k => W.PALETTE[k]);
+  const nearest = land.map(t => {
+    const a = lab(hexOf(t) || '#000000');
+    return [t, Math.min.apply(null, sigHex.map(h => { const b = lab(h); return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }))];
+  });
+  T('the land is never a status colour: every land and plant token is at least ΔE 20 from every status hue',
+    sigHex.length === 9 && land.every(t => !!hexOf(t)) && nearest.every(([, d]) => d >= 20),
+    nearest.filter(([, d]) => d < 20).map(([t, d]) => t + ' ' + d.toFixed(1)).join(', '));
 
-  sub('every project has a place, and a place stays on its plinth');
+  sub('every project has a place, and a place stays on its pad');
   const themes = [...new Set(c.PROJECT_REGISTRY.map(p => c.projectView(p.id).theme))];
   T('each registered look has its own place', themes.every(t => !!W.ENVIRONMENTS[t]), themes.join(','));
   T('an unknown look gets the generic place', W.environmentFor('not-a-theme-yet') === W.ENVIRONMENTS.generic);
   Object.keys(W.ENVIRONMENTS).forEach(k => {
     const e = W.ENVIRONMENTS[k];
-    T(k + ': a primary structure and a few props', e.parts.length >= 5);
-    T(k + ': every part stands on the plinth', e.parts.every(p => Math.abs(p.p[0]) <= W.TILE.reach && Math.abs(p.p[2]) <= W.TILE.reach));
-    T(k + ': clear of the beacon at the right corner', e.parts.every(p => Math.hypot(p.p[0] - W.BEACON.x, p.p[2] - W.BEACON.z) > 0.9));
+    T(k + ': a primary structure and its details', e.parts.length >= (k === 'generic' ? 12 : 30), e.parts.length + ' parts');
+    T(k + ': every part stands on the pad', e.parts.every(p => Math.abs(p.p[0]) <= W.TILE.reach && Math.abs(p.p[2]) <= W.TILE.reach));
+    T(k + ': clear of the beacon at the back corner', e.parts.every(p => Math.hypot(p.p[0] - W.BEACON.x, p.p[2] - W.BEACON.z) > 0.9));
     T(k + ': room for the crew in front', Math.abs(e.crew.x) <= W.TILE.reach && Math.abs(e.crew.z) <= W.TILE.reach && e.crew.x + e.crew.z > 1.5);
+    const h = W.placeHeight(k);
+    T(k + ': its height is measured from its recipe: above its beacon, below any sky', h > W.TILE.padH + W.BEACON.mast * W.TILE.content && h < 12, h.toFixed(2));
   });
+  T('a tall place is taller than a low one: the launchpad\'s gantry outreaches the running track', W.placeHeight('rocket') > W.placeHeight('track') + 0.5);
+  T('an unknown look is as tall as the generic place', W.placeHeight('not-a-theme-yet') === W.placeHeight('generic'));
   T('no place is a progress bar: nothing counts, measures or fills', !/progress|percent|complete|level/i.test(code(wj)));
 
-  sub('the crew: every state has a station and a pose; unknown has neither');
-  const workers = [...new Set(Object.keys(c.SIGNALS).map(k => c.SIGNALS[k].worker))];
-  T('every worker the app derives is one the world knows', workers.every(w => w in W.CREW), workers.join(','));
-  T('no record, no crew: nothing is known to be happening there', W.CREW.unrecorded === null && W.poseFor('unrecorded', 0, null) === null);
-  workers.filter(w => w !== 'unrecorded').forEach(w => {
-    T(w + ': a station', !!W.STATIONS[W.CREW[w].station]);
-    const still = W.poseFor(w, 0, null);
-    T(w + ': a finite still pose, the same every time', !!still && Object.values(still).every(v => typeof v === 'boolean' || Number.isFinite(v)) &&
-      JSON.stringify(still) === JSON.stringify(W.poseFor(w, 0, null)));
-    T(w + ': nothing moves under Reduce Motion', W.crewLoops(w, true) === false);
+  sub('life: each place its own, and only while its work is known to be under way');
+  const kinds = new Set(W.LIFE_KINDS);
+  const samples = [0, 0.37, 1.1, 2.9, 7.3, 31.4, 1000.1];
+  Object.keys(W.ENVIRONMENTS).forEach(k => {
+    const life = W.ENVIRONMENTS[k].life || [];
+    T(k + ': something of its own moves there', life.length >= 1);
+    T(k + ': every motion is a known kind, of real parts or a runner',
+      life.every(el => kinds.has(el.kind) && (el.rig === 'runner' || (Array.isArray(el.parts) && el.parts.length > 0)) && el.at.every(Number.isFinite)));
+    const stray = [];
+    life.forEach(el => { for(let i = 0; i < (el.copies || 1); i++) samples.forEach(t => {
+      const o = W.lifeOrigin(el, i), q = W.lifePose(el, t, i);
+      const ok = q.p.concat(q.r, [q.s]).every(Number.isFinite) && q.s > 0;
+      const x = o[0] + q.p[0], z = o[2] + q.p[2];
+      if(!ok || Math.abs(x) > W.TILE.reach + 0.4 || Math.abs(z) > W.TILE.reach + 0.4) stray.push(el.kind + '@' + t);
+    }); });
+    T(k + ': every moment of it is finite and stays on its pad', stray.length === 0, stray.slice(0, 4).join(', '));
   });
-  T('blocked is halted, paused is still, release ready does not loop',
-    !W.crewLoops('warning', false) && !W.crewLoops('quiet', false) && !W.crewLoops('celebrating', false));
-  T('building, QA, decision, stable and planning move while seen',
-    ['working', 'inspecting', 'waiting', 'idle', 'surveying'].every(w => W.crewLoops(w, false)));
-  T('paused sits', W.poseFor('quiet', 0, null).seated === true && W.poseFor('working', 0, null).seated === false);
-  T('the acknowledgment peaks mid-way and settles',
-    W.poseFor('celebrating', 0, 0.5).armR < W.poseFor('celebrating', 0, null).armR - 1 &&
-    Math.abs(W.poseFor('celebrating', 0, 1).armR - W.poseFor('celebrating', 0, null).armR) < 1e-9);
-  T('it plays only on a change, never on a first draw or reload',
-    /if\(!S\.first && prev\.workerState && prev\.workerState !== 'celebrating' && item\.workerState === 'celebrating' && !rm\(\)\) t\.celebrate = now;/.test(r3));
+  const lively = ['working', 'inspecting', 'waiting', 'idle', 'surveying', 'celebrating'];
+  T('it lives while building, in QA, awaiting a decision, stable, planning or release ready', lively.every(w => W.lifeActive(w, false)));
+  T('it is still where nothing is known, where work is blocked and where it rests',
+    ['unrecorded', 'warning', 'quiet', undefined, 'not-a-state'].every(w => !W.lifeActive(w, false)));
+  T('nothing lives under Reduce Motion', lively.every(w => !W.lifeActive(w, true)));
+  T('life is a place, not a measure: its pace depends on the kind of state alone',
+    Object.keys(W.CREW).every(w => [0.7, 1].indexOf(W.lifeSpeed(w)) !== -1) && W.lifeSpeed('idle') < W.lifeSpeed('working'));
+  T('a still place holds its first moment, the same every time',
+    Object.keys(W.ENVIRONMENTS).every(k => (W.ENVIRONMENTS[k].life || []).every(el => JSON.stringify(W.lifePose(el, 0, 0)) === JSON.stringify(W.lifePose(el, 0, 0)))));
+  T('the renderer advances it only while lively and seen, and shows its first moment under Reduce Motion',
+    /if\(still\) t\.lifeT = 0;\s*else if\(ambient && lifeActive\(t\.state\.workerState, false\)\) t\.lifeT \+= dt \* lifeSpeed\(t\.state\.workerState\);/.test(r3) &&
+    /if\(!lifeActive\(item\.workerState, false\)\) t\.lifeT = 0;/.test(r3));
+  const run = W.poseFor('running', 0.4, null);
+  T('a runner runs: its legs swing opposite ways', !!run && Object.values(run).every(v => typeof v === 'boolean' || Number.isFinite(v)) && run.legL === -run.legR && run.legL !== 0);
 
-  sub('layout: packed by each place\'s real height, every project reachable, no ceiling');
+  sub('the island grows, never over a place');
+  const grown = (n, cols) => { const lay = W.layoutDistricts(n, cols), isl = W.islandOf(lay.districts); return { lay: lay, isl: isl, g: W.scatter(lay.districts, isl, 7) }; };
+  let onPads = 0, offIsland = 0, tallNear = 0, wet = 0, total = 0;
+  [[1, 1], [2, 2], [6, 2], [6, 3], [7, 3], [12, 4], [20, 5]].forEach(([n, cols]) => {
+    const { lay, isl, g } = grown(n, cols);
+    total += g.items.length;
+    g.items.forEach(it => {
+      if(lay.districts.some(d => W.onPad(d, it.x, it.z, 0.6))) onPads++;
+      if((it.kind === 'tree' || it.kind === 'pine') && lay.districts.some(d => W.onPad(d, it.x, it.z, 1.6))) tallNear++;
+      if(!W.onIsland(isl, it.x, it.z, 1.6)) offIsland++;
+      if(g.ponds.some(p => Math.hypot(it.x - p.x, it.z - p.z) < p.r + 0.5)) wet++;
+    });
+    g.ponds.forEach(p => { if(lay.districts.some(d => W.onPad(d, p.x, p.z, p.r + 1))) onPads++; });
+  });
+  T('it grows: trees, rocks and flowers between the districts', total > 60, total + ' items');
+  T('nothing grows on a pad, and no pond reaches one', onPads === 0, onPads);
+  T('no tree stands close enough to hide a place', tallNear === 0, tallNear);
+  T('nothing grows off the shore or in a pond', offIsland === 0 && wet === 0, offIsland + ' / ' + wet);
+  T('the same island every time: grown from a fixed seed', JSON.stringify(grown(6, 2).g) === JSON.stringify(grown(6, 2).g));
+  T('every kind that grows has a recipe', grown(12, 4).g.items.every(it => !!W.SCENERY[it.kind]));
+
+  sub('one island: every project a district, in reading order, with no ceiling');
   const themes6 = ['track', 'calendar', 'book', 'vault', 'rocket', 'sushi'];
-  T('each place is measured from its recipe: never lower than its plinth, never higher than the worst case',
-    Object.keys(W.ENVIRONMENTS).every(t => W.placeTop(t) <= -(W.TILE.half * Math.SQRT2 * Math.sin(W.WORLD.elevation)) && W.placeTop(t) >= W.SILHOUETTE.top));
-  T('a tall place is taller than a low one: the launchpad\'s gantry outreaches the running track',
-    W.placeTop('rocket') < W.placeTop('track') - 1);
-  const shapes = [[358, 512], [341, 335], [590, 142], [760, 260], [706, 568], [590, 778], [1200, 700]];
-  const rng = H.mulberry32(30);
-  /* A roof never reaches a label or plinth above it in the same column;
-     tiles in one row never share a column. */
-  const collides = tiles => {
-    for(let i = 0; i < tiles.length; i++) for(let j = 0; j < tiles.length; j++){
-      if(i === j) continue;
-      const a = tiles[i], b = tiles[j];
-      const ay = W.toView(a.u, a.v, 0).y, by = W.toView(b.u, b.v, 0).y;
-      if(Math.abs(a.u - b.u) >= W.WORLD.colStep - 1e-6) continue;
-      if(a.row === b.row) return true;
-      if(by > ay && by + b.top < ay + a.span - 1e-6) return true;
-    }
-    return false;
-  };
-  let clean = true, reading = true, readable = true, framed = true;
+  const shapes = [[358, 521], [341, 335], [590, 142], [760, 260], [706, 568], [590, 778], [1200, 700]];
+  const inView = (s, w, h, m) => s.x >= -m && s.x <= w + m && s.y >= -m && s.y <= h + m;
+  const extent = W.TILE.pad * Math.SQRT2;
+  let apart = true, reading = true, readable = true, framed = true, deeper = true;
   [1, 2, 3, 5, 6, 7, 9, 12, 20, 50].forEach(n => shapes.forEach(([w, h]) => {
-    const tops = Array.from({ length: n }, (_, i) => n === 6 ? W.placeTop(themes6[i]) : W.SILHOUETTE.top * (0.5 + rng() * 0.5));
-    const pick = W.chooseLayout(tops, w, h, 46 + Math.round(rng() * 30));
-    const lay = pick.tiles;
-    if(lay.length !== n || collides(lay)) clean = false;
+    const heights = Array.from({ length: n }, (_, i) => W.placeHeight(n === 6 ? themes6[i] : themes6[i % 6]));
+    const pick = W.chooseLayout(n, w, h, heights, null), ds = pick.districts;
+    if(ds.length !== n) apart = false;
+    for(let i = 0; i < n; i++) for(let j = i + 1; j < n; j++)
+      if(Math.abs(ds[i].x - ds[j].x) + Math.abs(ds[i].z - ds[j].z) < 2 * extent) apart = false;
     for(let i = 1; i < n; i++){
-      const p = lay[i - 1], q = lay[i];
-      if(q.row < p.row || (q.row === p.row && q.u <= p.u)) reading = false;
+      const p = ds[i - 1], q = ds[i];
+      if(q.row < p.row || (q.row === p.row && q.x <= p.x)) reading = false;
     }
-    const b = pick.bounds, f = W.overviewFrame(b, w, h);
-    if(!(f.scale >= W.WORLD.minScale) || !Number.isFinite(f.x + f.y)) readable = false;
-    if(f.scale > W.WORLD.minScale + 1e-9){
-      const tl = W.toScreen(f, b.minX, b.minY, w, h), br = W.toScreen(f, b.maxX, b.maxY, w, h);
-      if(tl.x < -0.5 || tl.y < -0.5 || br.x > w + 0.5 || br.y > h + 0.5) framed = false;
+    const f = pick.frame, seenNow = W.districtsInView(ds, f, w, h), px = seenNow.map(d => W.districtPx(d, f, w, h));
+    const first = W.project([ds[0].x, 0, ds[0].z], f, w, h);
+    if(!(Math.min.apply(null, px) >= W.WORLD.minDistrictPx - 0.5) || !Number.isFinite(f.x + f.z + f.d) ||
+       seenNow.indexOf(ds[0]) === -1 || !inView(first, w, h, 0)) readable = false;
+    if(pick.fits && seenNow.length !== n) readable = false;
+    if(pick.fits){
+      ds.forEach((d, i) => W.districtPoints(d, heights[i], null).forEach(q => {
+        const s = W.project(q.p, f, w, h);
+        if(!inView({ x: s.x, y: s.y + (q.down || 0) }, w, h, 1)) framed = false;
+      }));
     }
+    const back = ds.filter(d => d.row === 0), front = ds.filter(d => d.row === ds[n - 1].row);
+    if(n > pick.cols && !(W.districtPx(front[0], f, w, h) > W.districtPx(back[0], f, w, h))) deeper = false;
   }));
-  T('no roof reaches a label above it, from one project to fifty, on every screen', clean);
-  T('tiles keep registry order: left to right, then down', reading);
-  T('the overview never shrinks a tile below the readable scale; a large world pans instead', readable);
-  T('an overview that fits shows every place, roof to label', framed);
-  const phone = W.chooseLayout(themes6.map(W.placeTop), 358, 500, 46), worst = W.chooseLayout(6, 358, 500, 46);
-  T('packing by real heights makes the places larger than packing by the tallest', phone.scale > worst.scale * 1.1,
-    phone.scale.toFixed(1) + ' vs ' + worst.scale.toFixed(1));
-  T('a label reaches below its plinth only as far as it really is tall, less the part tucked over the plinth',
-    Math.abs(W.labelUnits(46, 10) - (46 - W.tuckPx(10)) / 10) < 1e-9 && W.tuckPx(10) > 0);
-  T('labels are type-scale text, never scaled with the world', /\.world-name\{[^}]*font-size: var\(--fs-meta\)/.test(style) &&
-    !/scale\(/.test((style.match(/\.world-label\{[^}]*\}/) || [''])[0]));
+  T('districts never overlap, from one project to fifty, on every screen', apart);
+  T('districts keep registry order: back to front, left to right', reading);
+  T('the overview draws no district in view below the readable size and starts where reading begins; a larger island pans', readable);
+  T('an overview that fits shows every district whole, roof to label', framed);
+  T('one world with depth: a nearer row is drawn larger than a farther one', deeper);
+  const phone = W.chooseLayout(6, 358, 521, themes6.map(W.placeHeight), null);
+  T('on a phone the six places stand two to a row, each at least 100 px across', phone.cols === 2 && phone.size >= 100, phone.cols + ' cols, ' + phone.size.toFixed(1) + ' px');
 
-  sub('the camera stays in the world and goes where it is sent');
-  const lay6 = W.layoutTiles(themes6.map(W.placeTop), 2, false, W.labelUnits(46, 12)), b6 = W.viewBounds(lay6.tiles);
-  const over = W.overviewFrame(b6, 358, 512);
-  const far = W.clampFrame({ x: 1e6, y: -1e6, scale: over.scale }, b6);
-  T('a pan cannot lose the world', far.x <= b6.maxX && far.y >= b6.minY);
-  const focus = W.focusFrame(lay6.tiles[5], b6, 358, 512);
-  T('focus comes closer than the overview', focus.scale > over.scale && focus.scale <= W.WORLD.maxScale);
-  const home = W.revealFrame(focus, lay6.tiles[5], b6, 358, 512);
-  T('a tile already in view does not move the camera', home === focus);
-  const moved = W.revealFrame(focus, lay6.tiles[0], b6, 358, 512);
-  const t0 = W.toView(lay6.tiles[0].u, lay6.tiles[0].v, 0), p0 = W.toScreen(moved, t0.x, t0.y, 358, 512);
-  T('keyboard focus on a tile out of view brings it into view', !W.sameFrame(moved, focus) && p0.x > 0 && p0.x < 358 && p0.y > 0 && p0.y < 512);
-  T('a move starts where it is and ends where it was sent',
+  sub('the camera stays on the island and goes where it is sent');
+  const ds6 = phone.districts, isl6 = W.islandOf(ds6), over = phone.frame, hts = themes6.map(W.placeHeight);
+  const far = W.panFrame(over, 1e6, -1e6, 358, 521, isl6);
+  T('a pan cannot lose the island: the camera looks at most a pad beyond the outer districts', W.onIsland(isl6, far.x, far.z, 0) &&
+    far.x <= isl6.reach.maxX + extent + 1e-9 && far.z >= isl6.reach.minZ - extent - 1e-9, JSON.stringify(far));
+  const nudge = W.panFrame(over, 30, 0, 358, 521, isl6), under = W.project([over.x, 0, over.z], nudge, 358, 521);
+  T('the island follows the finger', Math.abs(under.x - (179 + 30)) < 0.5 && Math.abs(under.y - 260.5) < 0.5, JSON.stringify(under));
+  const focus = W.focusFrame(ds6[5], hts[5], null, over, 358, 521);
+  T('focus comes closer than the overview', focus.d < over.d && focus.d >= W.WORLD.minDist);
+  T('and draws the place larger', W.districtPx(ds6[5], focus, 358, 521) > W.districtPx(ds6[5], over, 358, 521) * 1.2);
+  const seen = W.districtPoints(ds6[5], hts[5], null, W.WORLD.sign).every(q => {
+    const s = W.project(q.p, focus, 358, 521);
+    return inView({ x: s.x, y: s.y + (q.down || 0) - (q.up || 0) }, 358, 521, 1);
+  });
+  T('the focused place, its label and its sign are all in view', seen);
+  const tall = W.focusFrame(ds6[5], hts[5], null, over, 358, 521, { w: 200, h: 140 });
+  T('a taller sign is given its room', tall.d > focus.d);
+  const home = W.revealFrame(focus, ds6[5], hts[5], null, 358, 521, isl6);
+  T('a district already in view does not move the camera', home === focus);
+  const moved = W.revealFrame(focus, ds6[0], hts[0], null, 358, 521, isl6), p0 = W.project([ds6[0].x, 0, ds6[0].z], moved, 358, 521);
+  T('keyboard focus on a district out of view brings it into view', !W.sameFrame(moved, focus) && inView(p0, 358, 521, 0));
+  const close = { x: ds6[0].x, z: ds6[0].z, d: W.WORLD.minDist }, behind = W.project([ds6[5].x, 0, ds6[5].z], close, 358, 521);
+  const turned = W.revealFrame(close, ds6[5], hts[5], null, 358, 521, isl6), p5 = W.project([ds6[5].x, 0, ds6[5].z], turned, 358, 521);
+  T('even one behind the camera, close in at the back row', behind.depth < 0.5 && p5.depth > 0.5 && inView(p5, 358, 521, 0), [behind.depth, p5]);
+  T('a flight starts where it is and ends where it was sent',
     W.sameFrame(W.mixFrame(over, focus, 0), over) && W.sameFrame(W.mixFrame(over, focus, 1), focus));
   T('the drawing buffer never exceeds two device pixels per CSS pixel', W.pixelRatioFor(3, 390, 520) === 2);
   T('nor a size a tablet pays for', W.pixelRatioFor(2, 1400, 1000) ** 2 * 1400 * 1000 <= W.WORLD.maxCanvasPixels + 1);
+  T('a slow device steps its resolution down, never below one pixel per pixel',
+    W.nextPixelRatio(2) === 1.75 && W.nextPixelRatio(1.3) === 1.25 && W.nextPixelRatio(1) === 1);
+
+  sub('a tap lands on the district drawn there');
+  const hitAll = ds6.every((d, i) => {
+    const s = W.project([d.x, W.TILE.padH, d.z], over, 358, 521);
+    return W.hitDistrict(ds6, hts, over, 358, 521, s.x, s.y) === i;
+  });
+  T('a tap on each district at the overview lands on it', hitAll);
+  const roof = W.project([ds6[3].x, hts[3] * 0.7, ds6[3].z], over, 358, 521);
+  T('a tap on a roof lands on its own district', W.hitDistrict(ds6, hts, over, 358, 521, roof.x, roof.y) === 3);
+  T('a tap beyond the island lands on nothing', W.hitDistrict(ds6, hts, over, 358, 521, 2, 2) === -1 &&
+    W.hitDistrict(ds6, hts, over, 358, 521, 356, 519) === -1);
+  const gap = W.project([(ds6[0].x + ds6[1].x) / 2, 0, ds6[0].z - extent * 0.6], over, 358, 521);
+  T('a tap on open grass between districts lands on nothing', W.hitDistrict(ds6, hts, over, 358, 521, gap.x, gap.y) === -1);
+  /* A nearer district's roof can cover a farther one's pad: the one you see wins. */
+  const pair = [{ x: 0, z: 0, row: 0 }, { x: 0, z: 8, row: 1 }], ph = [6, 6];
+  const pf = W.focusFrame(pair[1], 6, null, null, 358, 521);
+  const top = W.project([0, 5.5, 8], pf, 358, 521);
+  T('where two overlap, the nearer is the one tapped', W.hitDistrict(pair, ph, pf, 358, 521, top.x, top.y) === 1);
+
+  sub('smooth: a frame moves things, it never measures the page');
+  const fnBody = name => {
+    const at0 = r3.indexOf('function ' + name + '(');
+    if(at0 === -1) return null;
+    let depth = 0, i = r3.indexOf('{', at0);
+    for(let j = i; j < r3.length; j++){ if(r3[j] === '{') depth++; else if(r3[j] === '}' && --depth === 0) return r3.slice(at0, j + 1); }
+    return null;
+  };
+  const perFrame = ['tick', 'stepCamera', 'aimCamera', 'stepCrews', 'stepLife', 'stepBeacons', 'placeLabels', 'applyPose'].map(fnBody);
+  T('every per-frame step is found', perFrame.every(Boolean));
+  const reads = /offsetWidth|offsetHeight|getBoundingClientRect|getComputedStyle|clientWidth|clientHeight|scrollTop|innerHTML|textContent|measureLabels|rawToken|tokenOf/;
+  T('no frame reads layout or style, or writes content (0.3.1 recalculated the page on every zoom frame)',
+    perFrame.every(b => !reads.test(code(b || ''))), perFrame.filter(b => b && reads.test(code(b))).map(b => b.slice(9, 30)).join(', '));
+  T('a label moves by transform alone, and only when it has moved',
+    /if\(x !== t\.px \|\| y !== t\.py\)\{ t\.px = x; t\.py = y; t\.button\.style\.transform = 'translate3d\('/.test(r3) &&
+    !/style\.(left|top|width|height)\s*=/.test(code(fnBody('placeLabels') || '')));
+  T('labels are measured when their words or their room change, outside any frame',
+    /t\.labelW = t\.label\.offsetWidth; t\.labelH = t\.label\.offsetHeight; t\.labelDirty = false;/.test(r3) &&
+    /if\(changed\('name'\)\)\{ t\.nameEl\.textContent = item\.name; t\.labelDirty = true; \}/.test(r3));
+  T('up to about 60 frames a second, not 30', W.WORLD.frameMinMs >= 12 && W.WORLD.frameMinMs <= 16.7 &&
+    /now - S\.lastRender < WORLD\.frameMinMs/.test(r3));
+  T('frames that keep coming slowly lower the resolution a step',
+    /S\.slowSum \/ S\.slowCount > WORLD\.slowFrameMs && S\.dpr > WORLD\.minPixelRatio/.test(r3) && /S\.dprCap = nextPixelRatio\(S\.dpr\)/.test(r3));
+  T('the island is built once per layout, not per frame', /if\(key === land\.key\) return island;/.test(r3) && !/buildLand/.test(code(fnBody('tick') || '')));
+  T('taps are hit-tested on the island, never by a box per district',
+    /hitDistrict\(S\.order\.map/.test(r3) && !/world-hit/.test(r3 + style));
 
   sub('labels: readable at once, or not there to tap');
   const shown = W.resolveLabels([
@@ -2991,10 +3120,26 @@ async function testWorld(){
   T('the selected label wins an overlap', shown.a === true && shown.b === false);
   T('a clear label shows', shown.c === true);
   T('a label outside the view is not there', shown.d === false);
-  T('a hidden label or an off-screen tile takes no taps',
+  T('a hidden label, or one whose district has left the view, takes no taps',
     /\.world-tile\.is-hidden \.world-label\{ opacity: 0; pointer-events: none; \}/.test(style) &&
-    /\.world-tile\.is-off \.world-hit\{ pointer-events: none; \}/.test(style));
+    /\.world-tile\.is-off \.world-label\{ opacity: 0; pointer-events: none; \}/.test(style));
   T('a focused label always shows', /\.world-tile:focus-visible \.world-label\{ opacity: 1;/.test(style));
+
+  sub('the sign: status and what needs you, rising in once, taking no taps');
+  T('it sits over the selected place only, whole inside the view', /const a = project\(signAnchor\(districtOf\(sel\), sel\.height\), f, W, Hh\)/.test(r3) &&
+    /cx = Math\.round\(Math\.min\(Math\.max\(x, half\), Math\.max\(half, W - half\)\)\), cy = Math\.max\(y, Math\.ceil\(room\.h\)\)/.test(r3));
+  T('it takes no taps and is not read twice', /\.world-sign\{[^}]*pointer-events: none;/.test(style) && /sign\.setAttribute\('aria-hidden', 'true'\)/.test(r3));
+  T('it rises in when the selection changes, from the one loop', /S\.signEnter = 2;/.test(r3) &&
+    /if\(S\.signEnter && --S\.signEnter === 0 && S\.signFor\) sign\.classList\.add\('is-in'\);/.test(r3) &&
+    /\.world-sign\.is-in \.world-sign-card\{ opacity: 1;/.test(style));
+  const beneath = W.resolveLabels([
+    { id: ' sign', row: -1, x: 100, y: 10, w: 200, h: 60 },
+    { id: 'near', row: 2, x: 150, y: 40, w: 80, h: 40 },
+    { id: 'clear', row: 2, x: 10, y: 120, w: 80, h: 40 }], [null, ' sign', 'clear'], 400, 300);
+  T('a label the sign would cover is not there while the sign is', beneath.near === false && beneath.clear === true &&
+    /rects\.push\(\{ id: SIGN, row: -1,/.test(r3) && /resolveLabels\(rects, \[S\.focused, SIGN, S\.selected\], W, Hh\)/.test(r3));
+  T('it is measured when its words change, so a focus leaves it room', /S\.signRoom = w > 0 && h > 0 \?/.test(r3) &&
+    /focusFrame\(districtOf\(sel\), sel\.height, sel\.room, S\.over, S\.w, S\.h, S\.signRoom\)/.test(r3));
 
   sub('a touch is a tap or a pan, never both');
   let g = W.createArbiter(8);
@@ -3012,8 +3157,12 @@ async function testWorld(){
   T('a stray event after the end does nothing', g.up(3) === null && g.move(3, 1, 1) === null);
   T('the viewport, and only it, takes drags from the page', /\.world-view\{[^}]*touch-action: none/.test(style) &&
     (style.match(/touch-action: none/g) || []).length === 1);
-  T('the click a drag would make never reaches a button', /listen\(view, 'click', e => \{\s*if\(!S\.swallowClick\) return;/.test(r3) &&
-    /, true\);/.test(r3.slice(r3.indexOf("listen(view, 'click'"), r3.indexOf("listen(view, 'click'") + 260)));
+  const clickGuard = r3.slice(r3.indexOf("listen(view, 'click'"), r3.indexOf("listen(view, 'click'") + 260);
+  T('the click a drag or an island tap would also make never reaches a button, however the camera has moved',
+    /listen\(view, 'click', e => \{\s*if\(e\.detail === 0 \|\| performance\.now\(\) > S\.swallowUntil\) return;/.test(r3) && /, true\);/.test(clickGuard) &&
+    /const endPan = \(\) => \{ view\.classList\.remove\('is-panning'\); swallowNextClick\(\); \};/.test(r3) &&
+    /if\(r\.type === 'tap' && S\.downOnIsland && S\.frame\)\{\s*swallowNextClick\(\);/.test(r3));
+  T('and a keyboard\'s click is never swallowed', /e\.detail === 0/.test(clickGuard));
 
   sub('the page keeps the flat field until the world is drawn, and after it fails');
   T('where WebGL 2 is absent the world is never asked for', c.worldStage === 'off' && c.Field === c.IsoField &&

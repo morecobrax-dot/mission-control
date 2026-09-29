@@ -27,13 +27,16 @@ and works offline.
   you open the app, when you come back to it, and when you tap Refresh. See
   *Status from repositories* below.
 - **Project world.** Every project in the registry — six to start, and a new
-  record needs no other change — as a miniature 3D place: a training hall and
-  track, a scheduling studio, a library corner, a vault and ledger, a
-  launchpad, a sushi counter, or a generic module. Each has its name and one
+  record needs no other change — as a district on one miniature island, among
+  trees, rocks and ponds: a training hall and track, a scheduling studio, a
+  library corner, a vault and ledger, a launchpad, a sushi counter, or a
+  generic module, each busy with its own life while its work is under way
+  and still when it is not. Each has its name and one
   status on its label (what needs you comes first), a beacon lit only by a
   known state, and a worker whose station and pose follow that state; a
   project with no recorded state has no worker. Tap once to bring a project
-  into focus; tap again (or press Enter) for its brief, or use the Brief
+  into focus, with a sign over it saying its status and what needs you; tap
+  again (or press Enter) for its brief, or use the Brief
   button in the slim bar under the world, which always shows the selected
   project above the tab bar. Drag inside the world to look around; Overview
   shows every project again. Where WebGL 2 is not

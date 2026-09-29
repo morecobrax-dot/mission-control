@@ -1,6 +1,6 @@
 {
   "name": "mission-control",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "description": "A personal command center for software projects.",
   "scripts": {
