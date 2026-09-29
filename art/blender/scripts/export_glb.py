@@ -21,6 +21,7 @@ import bpy
 import mc_lib
 mc_lib.add_paths()
 import mc_materials
+import mc_worker
 
 
 def opt(a, n, d=None):
@@ -82,21 +83,18 @@ def main():
     for _ in range(3):
         bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
 
-    # each worker carries MC_IDLE and MC_WORKING as NLA tracks, so the GLB holds
-    # two clean, named clips instead of whichever action happened to be active
+    # each worker's own actions (recorded on the rig as mc_clips) become NLA
+    # tracks named by clip, so the GLB holds one clean animation per clip
     for o in keep:
-        if o.type != 'ARMATURE' or not o.animation_data or not o.animation_data.action:
+        if o.type != 'ARMATURE' or not o.animation_data or 'mc_clips' not in o.keys():
             continue
         ad = o.animation_data
-        cur = ad.action.name
-        suffix = cur[cur.index('.'):] if '.' in cur else ''
-        for clip in ('MC_IDLE', 'MC_WORKING'):
-            act = bpy.data.actions.get(clip + suffix)
-            if act:
-                tr = ad.nla_tracks.new()
-                tr.name = clip
-                st = tr.strips.new(clip, 1, act)
-                st.name = clip
+        for name in o['mc_clips'].split(','):
+            clip = name.split('.')[0]
+            tr = ad.nla_tracks.new()
+            tr.name = clip
+            st = tr.strips.new(clip, 1, bpy.data.actions[name])
+            st.name = clip
         ad.action = None
 
     bpy.ops.object.select_all(action='DESELECT')
@@ -142,7 +140,7 @@ def main():
         'texture_memory_bytes': 0,
         'armatures': sum(1 for o in export_objs if o.type == 'ARMATURE'),
         'status_meshes': sorted(o.name for o in export_objs if o.type == 'MESH' and is_status(o)),
-        'clips': ['MC_IDLE', 'MC_WORKING'],
+        'clips': list(mc_worker.CLIPS),
     }
     print('AUDIT', json.dumps(rep))
     if report:

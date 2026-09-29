@@ -1,11 +1,11 @@
 {
   "file": "golden-diorama.glb",
-  "bytes": 1367468,
-  "triangles": 55042,
-  "vertices_blender": 28713,
-  "mesh_objects": 34,
-  "draw_calls_estimate": 60,
-  "materials": 24,
+  "bytes": 1794120,
+  "triangles": 68038,
+  "vertices_blender": 35649,
+  "mesh_objects": 37,
+  "draw_calls_estimate": 67,
+  "materials": 25,
   "material_names": [
     "MC_COMPOSITE_YELLOW",
     "MC_CONCRETE",
@@ -26,6 +26,7 @@
     "MC_PLINTH",
     "MC_PLINTH_DK",
     "MC_SKIN",
+    "MC_SOIL",
     "MC_STATUS_LIGHT",
     "MC_TRACK",
     "MC_TRACK_LINE",
@@ -34,18 +35,22 @@
   ],
   "textures": 0,
   "texture_memory_bytes": 0,
-  "armatures": 5,
+  "armatures": 6,
   "status_meshes": [
     "GD_BeaconLamp",
-    "GD_Worker_lawn_HelmetBand",
-    "GD_Worker_pergola_HelmetBand",
-    "GD_Worker_roof_HelmetBand",
-    "GD_Worker_sprint_HelmetBand",
-    "GD_Worker_yard_coach_HelmetBand",
+    "GD_Worker_coach_HelmetBand",
+    "GD_Worker_lifter_HelmetBand",
+    "GD_Worker_rest_HelmetBand",
+    "GD_Worker_runner_HelmetBand",
+    "GD_Worker_signal_HelmetBand",
+    "GD_Worker_tech_HelmetBand",
     "PB_StatusRim"
   ],
   "clips": [
     "MC_IDLE",
-    "MC_WORKING"
+    "MC_WORKING",
+    "MC_ACTIVE",
+    "MC_SIGNAL",
+    "MC_REPAIR"
   ]
 }

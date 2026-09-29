@@ -164,6 +164,18 @@ class MB:
         self._place(verts, cx, cy, z0, rot)
         return self
 
+    def beam(self, p0, p1, w, d=None):
+        """A square member from p0 to p1: braces, ladder rails, leaning props."""
+        a, b = Vector(p0), Vector(p1)
+        v = b - a
+        r = bmesh.ops.create_cube(self.bm, size=1.0)
+        verts = r['verts']
+        bmesh.ops.scale(self.bm, vec=(w, d if d is not None else w, v.length), verts=verts)
+        q = Vector((0, 0, 1)).rotation_difference(v.normalized())
+        bmesh.ops.transform(self.bm, matrix=q.to_matrix().to_4x4(), verts=verts)
+        bmesh.ops.translate(self.bm, vec=(a + b) / 2, verts=verts)
+        return self
+
     def sphere(self, cx, cy, cz, rx, ry=None, rz=None, seg=16, rings=10):
         r = bmesh.ops.create_uvsphere(self.bm, u_segments=seg, v_segments=rings, radius=1.0)
         verts = r['verts']

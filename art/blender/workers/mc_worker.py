@@ -5,10 +5,16 @@ A segmented rigid rig: 13 bones, every part weighted 100% to one bone, so it
 exports to glTF as a plain skinned mesh. The helmet band is its own object,
 parented to the head bone, and uses the shared MC_STATUS_LIGHT material.
 
-Actions: MC_IDLE and MC_WORKING are authored. The bone set already carries
-what walk, clipboard/QA, wave, point, blocked/warning and celebrate will need
-(both arms and both forearms, hips, spine, head); they are future keyframes,
-not future rigging.
+Clips: MC_IDLE, MC_WORKING (clipboard), MC_ACTIVE (a run cycle), MC_SIGNAL
+(an arm raised to the beacon) and MC_REPAIR (bent over a job). Every rig
+carries all five, so the app can change what a worker is doing without a
+new model.
+
+Rotation directions on this rig, measured rather than assumed: the worker
+faces local +Y. On an upward bone (spine, head, hips) +X tilts BACK and -X
+tilts forward. On a downward bone (arms, legs) +X swings FORWARD. +Z moves a
+downward bone's tip toward -X, which is inward for the left (.L, +X) side and
+outward for the right.
 """
 import bpy
 import bmesh
@@ -93,10 +99,21 @@ def _armature(name, coll, s=1.0):
     return obj
 
 
-def _body(name, coll, vest, pants, shirt, prop=None):
-    mats = ['MC_SKIN', vest, pants, shirt, 'MC_PAINT_WHITE', 'MC_METAL_DARK', 'MC_WOOD']
+OUTFITS = {
+    # colour blocking that survives a thumbnail: a white helmet, a saturated
+    # mid body and dark legs, against light paving or terracotta rubber
+    'crew':    dict(vest='MC_PAINT_BLUE', shirt='MC_PAINT_NAVY', pants='MC_PLINTH_DK', stripe=True),
+    'tech':    dict(vest='MC_PLINTH_DK', shirt='MC_PLINTH_DK', pants='MC_PAINT_NAVY', stripe=True),
+    'kit': dict(vest='MC_PAINT_WHITE', shirt='MC_PAINT_BLUE', pants='MC_PAINT_NAVY', stripe=False),
+}
+
+
+def _body(name, coll, vest, pants, shirt, prop=None, stripe=False):
+    order = ['MC_SKIN', vest, pants, shirt, 'MC_PAINT_WHITE', 'MC_METAL_DARK', 'MC_WOOD', 'MC_METAL',
+             'MC_GLASS_LIT']
+    mats = list(dict.fromkeys(order))
     P = Parts(mats)
-    S, V, PA, SH, HELM, DK, WD = mats
+    S, V, PA, SH, HELM, DK, WD = 'MC_SKIN', vest, pants, shirt, 'MC_PAINT_WHITE', 'MC_METAL_DARK', 'MC_WOOD'
     # legs
     for side, sx in (('L', 0.075), ('R', -0.075)):
         P.add('cyl', 'thigh.' + side, PA, (sx, 0, 0.36), (0.062, 0.062, 0.22), seg=10)
@@ -106,6 +123,8 @@ def _body(name, coll, vest, pants, shirt, prop=None):
     P.add('sphere', 'hips', PA, (0, 0, 0.5), (0.15, 0.105, 0.1))
     P.add('sphere', 'spine', V, (0, 0, 0.7), (0.175, 0.12, 0.2), seg=14, rings=9)
     P.add('sphere', 'spine', SH, (0, 0, 0.87), (0.17, 0.105, 0.045), seg=12, rings=7)
+    if stripe:
+        P.add('cyl', 'spine', HELM, (0, 0, 0.64), (0.172, 0.118, 0.028), seg=16)
     # arms: short sleeves, bare forearms, round hands
     for side, sx in (('L', 0.205), ('R', -0.205)):
         P.add('sphere', 'upperarm.' + side, SH, (sx, 0, 0.82), (0.065, 0.065, 0.065))
@@ -125,6 +144,12 @@ def _body(name, coll, vest, pants, shirt, prop=None):
     if prop == 'clipboard':
         P.add('box', 'forearm.L', WD, (0.235, 0.075, 0.5), (0.03, 0.17, 0.21))
         P.add('box', 'forearm.L', 'MC_PAINT_WHITE', (0.235, 0.09, 0.505), (0.022, 0.15, 0.19))
+    elif prop == 'tablet':
+        P.add('box', 'forearm.L', DK, (0.235, 0.07, 0.49), (0.03, 0.2, 0.15))
+        P.add('box', 'forearm.L', 'MC_GLASS_LIT', (0.218, 0.07, 0.49), (0.006, 0.17, 0.12))
+    elif prop == 'wrench':
+        P.add('box', 'forearm.R', 'MC_METAL', (-0.205, 0.0, 0.36), (0.035, 0.035, 0.2))
+        P.add('box', 'forearm.R', 'MC_METAL', (-0.205, 0.0, 0.27), (0.07, 0.035, 0.035))
     me = bpy.data.meshes.new(name)
     P.bm.to_mesh(me)
     P.bm.free()
@@ -179,33 +204,77 @@ def _action(arm, name, keys, length):
 
 
 def author_actions(arm):
-    # IDLE: a slow breath, a small weight shift, arms hanging with a little sway
+    """Five 48-frame clips. Signs follow the measured directions in the module
+    docstring: forward lean is -X on the spine, a forward arm swing is +X."""
     idle = {
-        'spine':      [(1, (0, 0, 0)), (24, (1.5, 0, 1.0)), (48, (0, 0, 0))],
-        'head':       [(1, (0, 0, 0)), (24, (-1.0, 0, -2.0)), (48, (0, 0, 0))],
-        'upperarm.L': [(1, (2, 0, -4)), (24, (4, 0, -5)), (48, (2, 0, -4))],
-        'upperarm.R': [(1, (2, 0, 4)), (24, (0, 0, 5)), (48, (2, 0, 4))],
-        'forearm.L':  [(1, (-6, 0, 0)), (48, (-6, 0, 0))],
-        'forearm.R':  [(1, (-6, 0, 0)), (48, (-6, 0, 0))],
+        'spine':      [(1, (0, 0, 0)), (24, (-1.5, 0, 1.0)), (48, (0, 0, 0))],
+        'head':       [(1, (0, 0, 0)), (24, (1.0, 0, -2.0)), (48, (0, 0, 0))],
+        'upperarm.L': [(1, (3, 0, -5)), (24, (5, 0, -6)), (48, (3, 0, -5))],
+        'upperarm.R': [(1, (3, 0, 5)), (24, (1, 0, 6)), (48, (3, 0, 5))],
+        'forearm.L':  [(1, (10, 0, 0)), (48, (10, 0, 0))],
+        'forearm.R':  [(1, (10, 0, 0)), (48, (10, 0, 0))],
     }
-    a_idle = _action(arm, 'MC_IDLE', idle, 48)
-    # WORKING: clipboard up in the left hand, right hand ticking, head down to the board
+    # clipboard up in the left hand, right hand ticking, head down to the board
     work = {
-        'spine':      [(1, (5, 0, 0)), (24, (6, 0, 2)), (48, (5, 0, 0))],
-        'head':       [(1, (14, 0, 0)), (24, (10, 0, -8)), (48, (14, 0, 0))],
-        'upperarm.L': [(1, (-62, 0, -10)), (48, (-62, 0, -10))],
-        'forearm.L':  [(1, (-72, 0, 0)), (48, (-72, 0, 0))],
-        'upperarm.R': [(1, (-52, 0, 12)), (12, (-56, 0, 12)), (24, (-52, 0, 12)), (36, (-56, 0, 12)), (48, (-52, 0, 12))],
-        'forearm.R':  [(1, (-78, 0, 0)), (12, (-70, 0, 0)), (24, (-78, 0, 0)), (36, (-70, 0, 0)), (48, (-78, 0, 0))],
+        'spine':      [(1, (-6, 0, 0)), (24, (-7, 0, 2)), (48, (-6, 0, 0))],
+        'head':       [(1, (-16, 0, 0)), (24, (-12, 0, -8)), (48, (-16, 0, 0))],
+        'upperarm.L': [(1, (38, 0, -4)), (48, (38, 0, -4))],
+        'forearm.L':  [(1, (70, 0, 0)), (48, (70, 0, 0))],
+        'upperarm.R': [(1, (34, 0, -14)), (12, (38, 0, -14)), (24, (34, 0, -14)), (36, (38, 0, -14)), (48, (34, 0, -14))],
+        'forearm.R':  [(1, (74, 0, 0)), (12, (82, 0, 0)), (24, (74, 0, 0)), (36, (82, 0, 0)), (48, (74, 0, 0))],
     }
-    a_work = _action(arm, 'MC_WORKING', work, 48)
-    return {'IDLE': a_idle, 'WORKING': a_work}
+
+    # a run cycle, two strides per clip; frame 1 is the readable extreme
+    def cyc(a_, b_):
+        return [(1, a_), (13, b_), (25, a_), (37, b_), (49, a_)]
+    run = {
+        'spine':      cyc((-12, 0, 3), (-12, 0, -3)),
+        'head':       cyc((8, 0, 0), (8, 0, 0)),
+        'thigh.L':    cyc((42, 0, 0), (-30, 0, 0)),
+        'shin.L':     cyc((-18, 0, 0), (-75, 0, 0)),
+        'thigh.R':    cyc((-30, 0, 0), (42, 0, 0)),
+        'shin.R':     cyc((-75, 0, 0), (-18, 0, 0)),
+        'upperarm.L': cyc((-40, 0, -6), (48, 0, -6)),
+        'upperarm.R': cyc((48, 0, 6), (-40, 0, 6)),
+        'forearm.L':  cyc((70, 0, 0), (80, 0, 0)),
+        'forearm.R':  cyc((80, 0, 0), (70, 0, 0)),
+    }
+    # tablet in the left hand, right arm raised out to the side (clear of the
+    # head from any view) toward the beacon, a slow wave
+    signal = {
+        'spine':      [(1, (2, 0, 0)), (48, (2, 0, 0))],
+        'head':       [(1, (14, 0, 4)), (24, (16, 0, 2)), (48, (14, 0, 4))],
+        'upperarm.L': [(1, (36, 0, -4)), (48, (36, 0, -4))],
+        'forearm.L':  [(1, (68, 0, 0)), (48, (68, 0, 0))],
+        'upperarm.R': [(1, (15, 0, 145)), (24, (15, 0, 160)), (48, (15, 0, 145))],
+        'forearm.R':  [(1, (0, 0, 10)), (48, (0, 0, 10))],
+    }
+    # bent over a job, both hands in, the right hand turning a tool
+    repair = {
+        'spine':      [(1, (-34, 0, 0)), (24, (-36, 0, 2)), (48, (-34, 0, 0))],
+        'head':       [(1, (-8, 0, 0)), (48, (-8, 0, 0))],
+        'thigh.L':    [(1, (8, 0, 0)), (48, (8, 0, 0))],
+        'thigh.R':    [(1, (-6, 0, 0)), (48, (-6, 0, 0))],
+        'upperarm.L': [(1, (58, 0, -2)), (48, (58, 0, -2))],
+        'forearm.L':  [(1, (28, 0, 0)), (48, (28, 0, 0))],
+        'upperarm.R': [(1, (62, 0, 6)), (48, (62, 0, 6))],
+        'forearm.R':  [(1, (22, 0, 0)), (12, (40, 0, 0)), (24, (22, 0, 0)), (36, (40, 0, 0)), (48, (22, 0, 0))],
+    }
+    out = {}
+    for pose, name, keys in (('IDLE', 'MC_IDLE', idle), ('WORKING', 'MC_WORKING', work),
+                             ('ACTIVE', 'MC_ACTIVE', run), ('SIGNAL', 'MC_SIGNAL', signal),
+                             ('REPAIR', 'MC_REPAIR', repair)):
+        out[pose] = _action(arm, name, keys, 48)
+    return out
+
+
+CLIPS = ('MC_IDLE', 'MC_WORKING', 'MC_ACTIVE', 'MC_SIGNAL', 'MC_REPAIR')
 
 
 def make_worker(coll, status_coll, name='MC_Worker', loc=(0, 0, 0), rot_z=0.0, pose='IDLE',
-                vest='MC_PAINT_BLUE', pants='MC_PAINT_NAVY', shirt='MC_PAINT_CREAM', prop=None, scale=1.0):
+                outfit='crew', prop=None, scale=1.0):
     arm = _armature(name + '_Rig', coll, scale)
-    body = _body(name, coll, vest, pants, shirt, prop=prop)
+    body = _body(name, coll, prop=prop, **OUTFITS[outfit])
     body.data.transform(Matrix.Scale(scale, 4))
     body.parent = arm
     mod = body.modifiers.new('MC_Armature', 'ARMATURE')
@@ -217,6 +286,8 @@ def make_worker(coll, status_coll, name='MC_Worker', loc=(0, 0, 0), rot_z=0.0, p
     arm.location = loc
     arm.rotation_euler.z = math.radians(rot_z)
     arm['worker_pose'] = pose
+    arm['worker_outfit'] = outfit
+    arm['mc_clips'] = ','.join(a.name for a in acts.values())
     bpy.context.scene.frame_set(1)
     return arm, body
 
@@ -232,20 +303,24 @@ def build_worker_base(coll, status_coll):
     return arm, body
 
 
+# where (x, y, z of the feet), facing (degrees about Z; 180 faces -y, 225 faces
+# the camera, 270 faces +x), pose, prop, outfit. Heights are the surface the
+# feet stand on: deck 1.0, path 1.03, rubber floor 1.05, track 1.10, roof track 5.57.
+# The runner is set 0.075 lower so the leading foot, not the hip, meets the track.
 GD_WORKERS = [
-    # where, facing (degrees about Z; 180 faces -y, 225 faces the camera), pose, prop
-    ('yard_coach', (-1.55, -2.35, 1.0), 200, 'WORKING', 'clipboard'),
-    ('pergola',    (-4.2, -3.9, 1.05), 215, 'IDLE', None),
-    ('sprint',     (4.55, -0.9, 1.0), 235, 'IDLE', None),
-    ('lawn',       (1.1, -4.4, 1.0), 210, 'IDLE', None),
-    ('roof',       (-4.9, 3.0, 5.69), 240, 'IDLE', None),
+    ('coach',  (-2.05, -2.25, 1.0), 250, 'WORKING', 'clipboard', 'crew'),
+    ('runner', (0.7, -1.13, 1.025), 270, 'ACTIVE', None, 'kit'),
+    ('signal', (4.25, -2.4, 1.03), 205, 'SIGNAL', 'tablet', 'crew'),
+    ('tech',   (-1.05, 3.98, 5.57), 0, 'REPAIR', 'wrench', 'tech'),
+    ('lifter', (-5.0, -1.95, 1.05), 215, 'REPAIR', None, 'kit'),
+    ('rest',   (5.55, -3.35, 1.0), 150, 'IDLE', None, 'crew'),
 ]
 
 
 def place_golden_workers(coll, status_coll=None, layout=None):
     status_coll = status_coll or bpy.data.collections['STATUS_LIGHTS']
     out = []
-    for tag, loc, rz, pose, prop in (layout or GD_WORKERS):
+    for tag, loc, rz, pose, prop, outfit in (layout or GD_WORKERS):
         out.append(make_worker(coll, status_coll, name='GD_Worker_' + tag, loc=loc, rot_z=rz, pose=pose,
-                               prop=prop, vest='MC_PAINT_BLUE', scale=1.35))
+                               prop=prop, outfit=outfit, scale=1.4))
     return out

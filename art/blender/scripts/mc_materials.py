@@ -30,22 +30,22 @@ PALETTE = {
     'track_line':   '#F2EFE8',
     'concrete':     '#C8C0B3',
     'concrete_dk':  '#A29A8E',
-    'paver':        '#E2D6C4',
+    'paver':        '#C9BCA9',
     'road':         '#4A4E55',
-    'glass':        '#6D9AC0',
-    'glass_lit':    '#FFE3AE',
+    'glass':        '#1C2E42',
+    'glass_lit':    '#FFAE5C',
     'metal':        '#B7BDC6',
     'metal_dark':   '#3B4048',
-    'wood':         '#CF9F6A',
+    'wood':         '#C98F57',
     'wood_dark':    '#8B6540',
-    'leaf':         '#78AC58',
-    'leaf_dark':    '#4E7F48',
-    'grass':        '#93BE6C',
+    'leaf':         '#6FA24F',
+    'leaf_dark':    '#3F6E3F',
+    'grass':        '#86B25F',
     'soil':         '#7A5C43',
     'skin':         '#E7B993',
     'yellow':       '#F1BE3B',
     'plinth':       '#EBE3D6',
-    'plinth_dk':    '#D2C7B6',
+    'plinth_dk':    '#34373E',
 }
 
 
@@ -67,7 +67,7 @@ def _new(name):
 
 
 def pbr(name, hex_, rough=0.5, metal=0.0, var=0.05, coat=0.0, coat_rough=0.15,
-        spec=0.5, alpha=None, transmission=0.0, ior=1.45, sheen=0.0):
+        spec=0.5, alpha=None, transmission=0.0, ior=1.45, sheen=0.0, sheen_rough=0.5, sss=0.0):
     m, nodes, links, bsdf = _new(name)
     bsdf.inputs['Base Color'].default_value = srgb(hex_)
     bsdf.inputs['Metallic'].default_value = metal
@@ -82,6 +82,10 @@ def pbr(name, hex_, rough=0.5, metal=0.0, var=0.05, coat=0.0, coat_rough=0.15,
         bsdf.inputs['Transmission Weight'].default_value = transmission
     if sheen:
         bsdf.inputs['Sheen Weight'].default_value = sheen
+        bsdf.inputs['Sheen Roughness'].default_value = sheen_rough
+    if sss:
+        bsdf.inputs['Subsurface Weight'].default_value = sss
+        bsdf.inputs['Subsurface Radius'].default_value = (0.08, 0.12, 0.05)
     if alpha is not None:
         bsdf.inputs['Alpha'].default_value = alpha
     if var:
@@ -122,38 +126,46 @@ def set_status(state, strength_scale=1.0):
 
 
 def build_library():
+    """Each role has its own response. The difference is roughness, specular
+    and coat, never a visible texture: paint is semi-gloss, concrete and
+    pavers are dry, rubber is dead matte with a dusty sheen, wood is varnished,
+    metal is metal, glass is a dark mirror, plastic is glossy, foliage is soft."""
     P = PALETTE
     lib = {}
-    # painted architecture: satin, faint coat so edges catch a soft highlight
-    lib['MC_PAINT_WHITE'] = pbr('MC_PAINT_WHITE', P['paint_white'], 0.55, coat=0.12, coat_rough=0.35)
-    lib['MC_PAINT_CREAM'] = pbr('MC_PAINT_CREAM', P['paint_cream'], 0.55, coat=0.1, coat_rough=0.35)
-    lib['MC_PAINT_BLUE'] = pbr('MC_PAINT_BLUE', P['paint_blue'], 0.5, coat=0.15, coat_rough=0.3)
-    lib['MC_PAINT_NAVY'] = pbr('MC_PAINT_NAVY', P['paint_navy'], 0.5, coat=0.15, coat_rough=0.3)
-    lib['MC_PAINT_SLATE'] = pbr('MC_PAINT_SLATE', P['paint_slate'], 0.55)
-    # matte plastic / composite
-    lib['MC_TRACK'] = pbr('MC_TRACK', P['track'], 0.72, var=0.06)
-    lib['MC_TRACK_LINE'] = pbr('MC_TRACK_LINE', P['track_line'], 0.62, var=0.03)
-    lib['MC_COMPOSITE_YELLOW'] = pbr('MC_COMPOSITE_YELLOW', P['yellow'], 0.5, var=0.03)
-    # ground
-    lib['MC_CONCRETE'] = pbr('MC_CONCRETE', P['concrete'], 0.8, var=0.07)
-    lib['MC_CONCRETE_DK'] = pbr('MC_CONCRETE_DK', P['concrete_dk'], 0.8, var=0.06)
-    lib['MC_PAVER'] = pbr('MC_PAVER', P['paver'], 0.78, var=0.06)
-    lib['MC_ROAD'] = pbr('MC_ROAD', P['road'], 0.85, var=0.05)
-    lib['MC_PLINTH'] = pbr('MC_PLINTH', P['plinth'], 0.6, coat=0.12, coat_rough=0.4)
-    lib['MC_PLINTH_DK'] = pbr('MC_PLINTH_DK', P['plinth_dk'], 0.65)
-    # glass: dark reflective pane, plus a warm lit pane
-    lib['MC_GLASS'] = pbr('MC_GLASS', P['glass'], 0.08, metal=0.0, var=0.0, coat=0.6, coat_rough=0.05, spec=0.8)
-    lib['MC_GLASS_LIT'] = emissive('MC_GLASS_LIT', P['glass_lit'], 1.4)
-    # metal, wood, organics
-    lib['MC_METAL'] = pbr('MC_METAL', P['metal'], 0.32, metal=1.0, var=0.05)
-    lib['MC_METAL_DARK'] = pbr('MC_METAL_DARK', P['metal_dark'], 0.4, metal=0.9, var=0.04)
-    lib['MC_WOOD'] = pbr('MC_WOOD', P['wood'], 0.6, var=0.06)
+    # painted architecture: semi-gloss enamel, the coat gives every bevel a catch
+    lib['MC_PAINT_WHITE'] = pbr('MC_PAINT_WHITE', P['paint_white'], 0.45, coat=0.25, coat_rough=0.22)
+    lib['MC_PAINT_CREAM'] = pbr('MC_PAINT_CREAM', P['paint_cream'], 0.48, coat=0.2, coat_rough=0.25)
+    lib['MC_PAINT_BLUE'] = pbr('MC_PAINT_BLUE', P['paint_blue'], 0.4, coat=0.3, coat_rough=0.2)
+    lib['MC_PAINT_NAVY'] = pbr('MC_PAINT_NAVY', P['paint_navy'], 0.4, coat=0.3, coat_rough=0.2)
+    lib['MC_PAINT_SLATE'] = pbr('MC_PAINT_SLATE', P['paint_slate'], 0.88, spec=0.25, sheen=0.2)   # rubber floor
+    # rubber: dead matte, low specular, a dusty sheen at grazing angles
+    lib['MC_TRACK'] = pbr('MC_TRACK', P['track'], 0.92, var=0.04, spec=0.2, sheen=0.35, sheen_rough=0.6)
+    lib['MC_TRACK_LINE'] = pbr('MC_TRACK_LINE', P['track_line'], 0.7, var=0.03, spec=0.35)
+    # moulded plastic: glossy, tight highlight
+    lib['MC_COMPOSITE_YELLOW'] = pbr('MC_COMPOSITE_YELLOW', P['yellow'], 0.28, var=0.0, coat=0.4, coat_rough=0.1)
+    # mineral ground: dry, almost no specular
+    lib['MC_CONCRETE'] = pbr('MC_CONCRETE', P['concrete'], 0.9, var=0.05, spec=0.3)
+    lib['MC_CONCRETE_DK'] = pbr('MC_CONCRETE_DK', P['concrete_dk'], 0.9, var=0.05, spec=0.3)
+    lib['MC_PAVER'] = pbr('MC_PAVER', P['paver'], 0.86, var=0.05, spec=0.35)
+    lib['MC_ROAD'] = pbr('MC_ROAD', P['road'], 0.9, var=0.04, spec=0.3)
+    # display plinth: a lacquered light ledge over a dark satin base
+    lib['MC_PLINTH'] = pbr('MC_PLINTH', P['plinth'], 0.5, coat=0.35, coat_rough=0.18)
+    lib['MC_PLINTH_DK'] = pbr('MC_PLINTH_DK', P['plinth_dk'], 0.42, coat=0.4, coat_rough=0.2)
+    # glass: a dark mirror that picks up the sky; interiors glow warm in some panes
+    lib['MC_GLASS'] = pbr('MC_GLASS', P['glass'], 0.04, var=0.0, coat=1.0, coat_rough=0.02, spec=1.0, ior=1.52)
+    lib['MC_GLASS_LIT'] = emissive('MC_GLASS_LIT', P['glass_lit'], 2.6)
+    # metal: brushed aluminium, and dark powder-coated steel
+    lib['MC_METAL'] = pbr('MC_METAL', P['metal'], 0.24, metal=1.0, var=0.04)
+    lib['MC_METAL_DARK'] = pbr('MC_METAL_DARK', P['metal_dark'], 0.38, metal=0.35, var=0.0, coat=0.35, coat_rough=0.3)
+    # wood: oiled and varnished, warmer and glossier than anything mineral
+    lib['MC_WOOD'] = pbr('MC_WOOD', P['wood'], 0.5, var=0.06, coat=0.35, coat_rough=0.3)
     lib['MC_WOOD_DARK'] = pbr('MC_WOOD_DARK', P['wood_dark'], 0.6, var=0.05)
-    lib['MC_LEAF'] = pbr('MC_LEAF', P['leaf'], 0.7, var=0.05)
-    lib['MC_LEAF_DARK'] = pbr('MC_LEAF_DARK', P['leaf_dark'], 0.7, var=0.05)
-    lib['MC_GRASS'] = pbr('MC_GRASS', P['grass'], 0.85, var=0.05, sheen=0.3)
-    lib['MC_SOIL'] = pbr('MC_SOIL', P['soil'], 0.9, var=0.04)
-    lib['MC_SKIN'] = pbr('MC_SKIN', P['skin'], 0.55, var=0.0)
+    # foliage: soft, a little light through the leaves, velvet grass
+    lib['MC_LEAF'] = pbr('MC_LEAF', P['leaf'], 0.6, var=0.05, sheen=0.4, sss=0.15)
+    lib['MC_LEAF_DARK'] = pbr('MC_LEAF_DARK', P['leaf_dark'], 0.62, var=0.05, sheen=0.4, sss=0.12)
+    lib['MC_GRASS'] = pbr('MC_GRASS', P['grass'], 0.95, var=0.04, spec=0.25, sheen=0.7, sheen_rough=0.4)
+    lib['MC_SOIL'] = pbr('MC_SOIL', P['soil'], 0.95, var=0.04, spec=0.2)
+    lib['MC_SKIN'] = pbr('MC_SKIN', P['skin'], 0.5, var=0.0, sss=0.2)
     # the single status material
     lib['MC_STATUS_LIGHT'] = emissive('MC_STATUS_LIGHT', '#3FBF7F', 1.4)
     return lib
@@ -174,9 +186,9 @@ def build_backdrop_material():
     rng.inputs['From Max'].default_value = 48.0
     ramp = nodes.new('ShaderNodeValToRGB')
     ramp.color_ramp.elements[0].position = 0.0
-    ramp.color_ramp.elements[0].color = srgb('#EEDDCB')
+    ramp.color_ramp.elements[0].color = srgb('#A3978D')
     ramp.color_ramp.elements[1].position = 1.0
-    ramp.color_ramp.elements[1].color = srgb('#D5BFAC')
+    ramp.color_ramp.elements[1].color = srgb('#7B7069')
     links.new(tc.outputs['Object'], sep.inputs[0])
     links.new(sep.outputs['Value'], rng.inputs['Value'])
     links.new(rng.outputs['Result'], ramp.inputs['Fac'])

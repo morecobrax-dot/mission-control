@@ -1,13 +1,14 @@
 """golden diorama: an original miniature training and performance facility.
 
-Not a gym chain and not a building anyone owns. The architecture carries the
+Not a chain and not a building anyone owns. The architecture carries the
 identity: a two-storey training hall with an oval rooftop running track, a
-shallow-vaulted annex joined to it by a glass sky bridge, a stepped
-progression podium topped by the beacon, an open-air lifting pergola and a
-three-lane sprint strip. No signage, no lettering.
+shallow-vaulted annex joined to it by a glass sky bridge, a finish-line
+timing tower carrying the beacon, an open-air lifting pergola, a three-lane
+sprint strip and a lawn drill ground. Signage is blank geometry, never words.
 
 Deck top is z = 1.0, deck is 15.4 across. The camera sits at +x, -y; the key
-light comes from -y, so the -y faces are lit and the +x faces are in fill.
+sun comes from camera-left, so the -y faces are lit and the +x faces are in
+shadow.
 """
 import bpy
 import math
@@ -38,19 +39,43 @@ def rect(mb, x0, x1, y0, y1, z0, h, **kw):
     mb.box((x0 + x1) / 2, (y0 + y1) / 2, z0, x1 - x0, y1 - y0, h, **kw)
 
 
-def tree(B, x, y, s=1.0, dark=False):
-    B.get('MC_WOOD_DARK', 0.0, tag='Trunk', sm=True).cyl(x, y, Z, 0.11 * s, 0.75 * s, seg=12)
-    leaf = B.get('MC_LEAF_DARK' if dark else 'MC_LEAF', 0.0, tag='Foliage', sm=True)
-    leaf.sphere(x, y, Z + 1.05 * s, 0.62 * s, 0.62 * s, 0.56 * s, seg=14, rings=10)
-    leaf.sphere(x + 0.3 * s, y - 0.1 * s, Z + 1.34 * s, 0.42 * s, 0.42 * s, 0.4 * s, seg=14, rings=9)
-    leaf.sphere(x - 0.26 * s, y + 0.12 * s, Z + 1.24 * s, 0.4 * s, 0.4 * s, 0.38 * s, seg=14, rings=9)
+# canopy clumps: (dx, dy, z, r) in units of the tree size. Lower, outer clumps
+# are the dark green, so every canopy carries its own light-to-shadow turn.
+CANOPY = [(0.0, 0.0, 1.0, 0.5, 1), (0.34, -0.08, 0.92, 0.36, 1), (-0.3, 0.18, 0.95, 0.38, 1),
+          (0.08, 0.3, 0.9, 0.34, 1), (0.12, -0.12, 1.36, 0.4, 0), (-0.18, 0.02, 1.3, 0.34, 0),
+          (0.06, 0.1, 1.62, 0.26, 0)]
+
+
+def tree(B, x, y, s=1.0, pit=True, z=None):
+    z = Z if z is None else z
+    B.get('MC_WOOD_DARK', 0.0, tag='Trunk', sm=True).cyl(x, y, z, 0.1 * s, 0.95 * s, seg=10, radius2=0.06 * s)
+    for dx, dy, zz, r, dark in CANOPY:
+        leaf = B.get('MC_LEAF_DARK' if dark else 'MC_LEAF', 0.0, tag='Foliage', sm=True)
+        leaf.sphere(x + dx * s, y + dy * s, z + zz * s, r * s, r * s, r * 0.88 * s, seg=12, rings=8)
+    if pit:
+        # a tree pit: steel grate frame around a soil square, flush with the paving
+        rect(B.get('MC_METAL_DARK', 0.008, tag='TreeGrate'), x - 0.5, x + 0.5, y - 0.5, y + 0.5, z, 0.018)
+        rect(B.get('MC_SOIL', 0.0, tag='TreeSoil'), x - 0.4, x + 0.4, y - 0.4, y + 0.4, z, 0.024)
 
 
 def planter(B, x, y, w=0.9, d=0.5):
-    rect(B.get('MC_PAINT_CREAM', 0.03, tag='Planter'), x - w / 2, x + w / 2, y - d / 2, y + d / 2, Z, 0.34)
-    B.get('MC_LEAF', 0.0, tag='PlanterLeaf', sm=True).sphere(x, y, Z + 0.55, w * 0.42, d * 0.55, 0.3, seg=12, rings=8)
-    B.get('MC_LEAF_DARK', 0.0, tag='PlanterLeaf', sm=True).sphere(x + w * 0.2, y, Z + 0.6, w * 0.24, d * 0.4, 0.22,
-                                                                  seg=14, rings=8)
+    rect(B.get('MC_PAINT_CREAM', 0.03, tag='Planter'), x - w / 2, x + w / 2, y - d / 2, y + d / 2, Z, 0.4)
+    rect(B.get('MC_SOIL', 0.0, tag='TreeSoil'), x - w / 2 + 0.07, x + w / 2 - 0.07, y - d / 2 + 0.07,
+         y + d / 2 - 0.07, Z + 0.3, 0.12)
+    n = max(2, int(w / 0.34))
+    for i in range(n):
+        t = (i + 0.5) / n
+        cx = x - w / 2 + 0.12 + (w - 0.24) * t
+        r = 0.17 + 0.05 * ((i * 7) % 3) / 2
+        B.get('MC_LEAF' if i % 2 else 'MC_LEAF_DARK', 0.0, tag='PlanterLeaf', sm=True).sphere(
+            cx, y + 0.03 * (-1) ** i, Z + 0.46 + r * 0.4, r, min(r, d * 0.5), r * 0.85, seg=12, rings=8)
+
+
+def hedge(B, x0, x1, y, d=0.62):
+    """A clipped hedge in a long planter: designed planting, not loose balls."""
+    rect(B.get('MC_PAINT_CREAM', 0.03, tag='Planter'), x0, x1, y - d / 2, y + d / 2, Z, 0.36)
+    rect(B.get('MC_LEAF_DARK', 0.1, 3, tag='Hedge'), x0 + 0.06, x1 - 0.06, y - d / 2 + 0.06, y + d / 2 - 0.06,
+         Z + 0.3, 0.5)
 
 
 def lamp(B, x, y, h=2.1):
@@ -90,6 +115,71 @@ def window_dressing(B, panes, glass, lit, lit_every=4, lit_off=2):
             fr.box(cx + 0.04, cy, zb + h * 0.5 - 0.02, 0.06, d, 0.04)
             fr.box(cx + 0.04, cy, zb, 0.06, 0.04, h)
             sill.box(cx + 0.12, cy, zb - 0.09, 0.2, d + 0.26, 0.07)
+
+
+def cone(B, x, y, z=None):
+    z = Z if z is None else z
+    B.get('MC_COMPOSITE_YELLOW', 0.008, tag='ConeBase').box(x, y, z, 0.26, 0.26, 0.03)
+    B.get('MC_COMPOSITE_YELLOW', 0.0, tag='Cones', sm=True).cyl(x, y, z + 0.03, 0.1, 0.3, seg=16, radius2=0.022)
+
+
+def agility_ladder(B, x0, x1, y, z, rung=0.42, w=0.5):
+    lad = B.get('MC_COMPOSITE_YELLOW', 0.0, tag='AgilityLadder')
+    for oy in (-w / 2, w / 2):
+        rect(lad, x0, x1, y + oy - 0.02, y + oy + 0.02, z, 0.02)
+    xx = x0
+    while xx <= x1 + 1e-6:
+        rect(lad, xx - 0.025, xx + 0.025, y - w / 2, y + w / 2, z, 0.022)
+        xx += rung
+
+
+def cart(B, x, y):
+    """An equipment trolley: steel tray on four castors, a kit bag, stacked cones, poles."""
+    fr = B.get('MC_METAL', 0.012, tag='Cart')
+    fr.box(x, y, Z + 0.2, 1.0, 0.56, 0.06)
+    for oy in (-0.26, 0.26):
+        fr.box(x, y + oy, Z + 0.26, 1.0, 0.03, 0.14)
+    for ox in (-0.47, 0.47):
+        fr.box(x + ox, y, Z + 0.26, 0.03, 0.56, 0.14)
+    hdl = B.get('MC_METAL', 0.0, tag='CartHandle')
+    for oy in (-0.24, 0.24):
+        hdl.beam((x - 0.48, y + oy, Z + 0.26), (x - 0.62, y + oy, Z + 0.95), 0.035)
+    hdl.box(x - 0.62, y, Z + 0.93, 0.035, 0.52, 0.035)
+    wh = B.get('MC_METAL_DARK', 0.0, tag='Castors', sm=True)
+    for ox in (-0.38, 0.38):
+        for oy in (-0.2, 0.25):
+            wh.cyl(x + ox, y + oy, Z + 0.08, 0.08, 0.05, seg=12, axis='Y')
+    B.get('MC_PAINT_NAVY', 0.07, 3, tag='KitBag').box(x - 0.12, y - 0.02, Z + 0.26, 0.55, 0.36, 0.28)
+    for i in range(3):
+        B.get('MC_COMPOSITE_YELLOW', 0.0, tag='Cones', sm=True).cyl(
+            x + 0.3, y + 0.05, Z + 0.26 + i * 0.07, 0.1, 0.3, seg=16, radius2=0.022)
+    pol = B.get('MC_PAINT_WHITE', 0.0, tag='Poles', sm=True)
+    for i, oy in enumerate((-0.2, -0.12, -0.04)):
+        pol.cyl(x - 0.05, y + oy, Z + 0.58 + (i % 2) * 0.03, 0.025, 0.9, seg=8, axis='X')
+
+
+def water_station(B, x, y):
+    """A water cooler with its bottle, a cup stack and a bin, on a drip mat."""
+    rect(B.get('MC_PAINT_SLATE', 0.01, tag='DripMat'), x - 0.45, x + 0.45, y - 0.32, y + 0.32, Z, 0.02)
+    B.get('MC_PAINT_WHITE', 0.03, tag='Cooler').box(x, y, Z + 0.02, 0.38, 0.36, 0.92)
+    B.get('MC_PAINT_NAVY', 0.01, tag='CoolerTap').box(x, y - 0.18, Z + 0.62, 0.24, 0.04, 0.14)
+    B.get('MC_METAL_DARK', 0.0, tag='CoolerTray').box(x, y - 0.2, Z + 0.4, 0.22, 0.08, 0.02)
+    bt = B.get('MC_PAINT_BLUE', 0.0, tag='Bottle', sm=True)
+    bt.cyl(x, y, Z + 0.94, 0.15, 0.26, seg=20)
+    bt.sphere(x, y, Z + 1.2, 0.15, 0.15, 0.09, seg=20, rings=10)
+    bt.cyl(x, y, Z + 1.26, 0.05, 0.05, seg=12)
+    B.get('MC_PAINT_WHITE', 0.0, tag='Cups', sm=True).cyl(x + 0.3, y + 0.05, Z + 0.02, 0.05, 0.22, seg=12,
+                                                             radius2=0.06)
+    B.get('MC_METAL_DARK', 0.012, tag='Bin', sm=True).cyl(x - 0.33, y + 0.05, Z + 0.02, 0.13, 0.42, seg=16)
+
+
+def totem(B, x, y):
+    """A wayfinding post with a blank panel: signage geometry, never words."""
+    B.get('MC_PAINT_NAVY', 0.02, tag='Totem').box(x, y, Z, 0.5, 0.14, 1.5)
+    B.get('MC_PAINT_WHITE', 0.012, tag='TotemPanel').box(x, y - 0.075, Z + 0.35, 0.4, 0.02, 0.8)
+    B.get('MC_PAINT_BLUE', 0.008, tag='TotemBand').box(x, y - 0.088, Z + 1.0, 0.4, 0.02, 0.12)
+    for k in range(3):
+        B.get('MC_PAINT_NAVY', 0.0, tag='TotemLines').box(x - 0.04, y - 0.088, Z + 0.55 + k * 0.16, 0.26, 0.012, 0.035)
 
 
 def paver_joints(B, x0, x1, y0, y1, step=1.5, skip=()):
@@ -144,10 +234,28 @@ def build(coll, status_coll):
     B.get(BL, 0.03, tag='Canopy').box(door_x, hy0 - 0.4, Z + 2.02, 2.1, 0.9, 0.14)
     B.get(BL, 0.03, tag='Canopy').box(door_x - 0.95, hy0 - 0.3, Z + 1.05, 0.06, 0.06, 1.0)
     B.get(BL, 0.03, tag='Canopy').box(door_x + 0.95, hy0 - 0.3, Z + 1.05, 0.06, 0.06, 1.0)
+    # the door sits on the base course: three steps and two handrails reach it
+    st = B.get('MC_CONCRETE', 0.015, tag='Steps')
+    for i, (h_, d_) in enumerate(((0.11, 0.95), (0.22, 0.65), (0.32, 0.35))):
+        st.box(door_x, hy0 - d_ / 2 + 0.05, Z, 1.5, d_, h_)
+    hr = B.get('MC_METAL', 0.0, tag='Handrail')
+    for sx_ in (-0.68, 0.68):
+        hr.beam((door_x + sx_, hy0 - 0.95, Z + 0.72), (door_x + sx_, hy0 - 0.25, Z + 0.95), 0.04)
+        hr.box(door_x + sx_, hy0 - 0.93, Z, 0.04, 0.04, 0.74)
+        hr.box(door_x + sx_, hy0 - 0.27, Z + 0.3, 0.04, 0.04, 0.66)
+    # rainwater: downpipes at the visible corners, with shoes and brackets
+    dp = B.get('MC_METAL_DARK', 0.0, tag='Downpipes', sm=True)
+    for px_, py_, top_ in ((hx0 + 0.22, hy0 - 0.08, Z + hh - 0.16), (hx1 - 0.2, hy0 - 0.08, Z + hh - 0.16),
+                           (hx1 + 0.08, hy1 - 0.25, Z + hh - 0.16), (6.4, 3.32, Z + 2.84)):
+        dp.cyl(px_, py_, Z + 0.34, 0.055, top_ - Z - 0.34, seg=10)
+        dp.cyl(px_, py_, Z + 0.32, 0.075, 0.1, seg=10)
+        for zz_ in (Z + 1.2, Z + 2.4, Z + 3.5):
+            if zz_ < top_ - 0.2:
+                dp.cyl(px_, py_, zz_, 0.072, 0.05, seg=10)
     # plinth band, storey string course, blue cornice under the roof
     cream = B.get(C, 0.03, tag='Course')
     cxh, cyh = (hx0 + hx1) / 2, (hy0 + hy1) / 2
-    cream.box(cxh, cyh, Z, hx1 - hx0 + 0.16, hy1 - hy0 + 0.16, 0.32)
+    B.get('MC_PLINTH_DK', 0.03, tag='BaseCourse').box(cxh, cyh, Z, hx1 - hx0 + 0.16, hy1 - hy0 + 0.16, 0.32)
     cream.box(cxh, cyh, Z + 2.16, hx1 - hx0 + 0.1, hy1 - hy0 + 0.1, 0.1)
     B.get(BL, 0.03, tag='Cornice').box(cxh, cyh, Z + hh - 0.14, hx1 - hx0 + 0.26, hy1 - hy0 + 0.26, 0.2)
     # slim vertical fins on the +x elevation for shadow rhythm
@@ -171,7 +279,10 @@ def build(coll, status_coll):
     slab('GD_Infield', 2.9, 1.2, 0.6, rz, 0.09, mat('MC_GRASS'), coll, cx=tcx, cy=tcy, bevel=0.02, seg=2, n=10)
     # stair tower onto the roof
     rect(B.get(BL, 0.04, tag='StairTower'), -6.35, -5.35, 2.05, 3.05, Z + hh, 1.7)
-    B.get(NV, 0.02, tag='StairDoor').box(-5.85, 3.05, Z + hh + 0.05, 0.62, 0.08, 1.25)
+    B.get(NV, 0.02, tag='StairDoor').box(-5.85, 2.03, Z + hh + 0.12, 0.62, 0.08, 1.2)
+    B.get(W, 0.02, tag='StairCanopy').box(-5.85, 1.88, Z + hh + 1.4, 0.95, 0.4, 0.07)
+    for k_ in range(4):
+        B.get('MC_METAL_DARK', 0.0, tag='Louvre').box(-5.33, 2.55, Z + hh + 0.75 + k_ * 0.12, 0.05, 0.55, 0.05)
     B.get(W, 0.02, tag='StairCap').box(-5.85, 2.55, Z + hh + 1.68, 1.15, 1.15, 0.1)
     # roof plant: two fan units, a skylight, floodlight masts
     hv = B.get('MC_METAL', 0.02, tag='RoofPlant')
@@ -180,6 +291,11 @@ def build(coll, status_coll):
     fan = B.get('MC_METAL_DARK', 0.0, tag='Fans', sm=True)
     fan.cyl(-1.05, 5.7, rz + 0.5, 0.26, 0.03, seg=20)
     fan.cyl(-1.05, 4.85, rz + 0.4, 0.2, 0.03, seg=20)
+    rect(B.get('MC_METAL_DARK', 0.0, tag='ServiceOpening'), -1.3, -0.8, 4.535, 4.56, rz + 0.08, 0.26)
+    B.get('MC_METAL', 0.0, tag='ServicePanel').box(-1.385, 4.295, rz + 0.08, 0.5, 0.025, 0.26, rot=-110)
+    tb = B.get(NV, 0.015, tag='Toolbox')
+    tb.box(-0.72, 3.9, rz + 0.05, 0.42, 0.2, 0.17)
+    B.get('MC_METAL', 0.0, tag='ToolboxHandle').box(-0.72, 3.9, rz + 0.22, 0.26, 0.03, 0.05)
     rect(B.get('MC_GLASS', 0.02, tag='Skylight'), -5.1, -4.0, 5.3, 6.0, rz, 0.16)
     for mx, my in ((-5.4, 5.9), (-0.6, 2.3)):
         B.get('MC_METAL_DARK', 0.01, tag='Mast', sm=True).cyl(mx, my, rz, 0.04, 1.6, seg=10)
@@ -199,9 +315,8 @@ def build(coll, status_coll):
     cut(annex, ac)
     link(annex, coll)
     window_dressing(B, ap, glass, lit, lit_every=3, lit_off=1)
-    wh = B.get(W, 0.03, tag='AnnexTrim')
     acx, acy = (ax0 + ax1) / 2, (ay0 + ay1) / 2
-    wh.box(acx, acy, Z, ax1 - ax0 + 0.16, ay1 - ay0 + 0.16, 0.32)
+    B.get('MC_PLINTH_DK', 0.03, tag='BaseCourse').box(acx, acy, Z, ax1 - ax0 + 0.16, ay1 - ay0 + 0.16, 0.32)
     B.get(BL, 0.03, tag='AnnexCornice').box(acx, acy, Z + ah - 0.14, ax1 - ax0 + 0.24, ay1 - ay0 + 0.24, 0.2)
     # shallow vault in cream, ridge in blue, along x
     B.get(C, 0.0, tag='Vault', sm='keep').vault(ax0 - 0.12, ax1 + 0.12, acy, Z + ah - 0.02, (ay1 - ay0) / 2 + 0.06, 0.95, seg=40)
@@ -225,30 +340,82 @@ def build(coll, status_coll):
         B.get(BL if k % 2 == 0 else 'MC_TRACK', 0.02, tag='Awning%d' % (k % 2)).box(
             acx - 2.2 + 0.425 * (k + 0.5) - 0.0, ay0 - 0.35, Z + 2.28, 0.4, 0.7, 0.1)
 
-    # ----------------------------------------------- PROGRESSION PODIUM
-    steps = [(0.9, 0.62), (1.7, 0.62), (2.5, 0.62), (3.3, 0.62), (4.1, 0.62)]
-    px0, px1 = 4.55, 6.55
-    y = -1.5
-    for i, (ht, dep) in enumerate(steps):
-        rect(B.get(BL if i < 4 else NV, 0.04, tag='Step%d' % i), px0, px1, y, y + dep + 0.12, Z, ht)
-        y += dep
-    y = -1.5
-    for i, (ht, dep) in enumerate(steps):
-        rect(B.get(C, 0.02, tag='StepCap'), px0 - 0.03, px1 + 0.03, y - 0.02, y + dep + 0.14, Z + ht, 0.06)
-        # a lit strip on every visible riser: the display, with no numbers to read
-        prev = steps[i - 1][0] if i else 0.0
-        rect(B.get('MC_GLASS_LIT', 0.0, tag='RiserLight'), px0 + 0.22, px1 - 0.22, y - 0.03, y + 0.005,
-             Z + prev + (ht - prev) * 0.45, 0.1)
-        y += dep
-    mast_x, mast_y = 5.55, -1.5 + 4 * 0.62 + 0.3
-    B.get('MC_METAL', 0.02, tag='Mast', sm=True).cyl(mast_x, mast_y, Z + 4.16, 0.06, 1.0, seg=12)
+    # ------------------------------------------------------- TIMING TOWER
+    # The finish-line timing tower: a braced steel frame, a glazed timing cabin
+    # with a balcony, a ladder, and the beacon on its roof. Slender, so it
+    # marks the place without competing with the hall.
+    tx, ty = 5.55, -0.85
+    slab('GD_TowerFooting', 2.0, 2.0, 0.25, Z, 0.12, mat('MC_CONCRETE'), coll, cx=tx, cy=ty, bevel=0.02)
+    col = B.get(NV, 0.02, tag='TowerFrame')
+    zc0, zc1 = Z + 0.12, Z + 3.25
+    k = 0.62
+    for ox in (-k, k):
+        for oy in (-k, k):
+            col.box(tx + ox, ty + oy, zc0, 0.15, 0.15, zc1 - zc0)
+    for zz in (Z + 1.25, Z + 2.3):
+        col.box(tx, ty - k, zz, 2 * k + 0.15, 0.1, 0.1)
+        col.box(tx, ty + k, zz, 2 * k + 0.15, 0.1, 0.1)
+        col.box(tx - k, ty, zz, 0.1, 2 * k, 0.1)
+        col.box(tx + k, ty, zz, 0.1, 2 * k, 0.1)
+    br = B.get('MC_METAL', 0.0, tag='TowerBrace')
+    for z0_, z1_ in ((zc0 + 0.05, Z + 1.25), (Z + 1.35, Z + 2.3)):
+        for s_ in (-1, 1):
+            br.beam((tx - k * s_, ty - k - 0.02, z0_), (tx + k * s_, ty - k - 0.02, z1_), 0.05)
+            br.beam((tx + k + 0.02, ty - k * s_, z0_), (tx + k + 0.02, ty + k * s_, z1_), 0.05)
+    # cabin deck with a balcony all round
+    B.get(W, 0.03, tag='TowerDeck').box(tx, ty, zc1, 2.15, 2.15, 0.16)
+    rail = B.get('MC_METAL', 0.0, tag='Railing')
+    zr = zc1 + 0.16
+    e = 1.0
+    n_ = 6
+    for i in range(n_ + 1):
+        t_ = -e + 2 * e * i / n_
+        for px_, py_ in ((tx + t_, ty - e), (tx + t_, ty + e), (tx - e, ty + t_), (tx + e, ty + t_)):
+            rail.box(px_, py_, zr, 0.035, 0.035, 0.5)
+    for px_, py_, w_, d_ in ((tx, ty - e, 2 * e + 0.04, 0.045), (tx, ty + e, 2 * e + 0.04, 0.045),
+                             (tx - e, ty, 0.045, 2 * e + 0.04), (tx + e, ty, 0.045, 2 * e + 0.04)):
+        rail.box(px_, py_, zr + 0.48, w_, d_, 0.045)
+        rail.box(px_, py_, zr + 0.25, w_ * 0.999, d_ * 0.8, 0.03)
+    # the cabin: a solid lower band, glazing, corner posts, a deep roof
+    cz = zr
+    cw = 1.36
+    B.get(W, 0.025, tag='CabinBase').box(tx, ty, cz, cw, cw, 0.3)
+    rect(B.get('MC_GLASS', 0.0, tag='CabinGlass'), tx - cw / 2 + 0.03, tx + cw / 2 - 0.03, ty - cw / 2 + 0.03,
+         ty + cw / 2 - 0.03, cz + 0.3, 0.72)
+    rect(B.get('MC_GLASS_LIT', 0.0, tag='CabinGlow'), tx - 0.4, tx + 0.4, ty - cw / 2 + 0.01, ty - cw / 2 + 0.05,
+         cz + 0.34, 0.3)
+    cp = B.get(W, 0.015, tag='CabinPosts')
+    for ox in (-cw / 2, cw / 2):
+        for oy in (-cw / 2, cw / 2):
+            cp.box(tx + ox, ty + oy, cz + 0.3, 0.09, 0.09, 0.72)
+    cp.box(tx, ty - cw / 2, cz + 0.3, 0.05, 0.05, 0.72)
+    cp.box(tx + cw / 2, ty, cz + 0.3, 0.05, 0.05, 0.72)
+    B.get(BL, 0.035, tag='CabinRoof').box(tx, ty, cz + 1.02, 1.85, 1.85, 0.14)
+    B.get(NV, 0.015, tag='CabinFascia').box(tx, ty, cz + 0.98, 1.6, 1.6, 0.06)
+    # ladder up the +x face (the shaded side, seen by the camera)
+    lad = B.get('MC_METAL', 0.0, tag='Ladder')
+    lx_ = tx + k + 0.2
+    for oy in (-0.2, 0.2):
+        lad.box(lx_, ty + oy, zc0, 0.04, 0.04, zc1 - zc0 + 0.7)
+    zz = zc0 + 0.25
+    while zz < zc1 + 0.1:
+        lad.box(lx_, ty, zz, 0.03, 0.4, 0.03)
+        zz += 0.28
+    # beacon on a short mast from the cabin roof
+    bz = cz + 1.16
+    B.get('MC_METAL', 0.02, tag='Mast', sm=True).cyl(tx, ty, bz, 0.06, 0.4, seg=12)
+    B.get('MC_METAL_DARK', 0.015, tag='BeaconBase', sm=True).cyl(tx, ty, bz + 0.34, 0.2, 0.08, seg=20)
     lamp_ = MB('GD_BeaconLamp', mat('MC_STATUS_LIGHT'), status_coll, bevel=0.0, smooth_=True)
-    lamp_.sphere(mast_x, mast_y, Z + 5.4, 0.4, 0.4, 0.4, seg=32, rings=18)
+    lamp_.sphere(tx, ty, bz + 0.74, 0.34, 0.34, 0.34, seg=32, rings=18)
     lo = lamp_.done()
     lo['status_role'] = 'beacon'
     ring = MB('GD_BeaconCage', mat('MC_METAL'), coll, bevel=0.0, smooth_=True)
-    ring.cyl(mast_x, mast_y, Z + 4.98, 0.46, 0.05, seg=32)
-    ring.cyl(mast_x, mast_y, Z + 5.82, 0.46, 0.05, seg=32)
+    ring.cyl(tx, ty, bz + 0.42, 0.39, 0.04, seg=32)
+    ring.cyl(tx, ty, bz + 1.04, 0.39, 0.04, seg=32)
+    for i in range(4):
+        a_ = math.pi / 4 + i * math.pi / 2
+        ring.box(tx + 0.39 * math.cos(a_), ty + 0.39 * math.sin(a_), bz + 0.42, 0.03, 0.03, 0.66)
+    ring.cyl(tx, ty, bz + 1.08, 0.05, 0.08, seg=10)
     ring.done()
 
     # ----------------------------------------------------------- SPRINT STRIP
@@ -257,12 +424,21 @@ def build(coll, status_coll):
          cx=(sx0 + sx1) / 2, cy=(sy0 + sy1) / 2, bevel=0.015)
     slab('GD_SprintTrack', sx1 - sx0, sy1 - sy0, 0.2, Z + 0.05, 0.05, mat('MC_TRACK'), coll,
          cx=(sx0 + sx1) / 2, cy=(sy0 + sy1) / 2, bevel=0.012)
+    bw, bd = sx1 - sx0 + 0.3, sy1 - sy0 + 0.3
+    frame('GD_SprintKerb', bw + 0.26, bd + 0.26, 0.43, bw, bd, 0.3, Z, 0.15, mat('MC_CONCRETE'), coll,
+          bevel=0.018, cx=(sx0 + sx1) / 2, cy=(sy0 + sy1) / 2)
+    rect(B.get('MC_METAL_DARK', 0.0, tag='Drain'), sx0 - 0.1, sx1 + 0.1, sy0 - 0.43, sy0 - 0.31, Z, 0.012)
     ln = B.get('MC_TRACK_LINE', 0.0, tag='Lanes')
     for i in range(4):
         yy = sy0 + (sy1 - sy0) * i / 3
         rect(ln, sx0 + 0.15, sx1 - 0.15, yy - 0.025, yy + 0.025, Z + 0.1, 0.012)
     rect(ln, sx0 + 0.35, sx0 + 0.42, sy0 + 0.05, sy1 - 0.05, Z + 0.1, 0.012)
     rect(ln, sx1 - 0.42, sx1 - 0.35, sy0 + 0.05, sy1 - 0.05, Z + 0.1, 0.012)
+    fx = sx1 - 0.385
+    for fy, eye in ((sy0 - 0.08, 0.07), (sy1 + 0.08, -0.07)):
+        B.get(NV, 0.012, tag='TimingPost').box(fx, fy, Z + 0.15, 0.08, 0.08, 0.95)
+        B.get(NV, 0.015, tag='TimingPost').box(fx, fy, Z + 1.02, 0.16, 0.16, 0.16)
+        B.get('MC_GLASS_LIT', 0.0, tag='TimingEye').box(fx, fy + eye, Z + 1.06, 0.07, 0.02, 0.07)
     hb = B.get('MC_COMPOSITE_YELLOW', 0.015, tag='Hurdles')
     for hxp in (0.0, 1.0, 2.0, 3.0):
         yy = (sy0 + sy1) / 2
@@ -297,7 +473,7 @@ def build(coll, status_coll):
     for px_ in (lx0 + 0.55, lx0 + 2.5):
         pl.cyl(px_, ly0 + 1.35, Z + 0.95, 0.19, 0.08, seg=24, axis='X')
     kb = B.get('MC_METAL_DARK', 0.0, tag='Kettlebells', sm=True)
-    for kx, ky in ((lx0 + 0.7, ly1 - 0.7), (lx0 + 1.15, ly1 - 0.8), (lx0 + 1.6, ly1 - 0.7)):
+    for kx, ky in ((lx0 + 0.5, ly1 - 0.65), (lx0 + 0.9, ly1 - 0.72), (-4.74, -2.34)):
         kb.sphere(kx, ky, Z + 0.17, 0.13, 0.13, 0.12, seg=12, rings=8)
         kb.box(kx, ky, Z + 0.23, 0.14, 0.03, 0.12)
     B.get('MC_WOOD', 0.02, tag='Bench').box(lx1 - 1.0, ly1 - 0.9, Z + 0.4, 1.0, 0.36, 0.08)
@@ -307,32 +483,37 @@ def build(coll, status_coll):
 
     # ------------------------------------------------- PLAZA, LAWN, GREEN
     slab('GD_Lawn', 4.2, 3.4, 0.7, Z, 0.08, mat('MC_GRASS'), coll, cx=0.6, cy=-5.3, bevel=0.03)
+    frame('GD_LawnCurb', 4.46, 3.66, 0.83, 4.2, 3.4, 0.7, Z, 0.15, mat('MC_CONCRETE'), coll, bevel=0.018,
+          cx=0.6, cy=-5.3)
     slab('GD_Path', 6.0, 0.7, 0.3, Z, 0.03, mat('MC_CONCRETE'), coll, cx=3.6, cy=-2.35, bevel=0.012)
-    tree(B, -0.6, -4.1, 1.0)
-    tree(B, 1.9, -6.0, 0.85, dark=True)
+    tree(B, -0.6, -4.1, 1.0, pit=False)
     tree(B, -7.0, -6.6, 1.15)
-    tree(B, 6.85, 5.2, 0.9, dark=True)
-    planter(B, 5.2, -5.0, 1.2, 0.5)
-    planter(B, 5.2, -6.1, 1.2, 0.5)
+    tree(B, 6.85, 5.2, 0.9)
+    tree(B, 6.2, -6.15, 1.0)
     planter(B, -3.3, 1.25, 0.9, 0.42)
-    # low hedge along the front-left edge, rounded by a fat bevel
-    for hx_ in (-6.2, -5.4, -4.6, -3.8):
-        B.get('MC_LEAF_DARK', 0.0, tag='Shrubs', sm=True).sphere(hx_, -6.95, Z + 0.3, 0.42, 0.4, 0.36, seg=14, rings=9)
+    hedge(B, -6.55, -3.4, -6.85)
+    # the lawn is a drill ground: an agility ladder and a slalom of cones
+    agility_ladder(B, -0.9, 2.04, -5.95, Z + 0.08)
+    for i, cx_ in enumerate((0.3, 0.8, 1.3, 1.8, 2.3)):
+        cone(B, cx_, -4.55 if i % 2 else -5.0, Z + 0.08)
+    # plyometric boxes with rubber tops
     plyo = B.get('MC_WOOD', 0.02, tag='Plyo')
-    rect(plyo, 2.8, 3.5, -4.8, -4.1, Z, 0.5)
-    rect(plyo, 3.7, 4.4, -4.8, -4.1, Z, 0.75)
-    rect(plyo, 3.2, 3.9, -4.0, -3.4, Z, 0.35)
-    cn = B.get('MC_COMPOSITE_YELLOW', 0.0, tag='Cones', sm=True)
-    for cx_, cy_ in ((2.4, -3.4), (2.4, -2.7), (5.6, -3.4), (5.9, -4.4)):
-        cn.cyl(cx_, cy_, Z, 0.13, 0.28, seg=16, radius2=0.03)
-    # benches and a drinking fountain fill the front deck
-    for bx_, by_, brot in ((2.9, -6.55, 0.0), (-2.4, -6.45, 0.0)):
+    top = B.get('MC_PAINT_SLATE', 0.012, tag='PlyoTop')
+    for x0_, x1_, y0_, y1_, h_ in ((2.8, 3.5, -4.8, -4.1, 0.5), (3.7, 4.4, -4.8, -4.1, 0.75),
+                                   (3.2, 3.9, -4.0, -3.4, 0.35)):
+        rect(plyo, x0_, x1_, y0_, y1_, Z, h_)
+        rect(top, x0_ + 0.03, x1_ - 0.03, y0_ + 0.03, y1_ - 0.03, Z + h_, 0.03)
+    cart(B, 3.6, -5.85)
+    water_station(B, 5.3, -3.9)
+    totem(B, -2.95, -7.05)
+    for cx_, cy_ in ((-2.7, -2.5), (4.7, -1.95)):
+        cone(B, cx_, cy_)
+    # benches face into the block
+    for bx_, by_ in ((-2.4, -6.45), (4.6, -6.55)):
         B.get('MC_WOOD', 0.02, tag='Bench2').box(bx_, by_, Z + 0.4, 1.3, 0.38, 0.08)
         B.get('MC_WOOD', 0.02, tag='Bench2').box(bx_, by_ + 0.2, Z + 0.62, 1.3, 0.06, 0.34)
         for sx_ in (-0.5, 0.5):
             B.get('MC_METAL_DARK', 0.01, tag='BenchLegs2').box(bx_ + sx_, by_, Z + 0.05, 0.06, 0.32, 0.36)
-    B.get(C, 0.03, tag='Fountain').cyl(0.9, -2.7, Z, 0.17, 0.75, seg=20)
-    B.get(BL, 0.02, tag='FountainCap', sm=True).cyl(0.9, -2.7, Z + 0.75, 0.24, 0.1, seg=20)
     lamp(B, -0.3, -2.6)
     lamp(B, 7.0, -2.9)
     lamp(B, -7.0, -0.4, 2.2)
