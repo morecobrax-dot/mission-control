@@ -338,6 +338,22 @@ page script, in two ES modules the page imports after its first paint:
   changes shape. Building masses use small bevels; shared Standard materials
   and one cached directional shadow map provide soft, grounded lighting. A status change swaps a material or a visibility; nothing
   is rebuilt.
+- **Authored places.** A look may instead be drawn from a GLB authored in
+  Blender (`art/blender`, `docs/3D-ART-BIBLE.md`): `ASSETS` in `world.js` maps
+  the registry's `visualTheme` to the file, the width its plinth is drawn at
+  and its measured rise. Blender owns the geometry, materials and clips; the
+  app owns state, light and every touch. The renderer loads each file once,
+  clones it per district with its skeletons (`cloneSkinned`), copies its
+  materials per district so one project's state recolours only its own
+  place, and draws it on the plain pad in place of the recipe, whose crew,
+  life, beacon and painted light step aside. Its status lights (rim, beacon,
+  helmet bands) share one material, recoloured from the button's `--sig` and
+  dark without a record; a paused place is dimmed. Each worker gets its own
+  slice of every clip, and `assetCrew(workerState, role)` says what it does:
+  its own job while building, a signal when something needs you, still when
+  blocked or paused, gone without a record. Clips cross-fade; under Reduce
+  Motion and on a first draw they simply are. A file that fails, or has not
+  loaded in 12 s, gives the district back to its recipe.
 
 Three.js 0.186.1 is vendored in `vendor/three/`: a subset of only the
 classes the world imports, tree-shaken and minified by esbuild,
@@ -345,8 +361,24 @@ classes the world imports, tree-shaken and minified by esbuild,
 integrity, pinned esbuild, target `es2020,safari15` so no class static
 blocks), with its licence and a provenance file whose sha256 contract 30
 holds the file to. The gzip budget is measured by the contract rather than assumed from the
-previous renderer. RoundedBoxGeometry and the physical-material path are in
-the pinned local bundle. Nothing is fetched from a CDN.
+previous renderer. RoundedBoxGeometry, GLTFLoader (with the physical
+materials and the animation system it brings) and SkeletonUtils' `clone`
+(exported as `cloneSkinned`) are in the pinned local bundle, about 161 KB
+gzipped. Nothing is fetched from a CDN.
+
+**One light, from the Blender studio rig** (`LIGHT` in `world.js`): a warm
+key sun that casts, a weak cool fill and a rim that do not, and a hemisphere
+light carrying the Blender world's gradient (warm grey ground, cool sky) at
+π × its strength, which is what image-based light would give a surface.
+What is kept is Blender's split of the faces, not its angles: the face that
+fills the view is lit, the narrow face to its right is in shade, cast
+shadows run to screen-right. Tone mapping is Khronos PBR Neutral, which
+keeps authored hue and saturation; AgX in three.js is the flat base look.
+The sky is prefiltered once and reflected only by glass and metal: sampled
+by every pixel it cost more than the whole authored place. The shadow map is
+2048 wherever the GPU allows 4096 textures; it is cached, and refreshed about
+twelve times a second only while an authored worker moves and its place is
+drawn at least 240 px wide.
 
 **Lifecycle.** Each renderer has its own host inside one `.field-box`:
 `#projectField` for `IsoField` and `#worldHost`, laid over it, for the world.
@@ -355,7 +387,8 @@ context can really be made (one probe, released at once): the field box takes
 the world's height with the flat field drawn inside it, whole and usable,
 while the module downloads and the world is made behind it. Until the world's
 first frame is on screen its view is invisible, so it takes no taps and no
-focus. Its `onReady` then calls `adoptWorld()`, which in one step unmounts the
+focus; that first frame waits for every authored place to settle (drawn, or
+given back to its recipe), so a block is never seen swapping models. Its `onReady` then calls `adoptWorld()`, which in one step unmounts the
 flat field, makes the world the field and moves keyboard focus from a flat
 platform to the same project's button; a selection made while loading carries
 over. Any failure — the import, the context, a render, or a lost context not
@@ -446,7 +479,7 @@ recessed windows, cornices, rooftop utilities, awnings and storefronts.
 Project identity uses `--terrain-*`/`--tint-*`, while architectural finishes
 use `--city-*` and material tokens. Matte and metal surfaces are Standard
 materials; warm window geometry is unlit, with small painted additive pools.
-Hemisphere fill plus a soft directional shadow map approximate bounce and
+The hemisphere sky plus a soft directional shadow map approximate bounce and
 contact light. This is not ray-traced global illumination.
 
 Status still lights only the beacon, halo and worker helmet. No record means
@@ -570,6 +603,9 @@ foundation expects them.
 | The link rule | `parseToolLink` — and contract 22 |
 | The field's rendering | `field/render3d.js` (and `IsoField`, the fallback), behind `Field` |
 | Layout, camera, gestures, crews | `field/world.js` — and contract 30 |
+| A project's authored place | Blender (`art/blender`), then `export_glb.py` into `art/exports/`; its look in `ASSETS` (`world.js`) with the rise measured from the file; the file in `APP_FILES`, then `npm run config:sync` |
+| What an authored crew does in each state | `assetCrew` (`world.js`) — and contract 30 |
+| The world's light | `LIGHT` (`world.js`) and the `--light-*` tokens |
 | The Three.js version | `scripts/vendor-three.js`, then `npm run verify` |
 | A file the app loads | `APP_FILES`, then `npm run config:sync` |
 | A data shape | bump `DATA_SCHEMA_VERSION` and add a migration |

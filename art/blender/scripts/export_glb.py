@@ -56,6 +56,7 @@ def main():
 
     for m in bpy.data.materials:
         mc_materials.strip_procedural(m)
+        mc_materials.fold_sheen_weight(m)
 
     # bake modifiers on static meshes, group by material, join
     groups = {}

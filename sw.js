@@ -16,7 +16,7 @@
  */
 
 /* APP-CACHE-BEGIN */
-const CACHE_NAME = 'mission-control-v0.5.0';
+const CACHE_NAME = 'mission-control-v0.6.0';
 /* APP-CACHE-END */
 
 /* The shell, then APP_FILES from index.html (the 3D world's modules and
@@ -30,7 +30,8 @@ const ASSETS = [
   './icon-512.png',
   './field/world.js',
   './field/render3d.js',
-  './vendor/three/three.min.js'
+  './vendor/three/three.min.js',
+  './art/exports/golden-diorama.glb'
 ];
 /* APP-FILES-END */
 

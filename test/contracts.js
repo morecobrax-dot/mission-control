@@ -2862,8 +2862,17 @@ async function testWorld(){
   T('every file the app loads exists', c.APP_FILES.every(f => fsx.existsSync(at(f))), c.APP_FILES.join(', '));
   T('the world module is one of them', c.APP_FILES.indexOf(c.WORLD_MODULE) !== -1);
   const r3 = read('field/render3d.js'), wj = read('field/world.js');
-  const imports = s => [...s.matchAll(/\bfrom\s+'([^']+)'/g)].map(m => m[1]);
+  const fnBody = name => {
+    const at0 = r3.indexOf('function ' + name + '(');
+    if(at0 === -1) return null;
+    let depth = 0, i = r3.indexOf('{', at0);
+    for(let j = i; j < r3.length; j++){ if(r3[j] === '{') depth++; else if(r3[j] === '}' && --depth === 0) return r3.slice(at0, j + 1); }
+    return null;
+  };
+  const imports = s =>[...s.matchAll(/\bfrom\s+'([^']+)'/g)].map(m => m[1]);
   T('the renderer imports only the library and the world', imports(r3).sort().join() === '../vendor/three/three.min.js,./world.js');
+  T('an authored place it loads is a file the app ships, and precaches',
+    Object.values(W.ASSETS).every(a => c.APP_FILES.indexOf(a.url) !== -1 && fsx.existsSync(at(a.url))), Object.values(W.ASSETS).map(a => a.url).join());
   T('the world imports nothing', imports(wj).length === 0 && !/\bimport\s*\(/.test(wj));
   T('each module is precached by its path', c.APP_FILES.indexOf('./field/world.js') !== -1 && c.APP_FILES.indexOf('./vendor/three/three.min.js') !== -1);
 
@@ -3062,15 +3071,94 @@ async function testWorld(){
   T('rounded street turns keep position and heading continuous',pathsContinuous);
   T('street scenery is generated for any registered block count', W.cityParts(phone.districts).length>0 && W.cityParts(W.layoutDistricts(7,3).districts).length>W.cityParts(phone.districts).length);
   T('residents and delivery trucks have no state inputs', W.streetPose.length===3 && !/workerState|status|recorded/.test(W.streetPose.toString()));
-  T('light and layout identifiers cannot shadow each other at world construction', /const layoutKey =/.test(r3) && /key\.target\.position/.test(r3));
-  T('cached shadows cannot retain an old worker station or moving prop',
+  const landBody = r3.slice(r3.indexOf('function buildLand('), r3.indexOf('function meshesFor('));
+  T('light and layout identifiers cannot shadow each other at world construction', /const layoutKey =/.test(r3) &&
+    /\[\[key, LIGHT\.key\], \[fill, LIGHT\.fill\], \[rim, LIGHT\.rim\]\]\.forEach/.test(landBody) && !/\b(const|let) (key|fill|rim)\b/.test(landBody));
+  T('cached shadows cannot retain an old worker station or moving prop: only architecture, the recipe place or an authored place\'s pad, casts into the cached map',
     /mesh\.castShadow = !!staticShadow && m !== 'glow'/.test(r3) &&
     /meshesFor\(placeGeo\(item\.theme, tintOf\), t\.content, true, true\)/.test(r3) &&
-    (r3.match(/, true, true\)/g) || []).length === 1);
+    /meshesFor\(partsGeo\('asset-pad', padParts\(\)\.slice\(0, 1\)\), t\.content, true, true\)/.test(r3) &&
+    (r3.match(/, true, true\)/g) || []).length === 2);
+  T('an authored worker that moves takes its shadow with it: the map follows at a set pace, only while it moves and is drawn large',
+    /if\(districtPx\(districtOf\(t\), S\.frame, S\.w, S\.h\) >= LIGHT\.shadowMinPx\) moved = true;/.test(r3) &&
+    /if\(moved && now - S\.shadowAt >= LIGHT\.shadowRefreshMs\)\{ S\.shadowAt = now; S\.shadowRefreshes\+\+; renderer\.shadowMap\.needsUpdate = true; \}/.test(r3) &&
+    W.LIGHT.shadowRefreshMs >= 50 && W.LIGHT.shadowMinPx > W.WORLD.minDistrictPx);
   const gone = (String(lib).match(/WebGLShadowMap: (\w+) has been removed/g) || []).map(s => s.split(' ')[1]);
   T('the shadow map is a type this Three.js release still has: a removed one warns at every start',
     gone.length > 0 && gone.every(n => !new RegExp('shadowMap\\.type = THREE\\.' + n + '\\b').test(r3)) &&
       /shadowMap\.type = THREE\.PCFShadowMap/.test(r3), gone.join());
+
+  sub('an authored place: Blender owns it, the app drives it');
+  const themesNow = new Set(c.PROJECT_REGISTRY.map(p => c.projectView(p.id).theme));
+  T('every authored place belongs to a registered look, and keeps that look\'s recipe as its fallback',
+    Object.keys(W.ASSETS).every(k => themesNow.has(k) && !!W.ENVIRONMENTS[k]), Object.keys(W.ASSETS).join());
+  Object.keys(W.ASSETS).forEach(k => {
+    const a = W.ASSETS[k], bin = fsx.readFileSync(at(a.url));
+    const ok = bin.readUInt32LE(0) === 0x46546C67 && bin.readUInt32LE(4) === 2;
+    const gl = ok ? JSON.parse(bin.slice(20, 20 + bin.readUInt32LE(12)).toString()) : {};
+    T(k + ': a binary glTF 2.0 file, under 2.5 MB', ok && bin.length < 2.5 * 1024 * 1024, bin.length + ' bytes');
+    T(k + ': it carries every clip the crew states name', W.ASSET_CLIPS.every(n => (gl.animations || []).some(x => x.name === n)), (gl.animations || []).map(x => x.name).join());
+    const rigs = (gl.nodes || []).filter(n => n.extras && n.extras.worker_pose);
+    T(k + ': every worker is posed with one of those clips, and wears a status band',
+      rigs.length > 0 && rigs.every(n => W.ASSET_CLIPS.indexOf('MC_' + n.extras.worker_pose) !== -1) &&
+      (gl.nodes || []).filter(n => n.extras && n.extras.status_role === 'helmet').length === rigs.length, rigs.length + ' workers');
+    const status = (gl.materials || []).filter(m => m.name === W.ASSET_STATUS_MATERIAL);
+    T(k + ': its status lights share one material, so a status recolours them without a rebuild', status.length === 1 &&
+      (gl.meshes || []).filter(m => m.primitives.some(p => gl.materials[p.material] === status[0])).length >= 3);
+    T(k + ': no textures, so nothing to decode and no texture memory', !(gl.images || []).length && !(gl.textures || []).length);
+    const sheen = (gl.materials || []).map(m => m.extensions && m.extensions.KHR_materials_sheen).filter(Boolean);
+    T(k + ': sheen arrives at its authored weight, not at full strength (the exporter drops the weight; the export folds it into the colour)',
+      sheen.length > 0 && sheen.every(s => Math.max.apply(null, s.sheenColorFactor) < 0.95));
+    let mn = Infinity, mx = -Infinity, x0 = Infinity, x1 = -Infinity;
+    (gl.scenes[0].nodes || []).map(i => gl.nodes[i]).filter(n => n.mesh !== undefined && n.skin === undefined).forEach(n => {
+      const t = n.translation || [0, 0, 0];
+      gl.meshes[n.mesh].primitives.forEach(p => { const acc = gl.accessors[p.attributes.POSITION];
+        mn = Math.min(mn, acc.min[1] + t[1]); mx = Math.max(mx, acc.max[1] + t[1]); x0 = Math.min(x0, acc.min[0] + t[0]); x1 = Math.max(x1, acc.max[0] + t[0]); });
+    });
+    const rise = (mx - mn) / (x1 - x0);
+    T(k + ': its rise is measured from the file, so it is framed and hit-tested at its real height before it loads',
+      Math.abs(rise - a.rise) < 0.005 && W.assetHeight(k) > W.TILE.padH + 2, rise.toFixed(4) + ' vs ' + a.rise);
+    T(k + ': it fits its pad', a.span > 0 && a.span <= W.TILE.pad * 2);
+  });
+  const crewStates = Object.keys(W.CREW), roles = W.ASSET_CLIPS;
+  const plans = crewStates.map(s => roles.map(r => W.assetCrew(s, r)));
+  T('every crew state gives every authored worker a clip it carries, or no worker at all',
+    plans.every(row => row.every(p => p === null || (W.ASSET_CLIPS.indexOf(p.clip) !== -1 && [0, 0.7, 1].indexOf(p.pace) !== -1))));
+  T('no record, no worker', roles.every(r => W.assetCrew('unrecorded', r) === null && W.assetCrew(undefined, r) === null));
+  T('while building, every worker does its own job', roles.every(r => W.assetCrew('working', r).clip === r && W.assetCrew('working', r).pace === 1));
+  T('blocked and paused: work has stopped, every worker still', roles.every(r => W.assetCrew('warning', r).pace === 0 && W.assetCrew('quiet', r).pace === 0));
+  T('needs QA and needs a decision: the signaller signals', W.assetCrew('inspecting', 'MC_SIGNAL').clip === 'MC_SIGNAL' && W.assetCrew('waiting', 'MC_SIGNAL').clip === 'MC_SIGNAL');
+  T('life is a place, not a measure: an authored worker\'s pace depends on the kind of state alone', !/progress|percent|count/.test(W.assetCrew.toString()));
+  T('the renderer never decides a status for an authored place: its light is the colour the app gave the button, dark without a record',
+    /const hue = parseColour\(rawToken\(t\.button, '--sig'\)\);\s*if\(item\.recorded && hue\)/.test(r3) && /a\.status\.emissive\.setRGB\(0, 0, 0\)/.test(r3));
+  T('a state change recolours and re-poses in place: nothing is loaded or rebuilt',
+    /if\(t\.asset && \(changed\('workerState'\) \|\| changed\('signal'\) \|\| changed\('recorded'\)\)\) applyAssetState\(t, item, S\.first \|\| rm\(\)\);/.test(r3) &&
+    !/loadAsset|buildAsset|cloneSkinned/.test(code(fnBody('applyAssetState') || '')));
+  T('a worker changing what it does blends into it; under Reduce Motion, and on a first draw, it simply is',
+    /w\.action\.crossFadeTo\(next, CLIP_FADE_S, false\)/.test(r3) && /if\(w\.action && !snap && !still\)/.test(r3) && /w\.pace = still \? 0 : plan\.pace;/.test(r3));
+  T('a file that does not load gives the place back to its recipe, and never holds the world back for long',
+    /showAsset\(t, false\)/.test(r3) && /ASSET_WAIT_MS = \d{4,5};/.test(r3) && Number(/ASSET_WAIT_MS = (\d+);/.exec(r3)[1]) <= 15000);
+  T('its materials are copied per place, so one project\'s state never recolours another\'s', /m = o\.material\.clone\(\);/.test(r3) && /THREE\.cloneSkinned\(file\.gltf\.scene\)/.test(r3));
+
+  sub('one light for the whole world: the Blender studio rig, turned with the camera');
+  const dir = W.lightDirection(W.LIGHT.key), view = W.viewerDirection();
+  const right = [view[2], 0, -view[0]];
+  /* A district's two visible faces: +z, which fills the view, and +x, to its right. */
+  const lit = n => dir[0] * n[0] + dir[2] * n[2];
+  T('the face that fills the view is lit, the face to its right is in shade, as in the Blender renders',
+    lit([0, 0, 1]) > 0.35 && lit([1, 0, 0]) < 0, JSON.stringify(dir));
+  T('the key comes from camera-left, so cast shadows run to screen-right', (dir[0] * right[0] + dir[2] * right[2]) < -0.3);
+  T('at the Blender rig\'s angle, never overhead and never grazing', Math.abs(Math.asin(dir[1]) * 180 / Math.PI - 34) < 0.5);
+  T('the key is warm, the fill and rim cool, all from tokens', ['lightKey', 'lightFill', 'lightRim', 'lightSky', 'lightGround'].every(n => !!W.PALETTE[n]));
+  /* Light falling on a wall: each light by its cosine, and half the sky. */
+  const onWall = n => ['key', 'fill', 'rim'].reduce((s, k) => { const d = W.lightDirection(W.LIGHT[k]);
+    return s + W.LIGHT[k].intensity * Math.max(0, d[0] * n[0] + d[2] * n[2]); }, 0) + W.LIGHT.sky * Math.PI * 0.5;
+  const ratio = onWall([0, 0, 1]) / onWall([1, 0, 0]);
+  T('the lit face gets at least three times the light of the shade face, as Blender\'s 4:1 in linear light: clear, never black',
+    ratio >= 3 && ratio <= 6, ratio.toFixed(2));
+  T('the prefiltered sky is sampled only where it is reflected, glass and metal: never by every pixel of the city',
+    !/scene\.environment\s*=/.test(code(r3)) && /if\(reflects\(m\)\)\{ m\.envMap = sky;/.test(r3));
+  T('the page never asks the world to measure itself: that is for QA', !/\.measure\(/.test(js()));
 
   sub('the camera stays on the island and goes where it is sent');
   const ds6 = phone.districts, isl6 = W.islandOf(ds6), over = phone.frame, hts = themes6.map(W.placeHeight);
@@ -3122,14 +3210,7 @@ async function testWorld(){
   T('where two overlap, the nearer is the one tapped', W.hitDistrict(pair, ph, pf, 358, 521, top.x, top.y) === 1);
 
   sub('smooth: a frame moves things, it never measures the page');
-  const fnBody = name => {
-    const at0 = r3.indexOf('function ' + name + '(');
-    if(at0 === -1) return null;
-    let depth = 0, i = r3.indexOf('{', at0);
-    for(let j = i; j < r3.length; j++){ if(r3[j] === '{') depth++; else if(r3[j] === '}' && --depth === 0) return r3.slice(at0, j + 1); }
-    return null;
-  };
-  const perFrame = ['tick', 'stepCamera', 'aimCamera', 'stepCrews', 'stepLife', 'stepBeacons', 'placeLabels', 'applyPose'].map(fnBody);
+  const perFrame = ['tick', 'stepCamera', 'aimCamera', 'stepCrews', 'stepLife', 'stepAssets', 'stepBeacons', 'placeLabels', 'applyPose'].map(fnBody);
   T('every per-frame step is found', perFrame.every(Boolean));
   const reads = /offsetWidth|offsetHeight|getBoundingClientRect|getComputedStyle|clientWidth|clientHeight|scrollTop|innerHTML|textContent|measureLabels|rawToken|tokenOf/;
   T('no frame reads layout or style, or writes content (0.3.1 recalculated the page on every zoom frame)',
@@ -3235,7 +3316,7 @@ async function testWorld(){
     /function adoptWorld\(\)\{\s*if\(worldStage !== 'loading'\) return;[\s\S]{0,300}IsoField\.unmount\(\);[\s\S]{0,300}Field = WorldField;/.test(js()));
   T('while it loads the flat field stays drawn and the world takes no taps',
     /\.world-host\{[^}]*pointer-events: none/.test(css()) && /view\.style\.visibility = 'hidden'/.test(r3) &&
-    /if\(view\.style\.visibility\)\{\s*view\.style\.visibility = '';[\s\S]{0,120}if\(H\.onReady\) H\.onReady\(\);/.test(r3) &&
+    /if\(view\.style\.visibility && !S\.pending\)\{\s*view\.style\.visibility = '';[\s\S]{0,120}if\(H\.onReady\) H\.onReady\(\);/.test(r3) &&
     !/world-pending|visibility: hidden; \}/.test((css().match(/\.project-field\.world-loading[^}]*\}/g) || []).join('')));
   T('the world\'s box is what the screen has left, measured: above the tab bar, with the dock\'s room kept',
     /vh - top - bar - dockH - gap/.test(js()) && /fitField\(\);\r?\n\}/.test(js()) && /addEventListener\('resize', fitField\)/.test(js()) &&

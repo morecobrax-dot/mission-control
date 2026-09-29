@@ -42,17 +42,26 @@ const ESBUILD = '0.25.10';
    parses from 16.4; safari15 lowers what else it needs. */
 const ESBUILD_ARGS = ['--bundle', '--format=esm', '--minify', '--target=es2020,safari15', '--legal-comments=none'];
 
-/* Everything field/render3d.js imports, and nothing else. */
-const EXPORTS = [
+/* Everything field/render3d.js imports, and nothing else: the core classes,
+   then the addons (each from its own file in examples/jsm, under the name
+   the renderer uses). GLTFLoader brings the physical materials and the
+   animation system it needs with it; they share the one core. */
+const CORE = [
   'REVISION', 'WebGLRenderer', 'Scene', 'PerspectiveCamera', 'Group', 'Mesh',
   'BufferGeometry', 'Float32BufferAttribute',
   'BoxGeometry', 'CylinderGeometry', 'ConeGeometry', 'SphereGeometry', 'TorusGeometry',
   'RingGeometry', 'PlaneGeometry', 'CircleGeometry',
-  'MeshLambertMaterial', 'MeshPhongMaterial', 'MeshStandardMaterial', 'MeshBasicMaterial', 'CanvasTexture',
-  'Color', 'Vector3', 'Matrix4', 'Euler',
-  'HemisphereLight', 'DirectionalLight', 'AdditiveBlending', 'SRGBColorSpace',
-  'PCFShadowMap', 'ACESFilmicToneMapping', 'RoundedBoxGeometry'
+  'MeshLambertMaterial', 'MeshStandardMaterial', 'MeshBasicMaterial', 'CanvasTexture',
+  'Color', 'Vector3', 'Matrix4', 'Euler', 'Box3',
+  'DirectionalLight', 'HemisphereLight', 'AdditiveBlending', 'BackSide', 'SRGBColorSpace',
+  'PCFShadowMap', 'NeutralToneMapping', 'PMREMGenerator', 'AnimationMixer', 'AnimationClip'
 ];
+const ADDONS = [
+  { file: 'examples/jsm/geometries/RoundedBoxGeometry.js', names: [['RoundedBoxGeometry', 'RoundedBoxGeometry']] },
+  { file: 'examples/jsm/loaders/GLTFLoader.js', names: [['GLTFLoader', 'GLTFLoader']] },
+  { file: 'examples/jsm/utils/SkeletonUtils.js', names: [['clone', 'cloneSkinned']] }
+];
+const EXPORTS = CORE.concat(...ADDONS.map(a => a.names.map(n => n[1])));
 
 /* One command line, quoting only what needs it: npm and npx are scripts on
    Windows, so they run through a shell either way. */
@@ -71,8 +80,9 @@ function main(){
 
     const pkg = path.join(WORK, 'package');
     const entry = path.join(WORK, 'entry.js');
-    fs.writeFileSync(entry, 'export { ' + EXPORTS.filter(n => n !== 'RoundedBoxGeometry').join(', ') + " } from './package/build/three.module.js';\n" +
-      "export { RoundedBoxGeometry } from './package/examples/jsm/geometries/RoundedBoxGeometry.js';\n");
+    fs.writeFileSync(entry, 'export { ' + CORE.join(', ') + " } from './package/build/three.module.js';\n" +
+      ADDONS.map(a => 'export { ' + a.names.map(([from, as]) => from === as ? from : from + ' as ' + as).join(', ') +
+        " } from './package/" + a.file + "';\n").join(''));
 
     const banner = '/* three.js ' + VERSION + ' (r' + VERSION.split('.')[1] + '), a subset for Mission Control.' +
       ' MIT License, Copyright 2010-2025 Three.js Authors: see LICENSE. Made by scripts/vendor-three.js. */';
@@ -94,7 +104,7 @@ function main(){
       build: {
         tool: 'esbuild@' + ESBUILD,
         entry: 'package/build/three.module.js',
-        addons: ['package/examples/jsm/geometries/RoundedBoxGeometry.js'],
+        addons: ADDONS.map(a => 'package/' + a.file),
         aliases: { three: './package/build/three.module.js' },
         args: ESBUILD_ARGS,
         exports: EXPORTS

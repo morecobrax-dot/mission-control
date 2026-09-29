@@ -197,9 +197,13 @@
   --mat-blueprint: #2C4F7A;
   --glow-window: #FFD092;
   --glow-screen: #CFE2F0;
-  --light-key: #FFE0BC;
-  --light-sky: #A5B5E4;
-  --light-ground: #343047;
+  /* The studio rig, from the Blender master: a warm key sun, a cool fill
+     and rim, and a sky that runs from a warm grey ground to a cool blue. */
+  --light-key: #FFEEDA;
+  --light-fill: #D2DDFF;
+  --light-rim: #F2F5FF;
+  --light-sky: #9DB8E0;
+  --light-ground: #AE9F92;
   /* City materials are scenery, independent of project state. Warm shop
      light and cool street fill give the miniature architecture its depth. */
   --city-asphalt: #303443;
@@ -1674,6 +1678,22 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-6-0',
+    version: '0.6.0',
+    title: 'The first authored place',
+    date: '2026-09-29',
+    summary: 'The first project block is now a hand-made miniature, lit like a studio model, and its crew does what the project is doing.',
+    newFeatures: [
+      'The first block is an authored miniature: a hall with a rooftop track, a sprint strip, a timing tower and a working crew',
+      'Its crew follows the project\'s state: at work while building, a signaller when something needs you, everyone still when work is blocked or paused'
+    ],
+    improvements: [
+      'One studio light for the whole city: a warm sun from the left, a cool sky and sharper, grounded shadows',
+      'The camera looks a little lower across the city, so more of every facade shows',
+      'If the model cannot load, the block is drawn as it was, and the city still opens'
+    ]
+  },
   {
     id: 'v0-5-0',
     version: '0.5.0',
@@ -3400,7 +3420,7 @@ function watchLayout(){
    Three.js subset they import. `npm run config:sync` copies this list into
    sw.js, so a fresh install precaches the world and it opens offline. A
    contract checks every file exists. */
-const APP_FILES = ['./field/world.js', './field/render3d.js', './vendor/three/three.min.js'];
+const APP_FILES = ['./field/world.js', './field/render3d.js', './vendor/three/three.min.js', './art/exports/golden-diorama.glb'];
 const WORLD_MODULE = './field/render3d.js';
 
 function fieldScene(views){

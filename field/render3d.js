@@ -32,9 +32,10 @@ import * as THREE from '../vendor/three/three.min.js';
 import {
   WORLD, TILE, BEACON, eyeOf, project, chooseLayout, islandOf, islandOutline, focusFrame,
   clampFrame, panFrame, revealFrame, hitDistrict, labelAnchor, signAnchor, sameFrame, mixFrame,
-  pixelRatioFor, nextPixelRatio, resolveLabels, resolveWithSign, createArbiter, CREW, CREW_FACING, poseFor, crewLoops,
+  pixelRatioFor, nextPixelRatio, districtPx, resolveLabels, resolveWithSign, createArbiter, CREW, CREW_FACING, poseFor, crewLoops,
   lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS, SCENERY,
-  placeHeight, cityParts, streetLamps, TRUCK_PARTS, RESIDENT_PARTS, streetPose, trafficBounds
+  placeHeight, cityParts, streetLamps, TRUCK_PARTS, RESIDENT_PARTS, streetPose, trafficBounds,
+  assetFor, assetHeight, assetCrew, ASSET_STATUS_MATERIAL, LIGHT, lightDirection
 } from './world.js';
 
 export const REVISION = THREE.REVISION;
@@ -46,6 +47,8 @@ const BREATH_S = 2.6;            // an attention beacon's slow breath
 const POSE_EASE_S = 0.12;        // how quickly a worker settles into a new pose
 const SIGN = ' sign';             // the sign's place among the labels: never a project id
 const CLICK_AFTER_MS = 700;       // how long after a pan or an island tap its own click may still arrive
+const ASSET_WAIT_MS = 12000;      // an authored place not loaded by then is drawn from its recipe
+const CLIP_FADE_S = 0.45;         // a worker changing what it does blends into it
 
 /* ---------- colour, from the page's tokens ---------- */
 function parseColour(raw){
@@ -183,6 +186,27 @@ function dotTexture(){
   return new THREE.CanvasTexture(c);
 }
 
+/* The sky for reflections: a sphere shaded from the ground colour below
+   the horizon to the sky colour above, prefiltered once. */
+function skyEnvironment(renderer, skyColour, groundColour){
+  const envScene = new THREE.Scene();
+  const g = new THREE.SphereGeometry(10, 32, 16);
+  const pos = g.attributes.position, cols = [];
+  const c = new THREE.Color();
+  for(let i = 0; i < pos.count; i++){
+    const y = pos.getY(i) / 10, k = Math.min(1, Math.max(0, (y + 0.15) / 0.85));
+    c.copy(groundColour).lerp(skyColour, k * k * (3 - 2 * k));
+    cols.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  const m = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide });
+  envScene.add(new THREE.Mesh(g, m));
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const tex = pmrem.fromScene(envScene, 0.02).texture;
+  pmrem.dispose(); g.dispose(); m.dispose();
+  return tex;
+}
+
 /* ---------- the world ---------- */
 export function createWorld(host, hooks){
   const H = hooks || {};
@@ -230,8 +254,11 @@ export function createWorld(host, hooks){
     throw e;
   }
   renderer.setClearAlpha(0);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.92;
+  /* Khronos PBR Neutral: highlights roll off without the hue shift ACES gives
+     warm light, and authored colours keep their saturation, so pastels stay
+     pastel and a status stays its hue (three.js's AgX is the flat base look). */
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = LIGHT.exposure;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.shadowMap.autoUpdate = false;
@@ -243,7 +270,8 @@ export function createWorld(host, hooks){
     tiles: new Map(), order: [], selected: null, focused: null, first: true, island: null, cols: 0,
     raf: 0, lastRender: 0, lastTick: 0, lastWake: 0, onscreen: true, covered: false, lost: false, lostTimer: 0,
     destroyed: false, failed: false, frames: 0, cost: 0, swallowUntil: 0, dirty: false, reroom: 0,
-    slowSum: 0, slowCount: 0, signFor: null, signHtml: null, signRoom: null, signEnter: 0, labelMax: 0
+    slowSum: 0, slowCount: 0, signFor: null, signHtml: null, signRoom: null, signEnter: 0, labelMax: 0,
+    pending: 0, shadowAt: 0, shadowRefreshes: 0
   };
 
   /* ---------- shared resources ---------- */
@@ -252,15 +280,31 @@ export function createWorld(host, hooks){
   const fallback = palette.stone || { c: new THREE.Color(0.8, 0.8, 0.8), a: 1 };
   const col = name => (palette[name] || fallback).c;
 
-  const hemi = new THREE.HemisphereLight(palette.lightSky ? palette.lightSky.c : col('stone'), palette.lightGround ? palette.lightGround.c : col('ink'), 1.65);
-  const key = new THREE.DirectionalLight(palette.lightKey ? palette.lightKey.c : col('stone'), 1.35);
-  key.position.set(-25, 40, 30);
+  /* The studio rig (world.js LIGHT): a warm key sun that casts, a weak cool
+     fill and a rim that do not, and the sky's gradient, from the ground's
+     warm grey to a cool blue, as the bounce in every shadow. Nothing else
+     lights the world. */
+  const lightOf = name => palette[name] ? palette[name].c : col('stone');
+  const key = new THREE.DirectionalLight(lightOf('lightKey'), LIGHT.key.intensity);
+  const fill = new THREE.DirectionalLight(lightOf('lightFill'), LIGHT.fill.intensity);
+  const rim = new THREE.DirectionalLight(lightOf('lightRim'), LIGHT.rim.intensity);
   key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  key.shadow.bias = -0.00025;
-  key.shadow.normalBias = 0.07;
-  key.shadow.radius = 5;
-  scene.add(hemi, key);
+  /* 2048 wherever the GPU allows 4096 textures, which is every current
+     phone: at 1024 a worker's shadow is a smudge at the island's scale. */
+  const shadowPx = renderer.capabilities.maxTextureSize >= 4096 ? 2048 : 1024;
+  key.shadow.mapSize.set(shadowPx, shadowPx);
+  key.shadow.bias = -0.0003;
+  key.shadow.normalBias = 0.035;
+  key.shadow.radius = 2.5;
+  /* The sky's diffuse light is a hemisphere light: the same gradient, from
+     the warm ground below to the cool sky above, at the strength image-based
+     light would give it (a radiance L lights a surface with pi L). Sampling
+     the prefiltered sky for every asphalt pixel cost more than the whole
+     authored place, so only what must reflect it, glass and metal, does. */
+  const hemi = new THREE.HemisphereLight(lightOf('lightSky'), lightOf('lightGround'), LIGHT.sky * Math.PI);
+  scene.add(key, fill, rim, hemi);
+  const sky = skyEnvironment(renderer, lightOf('lightSky'), lightOf('lightGround'));
+  const reflects = m => m.metalness > 0.5 || (m.roughness < 0.1 && m.name !== ASSET_STATUS_MATERIAL);
 
   const dot = dotTexture();
   const mats = {
@@ -371,10 +415,13 @@ export function createWorld(host, hooks){
       landGroup.add(pool); return pool;
     });
     const radius = Math.max(island.a, island.b) + 4;
-    key.target.position.set(island.cx, 0, island.cz);
-    key.position.set(island.cx - radius*.6, radius*1.4, island.cz + radius*.7);
-    scene.add(key.target);
-    Object.assign(key.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: .5, far: radius*4 });
+    [[key, LIGHT.key], [fill, LIGHT.fill], [rim, LIGHT.rim]].forEach(([l, spec]) => {
+      const d = lightDirection(spec);
+      l.target.position.set(island.cx, 0, island.cz);
+      l.position.set(island.cx + d[0] * radius * 2, d[1] * radius * 2, island.cz + d[2] * radius * 2);
+      scene.add(l.target);
+    });
+    Object.assign(key.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: .5, far: radius*4.5 });
     key.shadow.camera.updateProjectionMatrix();
     renderer.shadowMap.needsUpdate = true;
     buildStreetLife(districts);
@@ -460,6 +507,151 @@ export function createWorld(host, hooks){
     });
   }
 
+  /* ---------- authored places ----------
+     A look with an authored GLB (world.js ASSETS) is drawn from it: one file
+     per url, loaded once, cloned per district with its skeletons, and given
+     its own copies of the materials so one project's state recolours and
+     dims its place alone. Its status lights share one material; each worker
+     gets its own slice of every clip, so each can do something different. */
+  const loader = new THREE.GLTFLoader();
+  const assetFiles = new Map();          // url -> Promise of the parsed file and its measured bounds
+  function loadAsset(spec){
+    let p = assetFiles.get(spec.url);
+    if(!p){
+      p = new Promise((res, rej) => loader.load(spec.url, gltf => {
+        gltf.scene.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(gltf.scene);
+        res({ gltf: gltf, box: box });
+      }, undefined, rej));
+      assetFiles.set(spec.url, p);
+    }
+    return p;
+  }
+  const trackTarget = name => name.slice(0, name.lastIndexOf('.'));
+  function buildAsset(t, spec, file){
+    const box = file.box, k = spec.span / (box.max.x - box.min.x);
+    const inst = THREE.cloneSkinned(file.gltf.scene);
+    inst.scale.setScalar(k);
+    inst.position.set(-(box.min.x + box.max.x) / 2 * k, TILE.padH - box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+    const copies = new Map();
+    let status = null;
+    inst.traverse(o => {
+      if(!o.isMesh) return;
+      let m = copies.get(o.material);
+      if(!m){
+        m = o.material.clone();
+        if(reflects(m)){ m.envMap = sky; m.envMapIntensity = LIGHT.sky; }
+        m.userData.base = m.color.clone();
+        m.userData.baseEmissive = m.emissive ? m.emissive.clone() : null;
+        copies.set(o.material, m);
+        if(m.name === ASSET_STATUS_MATERIAL) status = m;
+      }
+      o.material = m;
+      o.castShadow = m !== status;
+      o.receiveShadow = m !== status;
+      /* A skinned worker moves outside its bind-pose bounds. */
+      if(o.isSkinnedMesh) o.frustumCulled = false;
+    });
+    const mixer = new THREE.AnimationMixer(inst);
+    const crew = [];
+    inst.children.forEach(rig => {
+      const pose = rig.userData && rig.userData.worker_pose;
+      if(!pose) return;
+      const names = new Set();
+      rig.traverse(o => names.add(o.name));
+      const clips = {};
+      file.gltf.animations.forEach(c => {
+        const tracks = c.tracks.filter(tr => names.has(trackTarget(tr.name)));
+        if(tracks.length) clips[c.name] = new THREE.AnimationClip(c.name, c.duration, tracks);
+      });
+      crew.push({ rig: rig, authored: 'MC_' + pose, clips: clips, action: null, pace: 0 });
+    });
+    return { root: inst, mixer: mixer, crew: crew, status: status, materials: Array.from(copies.values()),
+             height: TILE.padH + (box.max.y - box.min.y) * k, fading: 0 };
+  }
+  /* The recipe gives way to the authored place, or comes back if it fails. */
+  function showAsset(t, on){
+    t.recipe.forEach(o => { o.visible = !on; });
+    t.assetPad.forEach(o => { o.visible = on; });
+    if(t.asset) t.asset.root.visible = on;
+    t.height = on && t.asset ? t.asset.height : placeHeight(t.theme);
+    t.assetState = on ? 'on' : 'failed';
+    renderer.shadowMap.needsUpdate = true;
+  }
+  function settleAsset(t){
+    if(t.settled) return;
+    t.settled = true;
+    S.pending = Math.max(0, S.pending - 1);
+    if(S.order.length && S.w){ S.reroom = 0; relayout(); reframe(); }
+    S.dirty = true;
+    wake();
+  }
+  function startAsset(t, spec){
+    t.assetState = 'loading';
+    S.pending++;
+    const late = setTimeout(() => { if(!t.asset && !S.destroyed){ showAsset(t, false); settleAsset(t); } }, ASSET_WAIT_MS);
+    loadAsset(spec).then(file => {
+      if(S.destroyed || t.dropped) return;
+      t.asset = buildAsset(t, spec, file);
+      t.root.add(t.asset.root);
+      applyAssetState(t, t.state, true);
+      showAsset(t, true);
+      /* Programs are compiled before the place is shown, so its first frame
+         does not stall; a browser without the async path draws it anyway. */
+      return (renderer.compileAsync ? renderer.compileAsync(scene, camera) : Promise.resolve()).catch(() => {});
+    }).catch(() => {
+      if(!S.destroyed && !t.dropped) showAsset(t, false);
+    }).then(() => { clearTimeout(late); if(!S.destroyed && !t.dropped) settleAsset(t); });
+  }
+
+  /* Status lights the rim, the beacon and every helmet, only when known;
+     a paused place is the same place in lower light; each worker does what
+     its role does in this state (world.js assetCrew). Properties only. */
+  function applyAssetState(t, item, snap){
+    const a = t.asset;
+    if(!a) return;
+    const quiet = item.workerState === 'quiet';
+    a.materials.forEach(m => {
+      if(m === a.status) return;
+      m.color.copy(m.userData.base).multiplyScalar(quiet ? DIM : 1);
+      if(m.userData.baseEmissive) m.emissive.copy(m.userData.baseEmissive).multiplyScalar(quiet ? DIM : 1);
+    });
+    if(a.status){
+      const hue = parseColour(rawToken(t.button, '--sig'));
+      if(item.recorded && hue){
+        a.status.color.copy(hue.c);
+        a.status.emissive.copy(hue.c);
+        a.status.emissiveIntensity = LIGHT.status * (quiet ? DIM : 1);
+      } else {
+        a.status.color.copy(col('ink'));
+        a.status.emissive.setRGB(0, 0, 0);
+      }
+    }
+    const still = rm();
+    a.crew.forEach(w => {
+      const plan = assetCrew(item.workerState, w.authored);
+      w.rig.visible = !!plan;
+      if(!plan) return;
+      const clip = w.clips[plan.clip] || w.clips[w.authored];
+      if(!clip) return;
+      const next = a.mixer.clipAction(clip, a.root);
+      w.pace = still ? 0 : plan.pace;
+      if(next === w.action){ next.timeScale = w.pace; return; }
+      next.enabled = true;
+      next.reset();
+      next.timeScale = w.pace;
+      next.play();
+      if(w.action && !snap && !still){
+        w.action.crossFadeTo(next, CLIP_FADE_S, false);
+        a.fading = performance.now() + CLIP_FADE_S * 1000;
+      } else if(w.action) w.action.stop();
+      w.action = next;
+    });
+    /* The new pose is drawn even when nothing is advancing. */
+    a.mixer.update(0);
+    renderer.shadowMap.needsUpdate = true;
+  }
+
   /* ---------- a district ---------- */
   function makeTile(item){
     const t = { id: item.id, theme: item.theme, state: {}, x: 0, z: 0, row: 0, pose: null, celebrate: 0, lifeT: 0,
@@ -495,7 +687,7 @@ export function createWorld(host, hooks){
     t.content.position.y = TILE.padH;
     t.content.scale.setScalar(TILE.content);
     t.root.add(t.content);
-    meshesFor(placeGeo(item.theme, tintOf), t.content, true, true);
+    const recipeMeshes = meshesFor(placeGeo(item.theme, tintOf), t.content, true, true);
     const contact = new THREE.Mesh(geos.shadow, mats.shadow);
     contact.position.set(-.25,.015,-.45); contact.scale.set(6.6,1,5.8); contact.renderOrder=1;
     t.content.add(contact);
@@ -561,11 +753,25 @@ export function createWorld(host, hooks){
         t.life.push({ el: el, i: i, g: g, origin: origin, rig: rig });
       }
     });
+    /* An authored place stands on the plain pad; the recipe, its crew, its
+       life, its beacon and its painted light are the fallback. */
+    t.recipe = recipeMeshes.concat([contact, t.lamp, t.halo, t.worker], t.life.map(L => L.g),
+      t.content.children.filter(o => o.isMesh && o.material === mats.spill));
+    t.assetPad = [];
+    const spec = assetFor(item.theme);
+    if(spec){
+      t.assetPad = meshesFor(partsGeo('asset-pad', padParts().slice(0, 1)), t.content, true, true);
+      t.assetPad.forEach(o => { o.visible = false; });
+      t.height = assetHeight(item.theme);
+      startAsset(t, spec);
+    }
     scene.add(t.root);
     return t;
   }
 
   function dropTile(t){
+    t.dropped = true;
+    if(t.assetState === 'loading' && !t.settled){ t.settled = true; S.pending = Math.max(0, S.pending - 1); }
     scene.remove(t.root);
     if(selectMesh.parent === t.content) t.content.remove(selectMesh);
     if(t.button.parentNode) t.button.parentNode.removeChild(t.button);
@@ -610,6 +816,9 @@ export function createWorld(host, hooks){
       /* A place that stops holds its first moment, not wherever it was. */
       if(!lifeActive(item.workerState, false)) t.lifeT = 0;
     }
+    if(t.asset && (changed('workerState') || changed('signal') || changed('recorded'))) applyAssetState(t, item, S.first || rm());
+    /* The recipe's crew and beacon stay away while the authored place is drawn. */
+    if(t.assetState === 'on') t.recipe.forEach(o => { o.visible = false; });
     if(item.selected && selectMesh.parent !== t.content) t.content.add(selectMesh);
     t.state = Object.assign({}, item, { attention: (item.attention || []).slice() });
   }
@@ -787,6 +996,7 @@ export function createWorld(host, hooks){
     if(rm() || now - S.lastWake > WORLD.ambientSeconds * 1000) return false;
     if(streetLife.length) return true;
     for(const t of S.tiles.values()){
+      if(t.asset && t.asset.root.visible && t.asset.crew.some(w => w.rig.visible && w.pace > 0)) return true;
       if(crewLoops(t.state.workerState, false) || lifeActive(t.state.workerState, false) || (t.state.attention && t.state.attention.length)) return true;
     }
     return false;
@@ -842,10 +1052,37 @@ export function createWorld(host, hooks){
     });
   }
 
+  /* Authored workers play while the world is lively; a crossfade finishes
+     even when it is not. Returns true while one is still blending. The
+     cached shadow map follows them at LIGHT.shadowRefreshMs, only while
+     they move. */
+  function stepAssets(now, dt, ambient){
+    let blending = false, moved = false;
+    S.tiles.forEach(t => {
+      const a = t.asset;
+      if(!a || !a.root.visible) return;
+      const fading = a.fading > now;
+      if((ambient && !rm()) || fading){
+        a.mixer.update(dt);
+        /* At the overview a worker is a few pixels tall: its shadow is not
+           worth a depth pass of the whole city. */
+        if(districtPx(districtOf(t), S.frame, S.w, S.h) >= LIGHT.shadowMinPx) moved = true;
+      }
+      if(fading) blending = true;
+    });
+    if(moved && now - S.shadowAt >= LIGHT.shadowRefreshMs){ S.shadowAt = now; S.shadowRefreshes++; renderer.shadowMap.needsUpdate = true; }
+    return blending;
+  }
+
   function stepBeacons(now, ambient){
     const breath = ambient ? 0.5 + 0.5 * Math.sin(now / 1000 * Math.PI * 2 / BREATH_S) : 0.5;
     signalMats.forEach(m => { m.halo.opacity = 0.4; });
     S.tiles.forEach(t => {
+      const a = t.asset;
+      if(a && a.status && a.root.visible && t.state.recorded){
+        const attention = t.state.attention && t.state.attention.length;
+        a.status.emissiveIntensity = LIGHT.status * (t.state.workerState === 'quiet' ? DIM : attention ? 0.75 + 0.5 * breath : 1);
+      }
       if(!t.halo.visible) return;
       const attention = t.state.attention && t.state.attention.length;
       if(attention){ t.halo.material.opacity = 0.35 + 0.4 * breath; t.halo.scale.setScalar(0.9 + 0.2 * breath); }
@@ -878,6 +1115,7 @@ export function createWorld(host, hooks){
     const settling = stepCrews(now, dt, ambient);
     stepLife(dt, ambient);
     stepStreetLife(dt, ambient);
+    const blending = stepAssets(now, dt, ambient);
     stepBeacons(now, ambient);
     aimCamera();
     try{
@@ -893,12 +1131,14 @@ export function createWorld(host, hooks){
     if(S.signEnter && --S.signEnter === 0 && S.signFor) sign.classList.add('is-in');
     const spent = performance.now() - began;
     S.cost = S.cost ? S.cost * 0.9 + spent * 0.1 : spent;
-    if(view.style.visibility){
+    /* The first frame with every authored place settled (drawn, or given back
+       to its recipe) is the one that is shown. */
+    if(view.style.visibility && !S.pending){
       view.style.visibility = '';
       /* The first frame is on screen: the app may hand the field over. */
       if(H.onReady) H.onReady();
     }
-    const again = moving || ambient || settling || S.signEnter > 0;
+    const again = moving || ambient || settling || blending || S.signEnter > 0;
     /* Frames that keep coming slowly lower the drawing resolution a step. */
     if(again && gapMs > 0 && gapMs < 250){
       S.slowSum += gapMs; S.slowCount++;
@@ -1020,7 +1260,11 @@ export function createWorld(host, hooks){
   listen(document, 'visibilitychange', () => { if(!document.hidden) wake(); });
 
   let ro = null, io = null, mo = null, mq = null;
-  const onMotion = () => { S.tiles.forEach(t => { t.pose = null; t.celebrate = 0; }); if(S.to){ S.frame = S.to; S.from = S.to = null; } S.dirty = true; wake(); };
+  const onMotion = () => {
+    S.tiles.forEach(t => { t.pose = null; t.celebrate = 0; if(t.asset){ t.asset.crew.forEach(w => { if(w.action){ w.action.stop(); w.action = null; } }); applyAssetState(t, t.state, true); } });
+    if(S.to){ S.frame = S.to; S.from = S.to = null; }
+    S.dirty = true; wake();
+  };
   try{ ro = new ResizeObserver(() => { resize(); S.dirty = true; wake(); }); ro.observe(view); }catch(e){}
   try{
     io = new IntersectionObserver(entries => {
@@ -1103,9 +1347,12 @@ export function createWorld(host, hooks){
     Object.values(mats).forEach(x => m.add(x));
     signalMats.forEach(x => { m.add(x.lamp); m.add(x.halo); m.add(x.helmet); });
     shirtMats.forEach(x => m.add(x));
+    S.tiles.forEach(t => { if(t.asset){ t.asset.mixer.stopAllAction(); t.asset.materials.forEach(x => m.add(x)); } });
+    assetFiles.forEach(p => p.then(file => file.gltf.scene.traverse(o => { if(o.isMesh){ o.geometry.dispose(); o.material.dispose(); } })).catch(() => {}));
     g.forEach(x => x.dispose());
     m.forEach(x => x.dispose());
     dot.dispose();
+    sky.dispose();
     if(key.shadow.map) key.shadow.map.dispose();
     /* Hand the context back now rather than at garbage collection; one
        already lost has nothing to hand back. */
@@ -1132,9 +1379,34 @@ export function createWorld(host, hooks){
       frame: S.frame ? { x: S.frame.x, z: S.frame.z, d: S.frame.d } : null,
       running: !!S.raf, awake: awake(), lost: S.lost, failed: S.failed, tiles: S.tiles.size,
       built: placeGeos.size + partGeos.size, traffic: streetTime, residents: streetLife.filter(a => a.resident).length, centres: centres, life: life,
-      sign: S.signFor ? { id: S.signFor, x: S.signX, y: S.signY, shown: !!S.signShown } : null
+      sign: S.signFor ? { id: S.signFor, x: S.signX, y: S.signY, shown: !!S.signShown } : null,
+      shadowMap: key.shadow.mapSize.x, shadowRefreshes: S.shadowRefreshes, pending: S.pending,
+      assets: Array.from(S.tiles.values()).filter(t => t.assetState).map(t => ({
+        id: t.id, state: t.assetState, height: Math.round(t.height * 100) / 100,
+        crew: t.asset ? t.asset.crew.map(w => ({ role: w.rig.name, clip: w.action ? w.action.getClip().name : null, pace: w.pace, shown: w.rig.visible })) : [],
+        status: t.asset && t.asset.status ? '#' + t.asset.status.emissive.getHexString(THREE.SRGBColorSpace) : null
+      }))
     };
   }
 
-  return { draw: draw, focus: focus, destroy: destroy, stats: stats };
+  /* What the QA measures: the whole cost of a frame, CPU and GPU, as the
+     mean of n synchronous renders each finished by a one-pixel readback,
+     with and without the shadow pass. Never called by the app. */
+  function measure(n){
+    const gl = renderer.getContext(), px = new Uint8Array(4), k = Math.max(1, n | 0);
+    const time = shadow => {
+      const t0 = performance.now();
+      for(let i = 0; i < k; i++){
+        renderer.shadowMap.needsUpdate = shadow;
+        renderer.render(scene, camera);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      }
+      return Math.round((performance.now() - t0) / k * 100) / 100;
+    };
+    time(false);
+    const frameMs = time(false), calls = renderer.info.render.calls, triangles = renderer.info.render.triangles;
+    return { frameMs: frameMs, frameWithShadowMs: time(true), calls: calls, triangles: triangles, shadowCalls: renderer.info.render.calls - calls };
+  }
+
+  return { draw: draw, focus: focus, destroy: destroy, stats: stats, measure: measure };
 }

@@ -9,7 +9,9 @@
     "tool": "esbuild@0.25.10",
     "entry": "package/build/three.module.js",
     "addons": [
-      "package/examples/jsm/geometries/RoundedBoxGeometry.js"
+      "package/examples/jsm/geometries/RoundedBoxGeometry.js",
+      "package/examples/jsm/loaders/GLTFLoader.js",
+      "package/examples/jsm/utils/SkeletonUtils.js"
     ],
     "aliases": {
       "three": "./package/build/three.module.js"
@@ -39,7 +41,6 @@
       "PlaneGeometry",
       "CircleGeometry",
       "MeshLambertMaterial",
-      "MeshPhongMaterial",
       "MeshStandardMaterial",
       "MeshBasicMaterial",
       "CanvasTexture",
@@ -47,16 +48,23 @@
       "Vector3",
       "Matrix4",
       "Euler",
-      "HemisphereLight",
+      "Box3",
       "DirectionalLight",
+      "HemisphereLight",
       "AdditiveBlending",
+      "BackSide",
       "SRGBColorSpace",
       "PCFShadowMap",
-      "ACESFilmicToneMapping",
-      "RoundedBoxGeometry"
+      "NeutralToneMapping",
+      "PMREMGenerator",
+      "AnimationMixer",
+      "AnimationClip",
+      "RoundedBoxGeometry",
+      "GLTFLoader",
+      "cloneSkinned"
     ]
   },
   "file": "three.min.js",
-  "bytes": 546179,
-  "sha256": "5abf541c3bb3b1b8fe695b84c5ab6f73678c3870b4d621167457e70191ada61d"
+  "bytes": 639129,
+  "sha256": "0c9283a1079c2dcb73462eea6746a8ccfa791eadb65ccfbb753bdd867a59a5f9"
 }

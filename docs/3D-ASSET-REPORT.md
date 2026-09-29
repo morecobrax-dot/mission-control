@@ -171,4 +171,7 @@ Remaining gaps, in order:
 3. Materials are clean constants; a hint of per-object colour variation would
    add richness without noise.
 4. The hall's middle string course reads as a plain shelf.
-5. Studio lighting does not travel in the GLB; the app's world must recreate it.
+5. Studio lighting does not travel in the GLB; the app recreates it (0.6.0,
+   `LIGHT` in `field/world.js`). In the app the place is seen at the city
+   camera's 13 degree yaw, not the renders' 45: at 45 a phone cannot show all
+   six blocks at a readable size.

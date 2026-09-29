@@ -266,8 +266,8 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     Labels and the sign move by transform and are measured only when their
     words or room change — never read layout in a frame. Reduce Motion makes
     every move instant and stills every crew and every place. Status lights
-    only the beacon and the helmet, and only when known — no record, no
-    light, no worker. A place's life moves only while its project is known to
+    only the beacon, the helmet and an authored place's rim, and only when
+    known — no record, no light, no worker. A place's life moves only while its project is known to
     be under way (never unrecorded, blocked or paused). A place is a place,
     never a progress bar: no levels, counts or completion, and its life never
     speeds up or counts with anything. The sign says only what the record
@@ -286,8 +286,24 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     Roads imply no software dependency, throughput or agent execution.
     Residents and vehicles share the one visibility/reduced-motion-aware
     scheduler; no separate loop, network source or persisted simulation.
-52. **Lighting is art-directed, not a claim of real GI.** The city uses
-    bevel geometry, physical materials, hemisphere fill, one cached soft
-    directional shadow map and painted warm light pools. Keep colours in
-    tokens and assets local. Measure GPU/frame costs after changing art,
-    preserve fallback and dispose the shadow target with other resources.
+52. **Lighting is art-directed, not a claim of real GI.** One rig for the
+    whole world, from the Blender master (`LIGHT` in `world.js`): a warm key
+    sun that casts, a weak cool fill and rim, and the Blender world's
+    gradient as a hemisphere light. Keep Blender's split of the faces (the
+    face that fills the view lit, the one to its right in shade, shadows to
+    screen-right), not its angles. PBR Neutral tone mapping. The prefiltered
+    sky is reflected only by glass and metal, never sampled by every pixel.
+    One shadow map, cached; it refreshes only while an authored worker moves
+    and its place is drawn large. Keep colours in tokens and assets local.
+    Measure the frame's full cost (`measure()`, QA only) after changing art
+    or light, preserve fallback and dispose the shadow target with other
+    resources.
+53. **Blender owns an authored place; the app drives it.** A look with a GLB
+    in `ASSETS` is drawn from it: never rebuild or retouch its geometry or
+    materials in Three.js, and fix a material that translates badly where it
+    is exported (`export_glb.py`). Its status material, dimming and crew
+    clips are driven from the scene the app gives, through `assetCrew`;
+    nothing in the file decides a status. Its rise is measured from the
+    file. The look's recipe stays as its fallback. A new authored place is a
+    Blender export, an `ASSETS` entry and an `APP_FILES` line — never code
+    per project.

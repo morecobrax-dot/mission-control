@@ -26,8 +26,8 @@
 
 export const WORLD = {
   fov: 30,                       // the lens, vertical, in degrees: gentle perspective, no fisheye
-  pitch: 0.8,                    // about 46 degrees down onto the island
-  yaw: 0.22,                     // turned about 13 degrees, so the island reads in depth
+  pitch: 0.7,                    // 40 degrees down: a little more facade, as the Blender camera's 35
+  yaw: 0.22,                     // turned about 13 degrees: the only turn at which a phone shows every district (see LIGHT)
   tileTurn: 0,                    // blocks align with the shared street grid
   stepX: 14.8,                     // world units between district centres across
   stepZ: 15.4,                     // and from row to row: a little more, for the labels
@@ -47,9 +47,11 @@ export const WORLD = {
   slowFrameMs: 21                // frames slower than this, for a second, lower the drawing resolution a step
 };
 
-/* Budgets set before building, reported by render3d.js and checked in the
-   browser QA: at overview, with the six registered projects. */
-export const BUDGET = { drawCalls: 160, triangles: 160000, threeGzipBytes: 190000 };
+/* Budgets reported by render3d.js and checked in the browser QA: at
+   overview, with the six registered projects, one of them authored (a frame
+   without the shadow pass measured 178 calls and 137k triangles; the
+   authored place is about 70 calls, one per authored material). */
+export const BUDGET = { drawCalls: 200, triangles: 160000, threeGzipBytes: 190000 };
 
 /* A district: its pad (a square of half side `pad` in its own frame, so a
    diamond on the island), the scale its recipe is drawn at, and its crew. */
@@ -530,7 +532,8 @@ export const PALETTE = {
   asphalt: '--city-asphalt', sidewalk: '--city-sidewalk', curb: '--city-curb', facade: '--city-facade',
   facadeWarm: '--city-facade-warm', facadeCool: '--city-facade-cool', windowCool: '--city-window-cool',
   windowDim: '--city-window-dim', roadPaint: '--city-road-paint', cityBase: '--city-base',
-  shade: '--iso-shade', lightKey: '--light-key', lightSky: '--light-sky', lightGround: '--light-ground'
+  shade: '--iso-shade', lightKey: '--light-key', lightFill: '--light-fill', lightRim: '--light-rim',
+  lightSky: '--light-sky', lightGround: '--light-ground'
 };
 /* Matte is physically shaded with soft bevel normals; metal adds a restrained highlight; glow is
    light that belongs to the place (windows, seams, screens, lanterns),
@@ -730,6 +733,77 @@ export const ENVIRONMENTS = {
 };
 
 export function environmentFor(theme){ return ENVIRONMENTS[theme] || ENVIRONMENTS.generic; }
+
+/* ---------- authored places ----------
+   A look may have a place authored in Blender (art/blender, and
+   docs/3D-ART-BIBLE.md) and exported as a GLB. Blender owns its geometry,
+   materials and clips; the app owns its state, its light and every touch.
+   The renderer draws it instead of the look's recipe, which remains the
+   fallback when the file cannot load. `span` is the width its plinth is
+   drawn at, in world units, inside the pad; `rise` its authored height over
+   its authored width, measured from the exported file, so framing and
+   hit-testing know how tall it stands before it has loaded. */
+export const ASSETS = {
+  track: { url: './art/exports/golden-diorama.glb', span: 10.0, rise: 0.433 }
+};
+export function assetFor(theme){ return ASSETS[theme] || null; }
+
+/* The clips every authored worker carries, and the material every status
+   light in an authored place shares (docs/3D-ASSET-REPORT.md). */
+export const ASSET_CLIPS = ['MC_IDLE', 'MC_WORKING', 'MC_ACTIVE', 'MC_SIGNAL', 'MC_REPAIR'];
+export const ASSET_STATUS_MATERIAL = 'MC_STATUS_LIGHT';
+
+/* What an authored worker does in each crew state. `authored` is the clip
+   it was posed with in Blender (its role: the coach's clipboard, the
+   runner's run, the signaller's raised arm, the technician's repair).
+   Returns { clip, pace }: pace 1 plays it, 0.7 is calm upkeep, and 0 holds
+   its first frame, still. null: the worker is not there, because nothing
+   is known. Provisional: it only has to prove that state drives behaviour. */
+export function assetCrew(workerState, authored){
+  const own = { clip: authored, pace: 1 }, idle = { clip: 'MC_IDLE', pace: 1 }, still = { clip: 'MC_IDLE', pace: 0 };
+  switch(workerState){
+    case 'working':     return own;                                                          // building: every role at work
+    case 'surveying':   return authored === 'MC_WORKING' || authored === 'MC_SIGNAL' ? own : idle;   // planning
+    case 'inspecting':  return authored === 'MC_WORKING' || authored === 'MC_SIGNAL' ? own : idle;   // needs QA: the clipboard and the signal
+    case 'waiting':     return authored === 'MC_SIGNAL' ? own : idle;                        // needs a decision: one asks, the rest wait
+    case 'idle':        return authored === 'MC_REPAIR' || authored === 'MC_ACTIVE' ? { clip: authored, pace: 0.7 } : idle;  // stable: upkeep and an easy run
+    case 'celebrating': return authored === 'MC_SIGNAL' ? own : idle;                        // release ready: the signaller waves
+    case 'warning':     return still;                                                        // blocked: work has stopped
+    case 'quiet':       return still;                                                        // paused: at rest
+    default:            return null;                                                         // no record: no worker
+  }
+}
+
+/* ---------- the light ----------
+   One studio rig for the whole world, from the Blender master
+   (art/blender/scripts/mc_rig.py): a warm key sun, a weak cool fill from
+   camera-right, a rim from behind, and the sky's gradient as ambient light.
+   What is kept is the rig's split of the faces, not its angles: the face
+   that fills the view is lit, the narrow face to its right is in shade, and
+   cast shadows run to screen-right. Blender's camera sees two faces equally
+   (45 degrees), so its key sits 95 degrees round from the camera; this
+   camera sees the front face nearly square (13 degrees), and at 95 degrees
+   the key would graze it and light a face nobody sees, so it sits 55
+   degrees round, between the front and the hidden left side. Angles are
+   relative to where the camera looks from. Intensities are physical (a sun
+   of 5 is Blender's 5); colours are tokens. */
+export const LIGHT = {
+  key:  { turn: 55, elevation: 34, intensity: 5.0 },
+  fill: { turn: -32, elevation: 24, intensity: 0.35 },
+  rim:  { turn: -148, elevation: 34, intensity: 0.9 },
+  sky: 0.42,                    // the sky's share, as Blender's world strength
+  exposure: 1.0,
+  status: 0.9,                  // a known status light's emission; attention breathes round it
+  shadowRefreshMs: 80,          // an animated worker's shadow follows it at about 12 a second,
+  shadowMinPx: 240              // but only while its place is drawn at least this wide
+};
+/* A unit vector from the ground toward a light, in world axes. */
+export function lightDirection(l){
+  const cam = Math.atan2(TOWARD[2], TOWARD[0]), a = cam + l.turn * Math.PI / 180, e = l.elevation * Math.PI / 180;
+  return [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)];
+}
+/* Where the camera looks from, on the ground: exported for the light's test. */
+export function viewerDirection(){ return TOWARD.slice(); }
 
 /* Where a life element's copy stands, before its motion: pulse and rise
    copies spread along a climb or around a ring. */
@@ -953,4 +1027,9 @@ export function placeHeight(theme){
   }));
   HEIGHTS[key] = TILE.padH + Math.max(top, crew) * TILE.content;
   return HEIGHTS[key];
+}
+/* An authored place's height: its pad and its measured rise. */
+export function assetHeight(theme){
+  const a = ASSETS[theme];
+  return a ? TILE.padH + a.span * a.rise : null;
 }

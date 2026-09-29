@@ -257,9 +257,14 @@ comes from.
   texture path in three.js that the world does not have today, plus extra
   vertex data on every draw. Revisit only if the app adds that path; even
   then, never bake a status colour.
+- glTF has no sheen weight: Blender's exporter writes the sheen tint as the
+  sheen colour and drops the weight, so rubber and grass would arrive at full
+  sheen and turn milky. The export folds the weight into the tint
+  (`fold_sheen_weight`, on the export copy only).
 - Studio lighting (sun, light linking, sky) does not travel in the GLB. The
-  app's world must recreate the direction and the warm and cool relationship
-  itself.
+  app recreates it in `LIGHT` (`field/world.js`): the same warm key, cool
+  sky and face split, aimed for the app's camera rather than copied from
+  Blender's angles. See ARCHITECTURE.md.
 
 ## Review loop
 

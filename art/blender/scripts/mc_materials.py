@@ -212,3 +212,21 @@ def strip_procedural(mat_):
         mid = 0.5 * (rng.inputs['To Min'].default_value + rng.inputs['To Max'].default_value)
         nt.links.remove(link[0])
         b.inputs['Roughness'].default_value = mid
+
+
+def fold_sheen_weight(mat_):
+    """glTF has no sheen weight: the exporter writes Sheen Tint as the sheen
+    colour and drops the weight, so a 0.35 sheen arrives in three.js at full
+    strength and matte rubber and grass turn milky. Fold the weight into the
+    tint (on the export copy only) so the colour carries it."""
+    if not mat_.node_tree:
+        return
+    b = mat_.node_tree.nodes.get('Principled BSDF')
+    if not b or 'Sheen Weight' not in b.inputs:
+        return
+    w = b.inputs['Sheen Weight'].default_value
+    if w <= 0:
+        return
+    t = b.inputs['Sheen Tint'].default_value
+    b.inputs['Sheen Tint'].default_value = (t[0] * w, t[1] * w, t[2] * w, 1.0)
+    b.inputs['Sheen Weight'].default_value = 1.0
