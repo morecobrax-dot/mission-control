@@ -1104,14 +1104,20 @@ body.scroll-locked{
   display: inline-flex; align-items: center; gap: 4px;
   font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
   letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; color: var(--sig);
-  text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor);
+  text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor), 0 0 3px var(--field-floor), 0 0 3px var(--field-floor);
 }
-.world-badge .block-unrecorded{ text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor); }
+.world-badge .block-unrecorded{ text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor), 0 0 3px var(--field-floor), 0 0 3px var(--field-floor); }
 .world-tile.is-selected .world-name::after{
   content: ''; display: block; height: 2px; margin: 3px auto 0; width: 60%;
   border-radius: var(--radius-pill); background: var(--field-select);
 }
-.world-badge .chip{ padding: 1px 6px; }
+.world-badge .chip{
+  padding: 1px 6px;
+  /* Over a bright facade a see-through chip cannot be read: this one is solid, still tinted by its signal. */
+  background: var(--surface-raised);
+  background: color-mix(in srgb, var(--sig, var(--text-dim)) 16%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--sig, var(--text-dim)) 55%, transparent);
+}
 /* A label that would cover another, or whose district has left the view,
    is not there: it cannot be read, so it cannot be tapped. */
 .world-tile.is-hidden .world-label{ opacity: 0; pointer-events: none; }

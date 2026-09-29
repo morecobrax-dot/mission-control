@@ -362,6 +362,19 @@ export function resolveLabels(rects, first, viewW, viewH){
   return shown;
 }
 
+/* The sign is a card over the selected place. Where it would hide another
+   project's name and the camera is not on that place (`close` is false), the
+   sign is the one that goes: the slim bar under the world already says the
+   same and no project loses its name. Close on a place, the sign wins as it
+   always did. Returns { shown, sign }. */
+export function resolveWithSign(rects, signRect, first, viewW, viewH, close){
+  if(!signRect) return { shown: resolveLabels(rects, first, viewW, viewH), sign: false };
+  const shown = resolveLabels([signRect].concat(rects), first, viewW, viewH);
+  if(close) return { shown: shown, sign: true };
+  const bare = resolveLabels(rects, first, viewW, viewH);
+  return rects.some(r => bare[r.id] && !shown[r.id]) ? { shown: bare, sign: false } : { shown: shown, sign: true };
+}
+
 /* ---------- gestures ----------
    One arbiter for the viewport. The first pointer owns the gesture; others
    are ignored until it ends. Until it has moved WORLD.slopPx it is a tap in

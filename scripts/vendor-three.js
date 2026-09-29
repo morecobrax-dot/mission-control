@@ -51,7 +51,7 @@ const EXPORTS = [
   'MeshLambertMaterial', 'MeshPhongMaterial', 'MeshStandardMaterial', 'MeshBasicMaterial', 'CanvasTexture',
   'Color', 'Vector3', 'Matrix4', 'Euler',
   'HemisphereLight', 'DirectionalLight', 'AdditiveBlending', 'SRGBColorSpace',
-  'PCFSoftShadowMap', 'ACESFilmicToneMapping', 'RoundedBoxGeometry'
+  'PCFShadowMap', 'ACESFilmicToneMapping', 'RoundedBoxGeometry'
 ];
 
 /* One command line, quoting only what needs it: npm and npx are scripts on

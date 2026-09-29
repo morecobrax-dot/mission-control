@@ -32,7 +32,7 @@ import * as THREE from '../vendor/three/three.min.js';
 import {
   WORLD, TILE, BEACON, eyeOf, project, chooseLayout, islandOf, islandOutline, focusFrame,
   clampFrame, panFrame, revealFrame, hitDistrict, labelAnchor, signAnchor, sameFrame, mixFrame,
-  pixelRatioFor, nextPixelRatio, resolveLabels, createArbiter, CREW, CREW_FACING, poseFor, crewLoops,
+  pixelRatioFor, nextPixelRatio, resolveLabels, resolveWithSign, createArbiter, CREW, CREW_FACING, poseFor, crewLoops,
   lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS, SCENERY,
   placeHeight, cityParts, streetLamps, TRUCK_PARTS, RESIDENT_PARTS, streetPose, trafficBounds
 } from './world.js';
@@ -233,7 +233,7 @@ export function createWorld(host, hooks){
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.92;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.shadowMap.autoUpdate = false;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(WORLD.fov, 1, 0.5, 2000);
@@ -710,6 +710,7 @@ export function createWorld(host, hooks){
   /* ---------- labels and the sign: transforms only ---------- */
   function placeLabels(){
     const f = S.frame, W = S.w, Hh = S.h, rects = [];
+    let signRect = null, inView = false;
     const sel = S.selected && S.tiles.get(S.selected);
     if(sel){
       /* The card stays whole inside the view; its stem still points at the
@@ -717,15 +718,15 @@ export function createWorld(host, hooks){
       const a = project(signAnchor(districtOf(sel), sel.height), f, W, Hh), room = S.signRoom || WORLD.sign;
       const x = Math.round(a.x), y = Math.round(a.y), half = Math.ceil(room.w / 2);
       const cx = Math.round(Math.min(Math.max(x, half), Math.max(half, W - half))), cy = Math.max(y, Math.ceil(room.h));
-      const inView = x >= 0 && x <= W && y >= 0 && y <= Hh, stem = cy === y ? x - cx : null;
+      inView = x >= 0 && x <= W && y >= 0 && y <= Hh;
+      const stem = cy === y ? x - cx : null;
       if(cx !== S.signX || cy !== S.signY){ S.signX = cx; S.signY = cy; sign.style.transform = 'translate3d(' + cx + 'px,' + cy + 'px,0)'; }
       if(stem !== S.signStem){
         S.signStem = stem;
         signStem.style.transform = stem === null ? 'scaleY(0)' : 'translate3d(' + stem + 'px,0,0)';
       }
-      if(inView !== S.signShown){ S.signShown = inView; sign.classList.toggle('is-away', !inView); }
-      /* A label the sign would cover is not there while the sign is. */
-      if(inView && S.signFor === S.selected) rects.push({ id: SIGN, row: -1, x: cx - half, y: cy - Math.ceil(room.h), w: half * 2, h: Math.ceil(room.h) });
+      /* A label the sign would cover is not there while the sign is, close on a place; from further out the sign gives way. */
+      if(inView && S.signFor === S.selected) signRect = { id: SIGN, row: -1, x: cx - half, y: cy - Math.ceil(room.h), w: half * 2, h: Math.ceil(room.h) };
     }
     S.order.forEach(id => {
       const t = S.tiles.get(id), a = project(labelAnchor(districtOf(t)), f, W, Hh);
@@ -735,7 +736,9 @@ export function createWorld(host, hooks){
       t.off = c.x < -40 || c.x > W + 40 || c.y < -40 || c.y > Hh + 40;
       rects.push({ id: id, row: t.row, x: x, y: y, w: t.labelW, h: t.labelH });
     });
-    const shown = resolveLabels(rects, [S.focused, SIGN, S.selected], W, Hh);
+    const res = resolveWithSign(rects, signRect, [S.focused, SIGN, S.selected], W, Hh, S.mode === 'focus'), shown = res.shown;
+    const signOn = inView && (signRect ? res.sign : true);
+    if(sel && signOn !== S.signShown){ S.signShown = signOn; sign.classList.toggle('is-away', !signOn); }
     S.order.forEach(id => {
       const t = S.tiles.get(id), hidden = !shown[id];
       if(hidden !== t.hiddenLabel || t.off !== t.wasOff){

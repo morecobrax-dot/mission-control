@@ -51,12 +51,12 @@
       "DirectionalLight",
       "AdditiveBlending",
       "SRGBColorSpace",
-      "PCFSoftShadowMap",
+      "PCFShadowMap",
       "ACESFilmicToneMapping",
       "RoundedBoxGeometry"
     ]
   },
   "file": "three.min.js",
-  "bytes": 546183,
-  "sha256": "e7be6e4d9d4a1465b902e83058e42df2d6d58eaa09167f6577a9ed4fb0a5eba1"
+  "bytes": 546179,
+  "sha256": "5abf541c3bb3b1b8fe695b84c5ab6f73678c3870b4d621167457e70191ada61d"
 }

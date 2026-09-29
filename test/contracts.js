@@ -3067,6 +3067,10 @@ async function testWorld(){
     /mesh\.castShadow = !!staticShadow && m !== 'glow'/.test(r3) &&
     /meshesFor\(placeGeo\(item\.theme, tintOf\), t\.content, true, true\)/.test(r3) &&
     (r3.match(/, true, true\)/g) || []).length === 1);
+  const gone = (String(lib).match(/WebGLShadowMap: (\w+) has been removed/g) || []).map(s => s.split(' ')[1]);
+  T('the shadow map is a type this Three.js release still has: a removed one warns at every start',
+    gone.length > 0 && gone.every(n => !new RegExp('shadowMap\\.type = THREE\\.' + n + '\\b').test(r3)) &&
+      /shadowMap\.type = THREE\.PCFShadowMap/.test(r3), gone.join());
 
   sub('the camera stays on the island and goes where it is sent');
   const ds6 = phone.districts, isl6 = W.islandOf(ds6), over = phone.frame, hts = themes6.map(W.placeHeight);
@@ -3169,8 +3173,21 @@ async function testWorld(){
     { id: ' sign', row: -1, x: 100, y: 10, w: 200, h: 60 },
     { id: 'near', row: 2, x: 150, y: 40, w: 80, h: 40 },
     { id: 'clear', row: 2, x: 10, y: 120, w: 80, h: 40 }], [null, ' sign', 'clear'], 400, 300);
-  T('a label the sign would cover is not there while the sign is', beneath.near === false && beneath.clear === true &&
-    /rects\.push\(\{ id: SIGN, row: -1,/.test(r3) && /resolveLabels\(rects, \[S\.focused, SIGN, S\.selected\], W, Hh\)/.test(r3));
+  T('a label the sign would cover is not there while the sign is, close on a place', beneath.near === false && beneath.clear === true &&
+    /signRect = \{ id: SIGN, row: -1,/.test(r3) && /resolveWithSign\(rects, signRect, \[S\.focused, SIGN, S\.selected\], W, Hh, S\.mode === 'focus'\)/.test(r3));
+  const nameRects = [
+    { id: 'back-a', row: 0, x: 60, y: 200, w: 100, h: 44 }, { id: 'back-b', row: 0, x: 200, y: 200, w: 100, h: 44 },
+    { id: 'mid', row: 1, x: 130, y: 300, w: 100, h: 44 }, { id: 'front', row: 2, x: 130, y: 400, w: 100, h: 44 }];
+  const roofSign = { id: ' sign', row: -1, x: 40, y: 180, w: 300, h: 90 };
+  const lead = [null, ' sign', 'front'];
+  const yielded = W.resolveWithSign(nameRects, roofSign, lead, 390, 600, false), closeUp = W.resolveWithSign(nameRects, roofSign, lead, 390, 600, true);
+  T('from the overview the sign gives way rather than hide a project\'s name',
+    yielded.sign === false && nameRects.every(r => yielded.shown[r.id] === true), JSON.stringify(yielded));
+  T('close on a place the sign keeps its room and the names under it wait',
+    closeUp.sign === true && closeUp.shown['back-a'] === false && closeUp.shown.front === true, JSON.stringify(closeUp));
+  T('where the sign hides no name it stays, at any distance',
+    W.resolveWithSign(nameRects.slice(2), roofSign, lead, 390, 600, false).sign === true &&
+      W.resolveWithSign(nameRects, null, lead, 390, 600, false).sign === false);
   T('it is measured when its words change, so a focus leaves it room', /S\.signRoom = w > 0 && h > 0 \?/.test(r3) &&
     /focusFrame\(districtOf\(sel\), sel\.height, sel\.room, S\.over, S\.w, S\.h, S\.signRoom\)/.test(r3));
 

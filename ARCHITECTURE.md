@@ -421,7 +421,10 @@ registry order, holding its label, moved under its district each frame: it
 is the keyboard's stop and the accessible name, which says every status. A
 label is type, not a box: the name, then one status — a chip only for what
 needs you, otherwise the status word in its colour — at least 44 px tall.
-Only the selected project's label has a backing. A label that can be read
+Only the selected project's label has a backing (a chip is solid, so it reads
+over a bright facade). The sign gives way at the overview, or a pan, where it
+would hide another project's name (`resolveWithSign`); close on a place it
+keeps its room. A label that can be read
 takes a tap; one that would overlap another is hidden and takes none (the
 focused label, the sign and the selected label win, in that order), as is
 one whose district has left the view. Keyboard focus shows a hidden label
