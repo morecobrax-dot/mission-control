@@ -5,3 +5,16 @@ references/visual/
 
 # The vendor script's scratch folder: scripts/vendor-three.js makes and removes it.
 .vendor-build/
+
+# 3D style references: art direction only, of unknown provenance, and this
+# repository and its Pages site are public. Only the .gitkeep is tracked.
+references/3d-style/*
+!references/3d-style/.gitkeep
+
+# Local-only contact sheets that place reference art beside our renders.
+art/renders/local/
+
+# Blender's own backups and scratch output.
+*.blend1
+*.blend2
+art/**/__pycache__/

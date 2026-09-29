@@ -1,0 +1,51 @@
+{
+  "file": "golden-diorama.glb",
+  "bytes": 1367468,
+  "triangles": 55042,
+  "vertices_blender": 28713,
+  "mesh_objects": 34,
+  "draw_calls_estimate": 60,
+  "materials": 24,
+  "material_names": [
+    "MC_COMPOSITE_YELLOW",
+    "MC_CONCRETE",
+    "MC_CONCRETE_DK",
+    "MC_GLASS",
+    "MC_GLASS_LIT",
+    "MC_GRASS",
+    "MC_LEAF",
+    "MC_LEAF_DARK",
+    "MC_METAL",
+    "MC_METAL_DARK",
+    "MC_PAINT_BLUE",
+    "MC_PAINT_CREAM",
+    "MC_PAINT_NAVY",
+    "MC_PAINT_SLATE",
+    "MC_PAINT_WHITE",
+    "MC_PAVER",
+    "MC_PLINTH",
+    "MC_PLINTH_DK",
+    "MC_SKIN",
+    "MC_STATUS_LIGHT",
+    "MC_TRACK",
+    "MC_TRACK_LINE",
+    "MC_WOOD",
+    "MC_WOOD_DARK"
+  ],
+  "textures": 0,
+  "texture_memory_bytes": 0,
+  "armatures": 5,
+  "status_meshes": [
+    "GD_BeaconLamp",
+    "GD_Worker_lawn_HelmetBand",
+    "GD_Worker_pergola_HelmetBand",
+    "GD_Worker_roof_HelmetBand",
+    "GD_Worker_sprint_HelmetBand",
+    "GD_Worker_yard_coach_HelmetBand",
+    "PB_StatusRim"
+  ],
+  "clips": [
+    "MC_IDLE",
+    "MC_WORKING"
+  ]
+}
