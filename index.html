@@ -164,9 +164,9 @@
   /* The project field: a quiet floor under platforms built from
      dark materials, so a project's identity can never be read as
      its status. Faces are shaded by mixing toward --iso-shade. */
-  --field-floor: #0D131D;
+  --field-floor: #111523;
   --field-line: rgba(143,163,191,0.07);
-  --field-haze: rgba(76,194,255,0.10);
+  --field-haze: rgba(107,122,180,0.16);
   --field-select: rgba(238,241,245,0.85);
   /* Light, not status: the lit lip of every platform and the pool under
      the one in focus. Neutral, so it can never be read as a signal. */
@@ -195,11 +195,24 @@
   --mat-water: #3B6684;
   --mat-board: #182030;
   --mat-blueprint: #2C4F7A;
-  --glow-window: #FFE8C2;
+  --glow-window: #FFD092;
   --glow-screen: #CFE2F0;
-  --light-key: #FFF3E4;
-  --light-sky: #B9C7DE;
-  --light-ground: #1A2231;
+  --light-key: #FFE0BC;
+  --light-sky: #A5B5E4;
+  --light-ground: #343047;
+  /* City materials are scenery, independent of project state. Warm shop
+     light and cool street fill give the miniature architecture its depth. */
+  --city-asphalt: #303443;
+  --city-sidewalk: #B9AFA9;
+  --city-curb: #D4CBC0;
+  --city-facade: #C7C4BB;
+  --city-facade-warm: #BD8D7B;
+  --city-facade-cool: #849BAC;
+  --city-window-cool: #ACCBDE;
+  --city-window-dim: #344553;
+  --city-road-paint: #E9D9AD;
+  --city-base: #394052;
+  --city-atmosphere: rgba(135,107,155,0.12);
   --world-label: rgba(11,15,22,0.72);
   /* The island every place stands on and what grows there: muted, earthy
      and at least ΔE 20 from every status hue (contract 30 measures it), so
@@ -819,8 +832,8 @@ body.scroll-locked{
 .hud{
   display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: var(--space-xs);
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); box-shadow: inset 0 1px 0 var(--edge-hi);
+  background: var(--surface-sunken); border: 1px solid var(--border-quiet);
+  border-radius: var(--radius-lg);
 }
 .hud-item{
   min-width: 0; padding: var(--space-sm) var(--space-xs);
@@ -840,7 +853,7 @@ body.scroll-locked{
 .hud-label{
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
-  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint);
+  letter-spacing: 0; text-transform: uppercase; color: var(--text-faint);
 }
 
 /* ---- Under the counts, one wrapping row: what needs you, as one-line
@@ -860,7 +873,7 @@ body.scroll-locked{
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0;
   min-height: var(--touch-min); padding: 0 var(--space-md) 0 var(--space-sm);
   background: var(--surface); color: var(--text); text-align: left; cursor: pointer;
-  border: 1px solid var(--border); border-left: 3px solid var(--sig); border-radius: var(--radius-md);
+  border: 1px solid var(--border-quiet); border-left: 2px solid var(--sig); border-radius: var(--radius-md);
   font-size: var(--fs-support); line-height: var(--lh-tight);
   -webkit-tap-highlight-color: transparent;
 }
@@ -1042,7 +1055,8 @@ body.scroll-locked{
 .project-field.is-world, .project-field.world-loading{ height: var(--world-h); }
 .project-field.is-world{
   padding: 0;
-  background: radial-gradient(ellipse at 50% 42%, var(--field-haze), transparent 70%), var(--field-floor);
+  background: radial-gradient(ellipse at 50% 65%, var(--city-atmosphere), transparent 72%),
+    radial-gradient(ellipse at 50% 30%, var(--field-haze), transparent 80%), var(--field-floor);
 }
 /* Loading: the flat field, whole and usable, in the world's box. */
 .project-field.world-loading{ display: flex; flex-direction: column; justify-content: center; overflow-y: auto; }
@@ -1070,7 +1084,7 @@ body.scroll-locked{
 }
 .world-tile:focus-visible{ outline: none; }
 /* A label is part of the scene: no box, just type with a soft edge of the
-   floor's own colour so it reads over grass. The name leads; one status
+   floor's own colour so it reads over streets. The name leads; one status
    follows — a chip only when it needs you. The selected project alone gets
    a backing, so it stands out without every label competing. */
 .world-label{
@@ -1654,6 +1668,21 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-5-0',
+    version: '0.5.0',
+    title: 'A city of projects',
+    date: '2026-09-29',
+    summary: 'Your projects share a miniature city, with detailed buildings, softly lit streets and a little life between the blocks.',
+    newFeatures: [
+      'Connected city blocks with sidewalks, crossings and small box trucks moving through the streets',
+      'Distinct project buildings with warm windows, rounded architectural details and soft shadows'
+    ],
+    improvements: [
+      'City traffic and residents are ambient scenery; project crews and status signals continue to reflect recorded project state',
+      'A quieter command HUD gives the city and the selected project more room'
+    ]
+  },
   {
     id: 'v0-4-0',
     version: '0.4.0',

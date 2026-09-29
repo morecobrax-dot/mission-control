@@ -27,11 +27,12 @@ and works offline.
   you open the app, when you come back to it, and when you tap Refresh. See
   *Status from repositories* below.
 - **Project world.** Every project in the registry — six to start, and a new
-  record needs no other change — as a district on one miniature island, among
-  trees, rocks and ponds: a training hall and track, a scheduling studio, a
-  library corner, a vault and ledger, a launchpad, a sushi counter, or a
-  generic module, each busy with its own life while its work is under way
-  and still when it is not. Each has its name and one
+  record needs no other change — as a block in one miniature city, with
+  shared streets, crossings, sidewalks and warm street lighting. Each app has
+  its own architecture: a rooftop track, a clock tower, a reading house, a
+  vault entrance, an observatory or a sushi storefront. Box trucks and
+  residents are ambient scenery; they do not represent live AI activity.
+  Project-specific activity still follows recorded work state. Each has its name and one
   status on its label (what needs you comes first), a beacon lit only by a
   known state, and a worker whose station and pose follow that state; a
   project with no recorded state has no worker. Tap once to bring a project

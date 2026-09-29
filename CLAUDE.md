@@ -185,7 +185,7 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     fed by `fieldScene()`, one renderer at a time. A renderer never reads
     `Store`, never fetches, never decides a status and never owns the
     selection: it reports a tap, and the next draw says what is selected.
-    `WorldField` (`field/render3d.js`) is the field — one island, one
+    `WorldField` (`field/render3d.js`) is the field — one city, one
     perspective camera that never turns — and keeps a real button per
     project; a tap on the island is hit-tested in `field/world.js`, never by a
     box per district. `IsoField` is its fallback for the rest of a visit when the
@@ -278,3 +278,16 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     never edit `vendor/three/three.min.js` — contract 30 holds it to its
     sha256. A file the app loads is listed in `APP_FILES`, and
     `npm run config:sync` precaches it.
+
+51. **City ambience is not project activity.** The user authorized connected
+    city blocks, box trucks and residents. These are decorative city life,
+    using pure bounded paths with no project-state inputs. Real crew poses,
+    stations, beacons and attention remain derived from project records.
+    Roads imply no software dependency, throughput or agent execution.
+    Residents and vehicles share the one visibility/reduced-motion-aware
+    scheduler; no separate loop, network source or persisted simulation.
+52. **Lighting is art-directed, not a claim of real GI.** The city uses
+    bevel geometry, physical materials, hemisphere fill, one cached soft
+    directional shadow map and painted warm light pools. Keep colours in
+    tokens and assets local. Measure GPU/frame costs after changing art,
+    preserve fallback and dispose the shadow target with other resources.

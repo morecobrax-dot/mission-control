@@ -16,7 +16,7 @@
  */
 
 /* APP-CACHE-BEGIN */
-const CACHE_NAME = 'mission-control-v0.4.0';
+const CACHE_NAME = 'mission-control-v0.5.0';
 /* APP-CACHE-END */
 
 /* The shell, then APP_FILES from index.html (the 3D world's modules and

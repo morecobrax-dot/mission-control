@@ -319,7 +319,7 @@ reads storage, never fetches, never decides a status and never owns the
 selection: a tap calls `tapProject()`, and the next draw says what is
 selected. Contracts 24 and 30 check all of it.
 
-**The field is `WorldField`: one miniature island.** It lives outside the
+**The field is `WorldField`: one miniature city.** It lives outside the
 page script, in two ES modules the page imports after its first paint:
 
 - `field/world.js` — everything decided rather than drawn, with no Three.js
@@ -334,8 +334,9 @@ page script, in two ES modules the page imports after its first paint:
   scene, one perspective camera at a fixed yaw and pitch. Each place's parts
   merge into one geometry per finish (matte, metal, glow), built once per
   look and shared; stations, hand props and life elements are built once.
-  The island and its growth are one mesh each, rebuilt only when the layout
-  changes shape. A status change swaps a material or a visibility; nothing
+  The rounded city slab and merged streets rebuild only when the layout
+  changes shape. Building masses use small bevels; shared Standard materials
+  and one cached directional shadow map provide soft, grounded lighting. A status change swaps a material or a visibility; nothing
   is rebuilt.
 
 Three.js 0.186.1 is vendored in `vendor/three/`: a subset of only the
@@ -343,7 +344,9 @@ classes the world imports, tree-shaken and minified by esbuild,
 `scripts/vendor-three.js` being the one way it is made (pinned tarball
 integrity, pinned esbuild, target `es2020,safari15` so no class static
 blocks), with its licence and a provenance file whose sha256 contract 30
-holds the file to. It is about 135 KB gzipped. Nothing is fetched from a CDN.
+holds the file to. The gzip budget is measured by the contract rather than assumed from the
+previous renderer. RoundedBoxGeometry and the physical-material path are in
+the pinned local bundle. Nothing is fetched from a CDN.
 
 **Lifecycle.** Each renderer has its own host inside one `.field-box`:
 `#projectField` for `IsoField` and `#worldHost`, laid over it, for the world.
@@ -386,9 +389,16 @@ every district beats one that pans). Framing uses each place's real height
 and each label's measured size, so a low place or a short name never pays
 for the tallest. The overview shows every district and label as large as
 fits, never drawing a district in view below a readable width; a larger
-island starts at the first district and pans. Trees, pines, shrubs, rocks,
-flowers and a pond or two grow between the districts from a fixed seed —
-never on a pad and never tall near one — and join nothing to anything.
+city starts at the first district and pans.
+The minimum measures the pad geometry, not typography: labels retain their
+CSS type size. A 92px geometry floor cropped a three-column city on phones;
+the 68px floor lets the full six-block city fit as two columns, including
+the street slab and measured labels.
+Shared asphalt streets, raised sidewalks, crosswalks and curb details
+connect the blocks visually. Roads
+represent city infrastructure only; they encode no project relationships.
+Greenery is placed deliberately as street furniture, not scattered over a
+grassy island.
 
 **Camera and touch.** A fixed yaw and pitch through a gentle lens: no orbit,
 no zoom gesture. Two framings — the overview and focus (one place, its label
@@ -398,7 +408,7 @@ The viewport alone has `touch-action: none`: a drag inside it pans, a drag
 outside scrolls the page. One arbiter decides every touch: under 8 px it is a
 tap; past that it is a pan for good. A tap on the island is hit-tested
 against each district's drawn outline (its pad and its roof); where two
-overlap the nearer wins, and open grass selects nothing. The click that a
+overlap the nearer wins, and open streets select nothing. The click that a
 pan or an island tap also makes is swallowed for a moment, so a label the
 camera has just moved under the finger never takes it; a keyboard's click
 always goes through. Pointer cancel and lost capture end a gesture with no
@@ -424,30 +434,32 @@ the view (its stem still points at the roof), takes no taps and is hidden
 from assistive tech, which the button and the dock already tell. Overview
 appears whenever the whole island is not in view.
 
-**Places, crews and life.** Each look has a place: a training hall inside a
-running track, a scheduling studio with a timeline wall, a library corner
-with a lectern and a pond, a vault with coins and a ledger, a launchpad, a
-sushi counter with its capybara chef, and a plainly generic module — each
-with windows, doors, lamps, planters, benches and props. Identity (the
-ground, the seam of light round each pad, the accents) is the project's own
-`--terrain-*`/`--tint-*`; the island is `--land-*` and `--mat-*` earth and
-plant tokens, each at least ΔE 20 from every status hue; status lights only
-the beacon's lamp and halo and the worker's helmet, and only when a state is
-known — with no record the lamp is dark and there is no worker. The crew's
-station and pose come from `workerState` alone (building works at a bench,
-QA holds a clipboard, a decision points at a console, blocked stands at a
-barrier, stable tends a valve, paused sits dimmed, planning leans over a
-blueprint, release ready raises an arm once, on the change itself — never on
-a reload). Each place also has its own life (`life` in its recipe): runners
-lap the track, the studio's clock turns and its now-line slides, pages turn
-and a lamp glows in the library, the vault wheel spins and a coin drops,
-lights climb the gantry and steam rises at the launchpad, plates ride the
-sushi belt past the chef's knife. Life moves only while the project is known
-to be under way — building, in QA, awaiting a decision, stable (more slowly),
-planning or release ready — and holds still where no state is recorded,
-where work is blocked or paused, and under Reduce Motion, where it shows its
-first moment. It is a place, never a measure: it does not speed up, grow or
-count with anything.
+**Places, crews and life.** Each project owns an architectural block:
+a training building with a rooftop running track, a scheduling tower with a
+clock, a columned reading house, a savings building with a vault entrance,
+a space-learning observatory, and a sushi shop with capybara chef. A generic
+block serves additional registry records. Shared frontage helpers create
+recessed windows, cornices, rooftop utilities, awnings and storefronts.
+Project identity uses `--terrain-*`/`--tint-*`, while architectural finishes
+use `--city-*` and material tokens. Matte and metal surfaces are Standard
+materials; warm window geometry is unlit, with small painted additive pools.
+Hemisphere fill plus a soft directional shadow map approximate bounce and
+contact light. This is not ray-traced global illumination.
+
+Status still lights only the beacon, halo and worker helmet. No record means
+no status worker or lit status beacon. Worker stations and poses follow
+`workerState`, with acknowledgment only on an actual release-ready transition.
+Project-specific life such as a rooftop runner, clock hand or chef's knife
+uses the existing state rules and never invents activity.
+
+Separate city ambience has no project inputs. `streetPose(bounds, time,
+offset)` describes a continuous rounded rectangular route. Three shared box
+truck models drive the perimeter streets and up to ten resident models walk
+block sidewalks. They use the single render clock, sleep when hidden or
+settled, and remain still under Reduced Motion. They never represent an AI
+agent, work rate, transfer, progress or an integration. Geometries and
+materials are shared across vehicles and residents; rebuilding the layout
+replaces scene nodes without allocating new copies of their shared assets.
 
 **`IsoField` is the fallback**: one `<button>` per project containing an
 inline isometric SVG platform, landmarks as data (`LANDMARKS`), CSS motion

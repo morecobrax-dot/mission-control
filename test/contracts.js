@@ -2905,7 +2905,7 @@ async function testWorld(){
     bad.slice(0, 3).map(b => b[0] + ' ' + JSON.stringify(b[1])).join(' | '));
   T('a station or the island\'s growth is the same everywhere: no project colour',
     parts.filter(([w, p]) => /^(station|hand|growth)/.test(w) && (p.c === 'tint' || p.c === 'terrain')).length === 0);
-  T('glow is only ever the light of a place', parts.filter(([, p]) => p.m === 'glow').every(([, p]) => ['window', 'screen', 'tint', 'paper'].indexOf(p.c) !== -1));
+  T('glow is only ever the light of a place', parts.filter(([, p]) => p.m === 'glow').every(([, p]) => ['window', 'windowCool', 'windowDim', 'screen', 'tint', 'paper'].indexOf(p.c) !== -1));
   /* CIE76, as contract 24: the island and what grows on it are never read
      as a state. */
   const lab = h => {
@@ -3025,7 +3025,11 @@ async function testWorld(){
       }));
     }
     const back = ds.filter(d => d.row === 0), front = ds.filter(d => d.row === ds[n - 1].row);
-    if(n > pick.cols && !(W.districtPx(front[0], f, w, h) > W.districtPx(back[0], f, w, h))) deeper = false;
+    if(n > pick.cols){
+      // Compare depth on one x: a short final row may be centred at another x.
+      const rear = { x: f.x, z: back[0].z }, near = { x: f.x, z: front[0].z };
+      if(!(W.project([near.x, 0, near.z], f, w, h).depth < W.project([rear.x, 0, rear.z], f, w, h).depth)) deeper = false;
+    }
   }));
   T('districts never overlap, from one project to fifty, on every screen', apart);
   T('districts keep registry order: back to front, left to right', reading);
@@ -3033,7 +3037,36 @@ async function testWorld(){
   T('an overview that fits shows every district whole, roof to label', framed);
   T('one world with depth: a nearer row is drawn larger than a farther one', deeper);
   const phone = W.chooseLayout(6, 358, 521, themes6.map(W.placeHeight), null);
-  T('on a phone the six places stand two to a row, each at least 100 px across', phone.cols === 2 && phone.size >= 100, phone.cols + ' cols, ' + phone.size.toFixed(1) + ' px');
+  T('on a phone the six city blocks stand two to a row at the readable overview scale', phone.fits && phone.cols === 2 && phone.size >= W.WORLD.minDistrictPx, phone.cols + ' cols, ' + phone.size.toFixed(1) + ' px');
+  const phoneRooms = themes6.map((_, i) => ({ w: 100, h: i === 4 ? 56 : 36 }));
+  const phoneMeasured = W.chooseLayout(6, 358, 521, themes6.map(W.placeHeight), phoneRooms);
+  const phonePoints = phoneMeasured.districts.flatMap((d, i) => W.districtPoints(d, W.placeHeight(themes6[i]), phoneRooms[i]));
+  W.islandOutline(W.islandOf(phoneMeasured.districts), 96, 0).forEach(([x, z]) => phonePoints.push({ p: [x, -W.WORLD.islandDepth, z] }));
+  T('phone overview keeps the whole street slab and measured labels inside the view instead of cropping side blocks',
+    phoneMeasured.fits && phoneMeasured.cols === 2 && phonePoints.every(q => {
+      const p = W.project(q.p, phoneMeasured.frame, 358, 521);
+      return p.depth > 0 && p.x - (q.w || 0) >= 0 && p.x + (q.w || 0) <= 358 && p.y - (q.up || 0) >= 0 && p.y + (q.down || 0) <= 521;
+    }));
+  const shortPhone = W.chooseLayout(6, 341, 335, themes6.map(W.placeHeight), phoneRooms);
+  T('a short phone shows all six blocks instead of silently panning past the bank', shortPhone.fits && shortPhone.cols === 2);
+
+  sub('city ambience has bounded continuous paths, separate from project work');
+  const streets = W.trafficBounds(phone.districts);
+  let pathsSafe = true, pathsContinuous = true;
+  for(let t=0; t<400; t+=0.1){
+    const a=W.streetPose(streets,t,0), b=W.streetPose(streets,t+0.001,0);
+    if(!Number.isFinite(a.x+a.z+a.turn) || a.x<streets.minX-0.001 || a.x>streets.maxX+0.001 || a.z<streets.minZ-0.001 || a.z>streets.maxZ+0.001) pathsSafe=false;
+    if(Math.hypot(a.x-b.x,a.z-b.z)>0.002 || Math.abs(Math.atan2(Math.sin(a.turn-b.turn),Math.cos(a.turn-b.turn)))>0.003) pathsContinuous=false;
+  }
+  T('trucks remain on their road bounds',pathsSafe);
+  T('rounded street turns keep position and heading continuous',pathsContinuous);
+  T('street scenery is generated for any registered block count', W.cityParts(phone.districts).length>0 && W.cityParts(W.layoutDistricts(7,3).districts).length>W.cityParts(phone.districts).length);
+  T('residents and delivery trucks have no state inputs', W.streetPose.length===3 && !/workerState|status|recorded/.test(W.streetPose.toString()));
+  T('light and layout identifiers cannot shadow each other at world construction', /const layoutKey =/.test(r3) && /key\.target\.position/.test(r3));
+  T('cached shadows cannot retain an old worker station or moving prop',
+    /mesh\.castShadow = !!staticShadow && m !== 'glow'/.test(r3) &&
+    /meshesFor\(placeGeo\(item\.theme, tintOf\), t\.content, true, true\)/.test(r3) &&
+    (r3.match(/, true, true\)/g) || []).length === 1);
 
   sub('the camera stays on the island and goes where it is sent');
   const ds6 = phone.districts, isl6 = W.islandOf(ds6), over = phone.frame, hts = themes6.map(W.placeHeight);
@@ -3107,7 +3140,7 @@ async function testWorld(){
     /now - S\.lastRender < WORLD\.frameMinMs/.test(r3));
   T('frames that keep coming slowly lower the resolution a step',
     /S\.slowSum \/ S\.slowCount > WORLD\.slowFrameMs && S\.dpr > WORLD\.minPixelRatio/.test(r3) && /S\.dprCap = nextPixelRatio\(S\.dpr\)/.test(r3));
-  T('the island is built once per layout, not per frame', /if\(key === land\.key\) return island;/.test(r3) && !/buildLand/.test(code(fnBody('tick') || '')));
+  T('the island is built once per layout, not per frame', /if\(layoutKey === land\.key\) return island;/.test(r3) && !/buildLand/.test(code(fnBody('tick') || '')));
   T('taps are hit-tested on the island, never by a box per district',
     /hitDistrict\(S\.order\.map/.test(r3) && !/world-hit/.test(r3 + style));
 

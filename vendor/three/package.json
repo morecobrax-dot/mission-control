@@ -8,6 +8,12 @@
   "build": {
     "tool": "esbuild@0.25.10",
     "entry": "package/build/three.module.js",
+    "addons": [
+      "package/examples/jsm/geometries/RoundedBoxGeometry.js"
+    ],
+    "aliases": {
+      "three": "./package/build/three.module.js"
+    },
     "args": [
       "--bundle",
       "--format=esm",
@@ -34,6 +40,7 @@
       "CircleGeometry",
       "MeshLambertMaterial",
       "MeshPhongMaterial",
+      "MeshStandardMaterial",
       "MeshBasicMaterial",
       "CanvasTexture",
       "Color",
@@ -43,10 +50,13 @@
       "HemisphereLight",
       "DirectionalLight",
       "AdditiveBlending",
-      "SRGBColorSpace"
+      "SRGBColorSpace",
+      "PCFSoftShadowMap",
+      "ACESFilmicToneMapping",
+      "RoundedBoxGeometry"
     ]
   },
   "file": "three.min.js",
-  "bytes": 542528,
-  "sha256": "936e2def2b20cbd913c52109dfd0207d4bb335611a166e97955e4d8301df1918"
+  "bytes": 546183,
+  "sha256": "e7be6e4d9d4a1465b902e83058e42df2d6d58eaa09167f6577a9ed4fb0a5eba1"
 }

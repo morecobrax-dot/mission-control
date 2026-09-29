@@ -1,7 +1,7 @@
 /* =========================================================
    THE 3D FIELD
    ---------------------------------------------------------
-   Draws Mission Control's projects as one miniature island
+   Draws Mission Control's projects as one miniature city
    with Three.js, behind the same seam as the SVG field. It is
    given a scene (ids, names, signals, crews, themes, the words
    a label and a sign say, which one is selected) and never
@@ -34,7 +34,7 @@ import {
   clampFrame, panFrame, revealFrame, hitDistrict, labelAnchor, signAnchor, sameFrame, mixFrame,
   pixelRatioFor, nextPixelRatio, resolveLabels, createArbiter, CREW, CREW_FACING, poseFor, crewLoops,
   lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS, SCENERY,
-  scatter, placeHeight
+  placeHeight, cityParts, streetLamps, TRUCK_PARTS, RESIDENT_PARTS, streetPose, trafficBounds
 } from './world.js';
 
 export const REVISION = THREE.REVISION;
@@ -70,7 +70,7 @@ function partGeometry(part){
   const d = part.d, n = part.n;
   let g;
   switch(part.s){
-    case 'box':   g = new THREE.BoxGeometry(d[0], d[1], d[2]); break;
+    case 'box':   g = part.bevel ? new THREE.RoundedBoxGeometry(d[0], d[1], d[2], 2, Math.min(part.bevel, Math.min(...d) / 3)) : new THREE.BoxGeometry(d[0], d[1], d[2]); break;
     case 'cyl':   g = new THREE.CylinderGeometry(d[0], d[0], d[1], n || 14); break;
     case 'cone':  g = new THREE.ConeGeometry(d[0], d[1], n || 14); break;
     case 'ball':  g = new THREE.SphereGeometry(d[0], n || 10, Math.max(4, Math.round((n || 10) * 0.6))); break;
@@ -129,24 +129,21 @@ function toGeometries(buckets){
 function padParts(){
   const h = TILE.padH / TILE.content, side = TILE.pad * 2 / TILE.content;
   return [
-    { s: 'box', p: [0, -h, 0], d: [side, h, side], m: 'matte', c: 'terrain' },
-    { s: 'box', p: [0, -h * 0.7, 0], d: [side + 0.18, h * 0.3, side + 0.18], m: 'glow', c: 'tint' },
+    { s: 'box', p: [0, -h, 0], d: [side, h, side], m: 'matte', c: 'sidewalk', bevel: 0.08 },
     { s: 'box', p: [BEACON.x, 0, BEACON.z], d: [0.34, 0.12, 0.34], m: 'metal', c: 'steel' },
     { s: 'box', p: [BEACON.x, 0.12, BEACON.z], d: [0.09, BEACON.mast - 0.12, 0.09], m: 'metal', c: 'steel' },
     { s: 'cyl', p: [BEACON.x, BEACON.mast - 0.05, BEACON.z], d: [BEACON.lamp + 0.06, 0.08], n: 12, m: 'metal', c: 'steel' }
   ];
 }
 
-/* The island: a soft-cornered slab of grass on soil and rock, its shore a
-   ring of points. One geometry, vertex coloured, flat shaded, so its cliffs
-   read as faceted rock. */
+/* The city: one rounded architectural slab, asphalt on top and a curb
+   reveal at its edge. No random forest separates the project blocks. */
 function islandGeometry(island, col){
   const top = islandOutline(island, 96, 0), n = top.length;
   const cx = island.cx, cz = island.cz, D = WORLD.islandDepth;
   const rings = [
-    { y: 0, k: 1, c: col('grass') }, { y: -0.3, k: 1.004, c: col('grassEdge') },
-    { y: -0.4, k: 1.0, c: col('soil') }, { y: -D * 0.6, k: 0.965, c: col('soil') },
-    { y: -D * 0.62, k: 0.96, c: col('rock') }, { y: -D, k: 0.87, c: col('rock') }
+    { y: 0, k: 1, c: col('asphalt') }, { y: -0.16, k: 1.001, c: col('curb') },
+    { y: -0.28, k: 1, c: col('cityBase') }, { y: -D, k: 0.994, c: col('cityBase') }
   ];
   const pts = rings.map(r => top.map(([x, z]) => [cx + (x - cx) * r.k, r.y, cz + (z - cz) * r.k]));
   const pos = [], colr = [];
@@ -233,6 +230,11 @@ export function createWorld(host, hooks){
     throw e;
   }
   renderer.setClearAlpha(0);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.92;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(WORLD.fov, 1, 0.5, 2000);
 
@@ -250,22 +252,28 @@ export function createWorld(host, hooks){
   const fallback = palette.stone || { c: new THREE.Color(0.8, 0.8, 0.8), a: 1 };
   const col = name => (palette[name] || fallback).c;
 
-  const hemi = new THREE.HemisphereLight(palette.lightSky ? palette.lightSky.c : col('stone'), palette.lightGround ? palette.lightGround.c : col('ink'), 1.3);
-  const key = new THREE.DirectionalLight(palette.lightKey ? palette.lightKey.c : col('stone'), 2.4);
-  key.position.set(-6, 12, 7);
+  const hemi = new THREE.HemisphereLight(palette.lightSky ? palette.lightSky.c : col('stone'), palette.lightGround ? palette.lightGround.c : col('ink'), 1.65);
+  const key = new THREE.DirectionalLight(palette.lightKey ? palette.lightKey.c : col('stone'), 1.35);
+  key.position.set(-25, 40, 30);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.bias = -0.00025;
+  key.shadow.normalBias = 0.07;
+  key.shadow.radius = 5;
   scene.add(hemi, key);
 
   const dot = dotTexture();
   const mats = {
-    matte: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
-    metal: new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 38 }),
+    matte: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.03 }),
+    metal: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.3 }),
     glow: new THREE.MeshBasicMaterial({ vertexColors: true }),
     suit: new THREE.MeshLambertMaterial({ color: col('suit'), flatShading: true }),
-    skin: new THREE.MeshLambertMaterial({ color: col('skin'), flatShading: true }),
+    skin: new THREE.MeshStandardMaterial({ color: col('skin'), roughness: 0.85 }),
+    spill: new THREE.MeshBasicMaterial({ map: dot, color: col('window'), transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false }),
     shadow: new THREE.MeshBasicMaterial({ map: dot, color: col('shade'), transparent: true, opacity: 0.5, depthWrite: false }),
     lampOff: new THREE.MeshLambertMaterial({ color: col('ink'), flatShading: true })
   };
-  mats.metal.specular.setScalar(0.18);
+  mats.glow.toneMapped = true;
   /* A paused place is the same place in lower light. */
   mats.matteDim = mats.matte.clone(); mats.matteDim.color.setScalar(DIM);
   mats.metalDim = mats.metal.clone(); mats.metalDim.color.setScalar(DIM);
@@ -340,35 +348,48 @@ export function createWorld(host, hooks){
   selectMesh.renderOrder = 2;
 
   /* The island and its growth: rebuilt only when the layout changes shape. */
-  const land = { island: null, scenery: [], key: '' };
+  const land = { island: null, scenery: [], pools: [], key: '' };
   const landGroup = new THREE.Group();
   scene.add(landGroup);
   function buildLand(districts){
     const island = islandOf(districts);
-    const key = districts.map(d => d.x.toFixed(2) + ',' + d.z.toFixed(2)).join('|');
-    if(key === land.key) return island;
-    land.key = key;
+    const layoutKey = districts.map(d => d.x.toFixed(2) + ',' + d.z.toFixed(2)).join('|');
+    if(layoutKey === land.key) return island;
+    land.key = layoutKey;
     [land.island].concat(land.scenery).forEach(m => { if(m){ landGroup.remove(m); m.geometry.dispose(); } });
     land.island = new THREE.Mesh(islandGeometry(island, col), mats.matte);
     landGroup.add(land.island);
-    const grow = scatter(districts, island, 7), buckets = {};
-    grow.items.forEach(it => mergeParts(SCENERY[it.kind], col, it, buckets));
-    grow.ponds.forEach(p => mergeParts([
-      { s: 'cyl', p: [0, 0.005, 0], d: [p.r, 0.04], n: 28, m: 'metal', c: 'water' },
-      { s: 'torus', p: [0, 0, 0], d: [p.r + 0.1, 0.12], n: 28, m: 'matte', c: 'rock', r: [Math.PI / 2, 0, 0] },
-      { s: 'cyl', p: [p.r * 0.35, 0.045, -p.r * 0.2], d: [0.22, 0.015], n: 8, m: 'matte', c: 'leaf' },
-      { s: 'cyl', p: [-p.r * 0.3, 0.045, p.r * 0.3], d: [0.16, 0.015], n: 8, m: 'matte', c: 'leaf' }
-    ], col, { x: p.x, z: p.z, s: 1, turn: 0 }, buckets));
-    const g = toGeometries(buckets);
-    land.scenery = Object.keys(g).map(m => { const mesh = new THREE.Mesh(g[m], mats[m]); landGroup.add(mesh); return mesh; });
+    land.island.receiveShadow = true;
+    const g = toGeometries(mergeParts(cityParts(districts), col));
+    land.scenery = Object.keys(g).map(m => { const mesh = new THREE.Mesh(g[m], mats[m]); mesh.receiveShadow = true; landGroup.add(mesh); return mesh; });
+    /* Shared pool geometry/material live until destroy, including across a
+       layout change: remove the meshes here without disposing their assets. */
+    land.pools.forEach(mesh => landGroup.remove(mesh));
+    land.pools = streetLamps(districts).map(p => {
+      const pool = new THREE.Mesh(geos.shadow, mats.spill);
+      pool.position.set(p.x, .045, p.z); pool.scale.set(5.2, 1, 5.2); pool.renderOrder = 1;
+      landGroup.add(pool); return pool;
+    });
+    const radius = Math.max(island.a, island.b) + 4;
+    key.target.position.set(island.cx, 0, island.cz);
+    key.position.set(island.cx - radius*.6, radius*1.4, island.cz + radius*.7);
+    scene.add(key.target);
+    Object.assign(key.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: .5, far: radius*4 });
+    key.shadow.camera.updateProjectionMatrix();
+    renderer.shadowMap.needsUpdate = true;
+    buildStreetLife(districts);
     return island;
   }
 
-  function meshesFor(geoSet, parent, dimmable){
+  function meshesFor(geoSet, parent, dimmable, staticShadow){
     const list = [];
     ['matte', 'metal', 'glow'].forEach(m => {
       if(!geoSet[m]) return;
       const mesh = new THREE.Mesh(geoSet[m], mats[m]);
+      /* The cached map contains architecture only. A moving prop or a
+         worker's changing station must never leave its old shadow behind. */
+      mesh.castShadow = !!staticShadow && m !== 'glow';
+      mesh.receiveShadow = m !== 'glow';
       mesh.userData.finish = m;
       mesh.userData.dimmable = !!dimmable;
       parent.add(mesh);
@@ -410,6 +431,35 @@ export function createWorld(host, hooks){
     r.legR.rotation.x = p.legR || 0;
   }
 
+  /* Street residents and trucks are decorative city life. They never read a
+     status or stand in for a worker, and share the world's one clock. */
+  let streetLife = [], streetTime = 0;
+  const streetGroup = new THREE.Group(); scene.add(streetGroup);
+  function buildStreetLife(districts){
+    streetGroup.clear(); streetLife = [];
+    const bounds = trafficBounds(districts);
+    for(let i=0;i<3;i++){
+      const g = new THREE.Group();
+      meshesFor(partsGeo('city-truck',TRUCK_PARTS),g,false).forEach(m=>{m.castShadow=false;});
+      const shade = new THREE.Mesh(geos.shadow,mats.shadow); shade.scale.set(1.7,1,3); shade.position.y=.03;g.add(shade);
+      streetGroup.add(g); streetLife.push({g:g,bounds:bounds,offset:i*21,resident:false});
+    }
+    districts.slice(0,10).forEach((d,i)=>{
+      const g = new THREE.Group(); meshesFor(partsGeo('city-resident',RESIDENT_PARTS),g,false).forEach(m=>{m.castShadow=false;});
+      streetGroup.add(g);
+      streetLife.push({g:g,bounds:{minX:d.x-4.65,maxX:d.x+4.65,minZ:d.z-4.65,maxZ:d.z+4.65},offset:i*8,resident:true});
+    });
+    stepStreetLife(0,false);
+  }
+  function stepStreetLife(dt,ambient){
+    if(rm()) streetTime=0; else if(ambient) streetTime+=dt;
+    streetLife.forEach(a=>{
+      const p=streetPose(a.bounds,streetTime*(a.resident?.28:1),a.offset);
+      a.g.position.set(p.x,a.resident?TILE.padH+.035:0,p.z);a.g.rotation.y=p.turn;
+      if(a.resident && ambient) a.g.position.y+=Math.abs(Math.sin(streetTime*4+a.offset))*.025;
+    });
+  }
+
   /* ---------- a district ---------- */
   function makeTile(item){
     const t = { id: item.id, theme: item.theme, state: {}, x: 0, z: 0, row: 0, pose: null, celebrate: 0, lifeT: 0,
@@ -445,7 +495,16 @@ export function createWorld(host, hooks){
     t.content.position.y = TILE.padH;
     t.content.scale.setScalar(TILE.content);
     t.root.add(t.content);
-    meshesFor(placeGeo(item.theme, tintOf), t.content, true);
+    meshesFor(placeGeo(item.theme, tintOf), t.content, true, true);
+    const contact = new THREE.Mesh(geos.shadow, mats.shadow);
+    contact.position.set(-.25,.015,-.45); contact.scale.set(6.6,1,5.8); contact.renderOrder=1;
+    t.content.add(contact);
+    /* Warm light spill is a bounded painted pool, not an expensive light per window. */
+    for(const x of [-1.3,1.3]){
+      const pool = new THREE.Mesh(geos.shadow, mats.spill);
+      pool.position.set(x,.018,2.05); pool.scale.set(3.4,1,2.6); pool.renderOrder=1;
+      t.content.add(pool);
+    }
 
     /* The beacon's lamp, and a halo that faces the camera. */
     const lampPos = new THREE.Vector3(BEACON.x, BEACON.mast + BEACON.lamp * 0.6, BEACON.z);
@@ -723,6 +782,7 @@ export function createWorld(host, hooks){
   /* ---------- crews, life and beacons ---------- */
   function ambientWanted(now){
     if(rm() || now - S.lastWake > WORLD.ambientSeconds * 1000) return false;
+    if(streetLife.length) return true;
     for(const t of S.tiles.values()){
       if(crewLoops(t.state.workerState, false) || lifeActive(t.state.workerState, false) || (t.state.attention && t.state.attention.length)) return true;
     }
@@ -814,6 +874,7 @@ export function createWorld(host, hooks){
     S.lastTick = now;
     const settling = stepCrews(now, dt, ambient);
     stepLife(dt, ambient);
+    stepStreetLife(dt, ambient);
     stepBeacons(now, ambient);
     aimCamera();
     try{
@@ -947,6 +1008,7 @@ export function createWorld(host, hooks){
   const onRestored = () => {
     clearTimeout(S.lostTimer);
     S.lost = false;
+    renderer.shadowMap.needsUpdate = true;
     S.dirty = true;
     wake();
   };
@@ -1041,6 +1103,7 @@ export function createWorld(host, hooks){
     g.forEach(x => x.dispose());
     m.forEach(x => x.dispose());
     dot.dispose();
+    if(key.shadow.map) key.shadow.map.dispose();
     /* Hand the context back now rather than at garbage collection; one
        already lost has nothing to hand back. */
     let gone = true;
@@ -1065,7 +1128,7 @@ export function createWorld(host, hooks){
       width: S.w, height: S.h, pixelRatio: S.dpr, columns: S.cols, mode: S.mode,
       frame: S.frame ? { x: S.frame.x, z: S.frame.z, d: S.frame.d } : null,
       running: !!S.raf, awake: awake(), lost: S.lost, failed: S.failed, tiles: S.tiles.size,
-      built: placeGeos.size + partGeos.size, centres: centres, life: life,
+      built: placeGeos.size + partGeos.size, traffic: streetTime, residents: streetLife.filter(a => a.resident).length, centres: centres, life: life,
       sign: S.signFor ? { id: S.signFor, x: S.signX, y: S.signY, shown: !!S.signShown } : null
     };
   }

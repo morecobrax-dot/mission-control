@@ -15,8 +15,8 @@
      grass is y = 0. The camera looks at a point on it from a
      fixed yaw and pitch through a perspective lens, so near
      places are larger than far ones: one world with depth.
-   - DISTRICT: each project's own frame, turned 45 degrees so
-     its buildings show a corner. Its local x runs to the lower
+   - DISTRICT: each project's street-aligned block frame. The camera's
+     yaw shows the buildings' front and side. Its local x runs to the lower
      right and z to the lower left; +x and +z faces are the ones
      seen. Recipes are written in it and drawn TILE.content times
      their written size.
@@ -27,15 +27,15 @@
 export const WORLD = {
   fov: 30,                       // the lens, vertical, in degrees: gentle perspective, no fisheye
   pitch: 0.8,                    // about 46 degrees down onto the island
-  yaw: -0.3,                     // turned about 17 degrees, so the island reads in depth
-  tileTurn: -Math.PI / 4,        // a district's buildings show their corner
-  stepX: 16,                     // world units between district centres across
-  stepZ: 19,                     // and from row to row: a little more, for the labels
-  margin: 6.5,                   // island beyond the outer districts
-  islandDepth: 3.4,              // soil and rock under the grass
+  yaw: 0.22,                     // turned about 13 degrees, so the island reads in depth
+  tileTurn: 0,                    // blocks align with the shared street grid
+  stepX: 14.8,                     // world units between district centres across
+  stepZ: 15.4,                     // and from row to row: a little more, for the labels
+  margin: 4,                   // island beyond the outer districts
+  islandDepth: 1.05,              // rounded city-diorama slab below the streets
   minDist: 14, maxDist: 900,     // the closest and farthest the camera goes
   focusFill: 0.9,                // a focused district fills this share of the view
-  minDistrictPx: 92,             // the overview never draws a district narrower than this; a larger island pans
+  minDistrictPx: 68,             // geometry only: measured labels keep their CSS type size; a larger island pans
   labelPx: 36,                   // a label's room under its district, in px, until the labels are measured
   sign: { w: 200, h: 72 },       // the tap sign's room above a focused district, in px, until it is measured
   edgePx: 12,                    // breathing room at the viewport's edges, in px
@@ -49,12 +49,12 @@ export const WORLD = {
 
 /* Budgets set before building, reported by render3d.js and checked in the
    browser QA: at overview, with the six registered projects. */
-export const BUDGET = { drawCalls: 140, triangles: 160000, threeGzipBytes: 160000 };
+export const BUDGET = { drawCalls: 160, triangles: 160000, threeGzipBytes: 190000 };
 
 /* A district: its pad (a square of half side `pad` in its own frame, so a
    diamond on the island), the scale its recipe is drawn at, and its crew. */
-export const TILE = { pad: 5.2, padH: 0.22, content: 1.45, crew: 1.8, reach: 3.35 };
-const R2 = Math.SQRT2, EXTENT = TILE.pad * R2;          // a pad's half diagonal on the island
+export const TILE = { pad: 5.2, padH: 0.22, content: 1.45, crew: 1.05, reach: 3.35 };
+const R2 = Math.SQRT2, EXTENT = TILE.pad * (Math.abs(Math.cos(WORLD.tileTurn)) + Math.abs(Math.sin(WORLD.tileTurn)));          // a pad's half diagonal on the island
 
 /* ---------- the camera, as arithmetic ----------
    The yaw and pitch never change, so the camera's axes are constants. */
@@ -124,16 +124,16 @@ export function onIsland(island, x, z, inset){
 }
 
 /* Inside a district's pad: its diamond on the island. */
-export function onPad(d, x, z, grow){ return Math.abs(x - d.x) + Math.abs(z - d.z) <= EXTENT + (grow || 0); }
+export function onPad(d, x, z, grow){ return Math.abs(x - d.x) <= TILE.pad + (grow || 0) && Math.abs(z - d.z) <= TILE.pad + (grow || 0); }
 
 /* The points that frame a district: its pad at the grass, a narrower top at
    its tallest, the label's anchor at the pad's nearest corner and, when
    focused, the sign's anchor above its roof. `room` is the label's px
    ({ w, h }); `sign` the sign's ({ w, h }), above. */
 export function districtPoints(d, height, room, sign){
-  const e = EXTENT, t = e * 0.55, h = height;
-  const pts = [[d.x + e, 0, d.z], [d.x - e, 0, d.z], [d.x, 0, d.z + e], [d.x, 0, d.z - e],
-               [d.x + t, h, d.z], [d.x - t, h, d.z], [d.x, h, d.z + t], [d.x, h, d.z - t]].map(p => ({ p: p }));
+  const e = TILE.pad, t = e * 0.66, h = height;
+  const pts = [[d.x + e, 0, d.z+e], [d.x - e, 0, d.z+e], [d.x+e, 0, d.z-e], [d.x-e, 0, d.z-e],
+               [d.x+t, h, d.z+t], [d.x-t, h, d.z+t], [d.x+t, h, d.z-t], [d.x-t, h, d.z-t]].map(p => ({ p: p }));
   const r = room || { w: 96, h: WORLD.labelPx };
   pts.push({ p: labelAnchor(d), w: r.w / 2, down: r.h });
   if(sign) pts.push({ p: signAnchor(d, height), w: sign.w / 2, up: sign.h });
@@ -226,6 +226,7 @@ export function chooseLayout(count, W, H, heights, rooms){
 function overview(districts, heights, rooms, W, H){
   const pts = [], island = islandOf(districts);
   districts.forEach((d, i) => pts.push.apply(pts, districtPoints(d, at(heights, i, 3), at(rooms, i, null))));
+  islandOutline(island, 32, 0).forEach(([x,z]) => pts.push({ p:[x,-WORLD.islandDepth,z] }));
   const fit = clampFrame(fitFrame(pts, W, H, 1), island);
   const small = districts.length ? Math.min.apply(null, districts.map(d => districtPx(d, fit, W, H))) : Infinity;
   if(small >= WORLD.minDistrictPx) return { frame: fit, fits: true };
@@ -513,9 +514,12 @@ export const PALETTE = {
   window: '--glow-window', screen: '--glow-screen', suit: '--worker-suit', skin: '--worker-head',
   grass: '--land-grass', grassEdge: '--land-grass-edge', soil: '--land-soil', rock: '--land-rock',
   leaf: '--mat-leaf', leafDark: '--mat-leaf-dark', bark: '--mat-bark', petal: '--mat-petal', petalLight: '--mat-petal-light',
+  asphalt: '--city-asphalt', sidewalk: '--city-sidewalk', curb: '--city-curb', facade: '--city-facade',
+  facadeWarm: '--city-facade-warm', facadeCool: '--city-facade-cool', windowCool: '--city-window-cool',
+  windowDim: '--city-window-dim', roadPaint: '--city-road-paint', cityBase: '--city-base',
   shade: '--iso-shade', lightKey: '--light-key', lightSky: '--light-sky', lightGround: '--light-ground'
 };
-/* Matte is lit and flat-shaded; metal adds a restrained highlight; glow is
+/* Matte is physically shaded with soft bevel normals; metal adds a restrained highlight; glow is
    light that belongs to the place (windows, seams, screens, lanterns),
    never a status. */
 export const FINISHES = ['matte', 'metal', 'glow'];
@@ -549,10 +553,11 @@ export const SHAPES = ['box', 'cyl', 'cone', 'ball', 'ring', 'torus', 'rock'];
    long. Each returns parts. */
 /* A window on a +z face (a pane in x and y) or a +x face (in z and y): a
    dark frame, a lit pane and a sill. */
-function pane(x, y, z, w, h, face){
-  if(face === 'x') return [box(x + 0.012, y - 0.05, z, 0.03, h + 0.1, w + 0.1, 'matte', 'ink'), box(x + 0.03, y, z, 0.02, h, w, 'glow', 'window'),
+function pane(x, y, z, w, h, face, lit){
+  const material = lit === false ? 'metal' : 'glow', colour = lit === false ? 'windowDim' : lit === 'cool' ? 'windowCool' : 'window';
+  if(face === 'x') return [box(x + 0.012, y - 0.05, z, 0.03, h + 0.1, w + 0.1, 'matte', 'ink'), box(x + 0.03, y, z, 0.02, h, w, material, colour),
                            box(x + 0.06, y - 0.07, z, 0.08, 0.04, w + 0.14, 'matte', 'paper')];
-  return [box(x, y - 0.05, z + 0.012, w + 0.1, h + 0.1, 0.03, 'matte', 'ink'), box(x, y, z + 0.03, w, h, 0.02, 'glow', 'window'),
+  return [box(x, y - 0.05, z + 0.012, w + 0.1, h + 0.1, 0.03, 'matte', 'ink'), box(x, y, z + 0.03, w, h, 0.02, material, colour),
           box(x, y - 0.07, z + 0.06, w + 0.14, 0.04, 0.08, 'matte', 'paper')];
 }
 /* A door on a +z or +x face: frame, door and a small light over it. */
@@ -605,325 +610,109 @@ export const BEACON = { x: 2.9, z: -2.9, mast: 2.2, lamp: 0.2 };
 /* Each place: its parts, where its crew stands, and its life. A life
    element: { kind, at: [x, y, z], parts | rig, and its motion }, see
    lifePose; `copies` repeats it, `spread` sets their phase apart. */
+/* Architectural kit. Broad masses have a small bevel; windows are recessed
+   behind sills, mullions and cornices so light has edges to catch. */
+const mass = (x,y,z,w,h,d,c) => box(x,y,z,w,h,d,'matte',c,{ bevel: 0.055 });
+function frontage(x,z,w,d,floors,c){
+  const p = [mass(x,0,z,w,0.18,d,'curb'), mass(x,0.18,z,w-0.12,floors*1.12+0.22,d-0.12,c)];
+  const top = floors*1.12+0.4;
+  for(let f=0;f<floors;f++){
+    const y=0.42+f*1.12;
+    for(let i=0;i<3;i++) p.push(...pane(x-w*.32+i*w*.32,y,z+d/2-0.045,w*.23,.73,null,(i+f)%3!==0));
+    for(let i=0;i<2;i++) p.push(...pane(x+w/2-0.045,y,z-d*.26+i*d*.52,d*.32,.73,'x',(i+f)%3===0?false:(i+f)%2?'cool':true));
+    for(let i=0;i<3;i++) p.push(box(x-w*.32+i*w*.32,y,z+d/2+.015,.035,.73,.035,'metal','steel'));
+    for(let i=0;i<2;i++) p.push(box(x+w/2+.015,y,z-d*.26+i*d*.52,.035,.73,.035,'metal','steel'));
+    p.push(mass(x,y+.86,z,w+.12,.11,d+.12,'curb'));
+  }
+  p.push(mass(x,top,z,w+.28,.16,d+.28,'curb'),mass(x,top+.16,z,w-.12,.07,d-.12,'ink'));
+  for(const s of [-1,1]) p.push(mass(x+s*(w/2+.045),top+.16,z,.13,.26,d+.26,'curb'),mass(x,top+.16,z+s*(d/2+.045),w+.26,.26,.13,'curb'));
+  p.push(mass(x-.55,top+.23,z-.3,.65,.37,.72,'steel'),mass(x-.55,top+.6,z-.3,.7,.07,.76,'ink'));
+  for(let i=0;i<4;i++) p.push(box(x-.55,top+.675,z-.56+i*.17,.52,.012,.045,'metal','steel'));
+  return p;
+}
+function streetFurniture(){
+  return [...planter(-2.85,2.6,1.25),...planter(2.75,1.5,.9),...bench(-1.7,2.9,0),...lamp(2.85,2.8,2.1),
+    mass(-2.8,0,-2.8,.66,.24,.66,'curb'),cyl(-2.8,.24,-2.8,.075,1.2,'matte','bark'),
+    ball(-2.8,1.2,-2.8,.47,'matte','leaf',{n:12,k:[1,1.15,1]})];
+}
+function canopy(x,z,w,c){
+  return [mass(x,1.48,z,w,.18,.78,c),box(x,1.36,z+.34,w,.14,.08,'glow','window'),
+    cyl(x-w*.45,0,z+.28,.045,1.45,'metal','steel'),cyl(x+w*.45,0,z+.28,.045,1.45,'metal','steel')];
+}
+function signBoard(x,y,z,w,c){ return [mass(x,y,z,w,.42,.12,c),box(x,y+.09,z+.075,w*.84,.025,.025,'glow','window'),box(x,y+.29,z+.075,w*.84,.025,.025,'glow','window')]; }
+
 export const ENVIRONMENTS = {
-  /* A training hall with a barrel roof inside an oval running track, where
-     a runner laps; a weights rack and water in the infield, bleachers at
-     the back, cones at the edge. */
   track: {
-    crew: { x: 0.95, z: 0.8 },
-    parts: [
-      ring(0.1, 0.01, 0.1, 2.15, 3.0, 'matte', 'tint', { k: [1.08, 1, 0.8], n: 56 }),
-      ring(0.1, 0.022, 0.1, 2.55, 2.6, 'matte', 'paper', { k: [1.08, 1, 0.8], n: 56 }),
-      ring(0.1, 0.022, 0.1, 2.93, 2.97, 'matte', 'paper', { k: [1.08, 1, 0.8], n: 56 }),
-      box(3.02, 0.022, 0.1, 0.9, 0.012, 0.07, 'matte', 'paper'),
-      box(-0.5, 0, -0.45, 2.5, 0.14, 1.55, 'matte', 'ink'),
-      box(-0.5, 0.14, -0.45, 2.3, 1.11, 1.35, 'matte', 'stone'),
-      box(-0.5, 1.25, -0.45, 2.5, 0.16, 1.55, 'matte', 'ink'),
-      cyl(-0.5, 1.33, -0.45, 0.62, 2.2, 'matte', 'tint', { r: [0, 0, Math.PI / 2], n: 16, k: [1, 1, 0.9] }),
-      cyl(-1.45, 1.33, -0.45, 0.64, 0.06, 'matte', 'ink', { r: [0, 0, Math.PI / 2], n: 16, k: [1, 1, 0.92] }),
-      cyl(-0.5, 1.33, -0.45, 0.64, 0.06, 'matte', 'ink', { r: [0, 0, Math.PI / 2], n: 16, k: [1, 1, 0.92] }),
-      cyl(0.45, 1.33, -0.45, 0.64, 0.06, 'matte', 'ink', { r: [0, 0, Math.PI / 2], n: 16, k: [1, 1, 0.92] }),
-      ...door(-1.3, 0.24, 0.42, 0.72, 'z', 'tint'),
-      box(-1.3, 0.95, 0.27, 0.5, 0.16, 0.03, 'matte', 'paper'),
-      ...pane(-0.55, 0.42, 0.24, 0.5, 0.42),
-      ...pane(0.15, 0.42, 0.24, 0.5, 0.42),
-      ...pane(0.66, 0.42, -0.45, 0.8, 0.4, 'x'),
-      box(0.2, 1.41, -0.95, 0.24, 0.18, 0.24, 'metal', 'steel'),
-      box(1.8, 0, -2.45, 1.5, 0.2, 0.95, 'matte', 'wood', { r: [0, 0.35, 0] }),
-      box(1.72, 0.2, -2.62, 1.5, 0.2, 0.6, 'matte', 'wood', { r: [0, 0.35, 0] }),
-      box(1.66, 0.4, -2.76, 1.5, 0.2, 0.3, 'matte', 'wood', { r: [0, 0.35, 0] }),
-      box(-1.25, 0, 1.0, 0.07, 0.85, 0.07, 'metal', 'steel'),
-      box(-1.25, 0, 1.6, 0.07, 0.85, 0.07, 'metal', 'steel'),
-      box(-1.25, 0.68, 1.3, 0.05, 0.05, 1.15, 'metal', 'steel'),
-      cyl(-1.25, 0.47, 0.82, 0.26, 0.09, 'matte', 'ink', LIE_Z),
-      cyl(-1.25, 0.47, 1.78, 0.26, 0.09, 'matte', 'ink', LIE_Z),
-      cyl(-0.3, 0, 1.45, 0.16, 0.5, 'matte', 'screen', { n: 10 }),
-      cyl(-0.3, 0.5, 1.45, 0.1, 0.12, 'matte', 'paper', { n: 10 }),
-      cone(3.25, 0, 1.3, 0.12, 0.3, 'matte', 'salmon', { n: 8 }),
-      cone(3.25, 0, -1.1, 0.12, 0.3, 'matte', 'salmon', { n: 8 }),
-      cone(-3.1, 0, 0.1, 0.12, 0.3, 'matte', 'salmon', { n: 8 }),
-      ...planter(-2.2, -1.6, 1)
-    ],
-    life: [
-      { kind: 'orbit', at: [0.1, 0.03, 0.1], rx: 2.78, rz: 2.06, speed: 0.5, copies: 2, spread: Math.PI * 0.9, face: true, rig: 'runner' }
-    ]
+    crew:{x:1.8,z:2.4},
+    parts:[...frontage(-.15,-.5,4.5,3.8,2,'facadeCool'),...streetFurniture(),...canopy(-.6,1.65,2.8,'tint'),
+      ...signBoard(-.15,1.62,1.43,3.5,'ink'),
+      mass(-.15,2.9,-.5,4.55,.12,3.85,'tint'),
+      ring(-.15,3.035,-.5,1.13,1.52,'matte','tint',{k:[1.25,1,.8],n:48}),
+      ring(-.15,3.045,-.5,1.3,1.33,'matte','paper',{k:[1.25,1,.8],n:48}),
+      ring(-.15,3.045,-.5,1.49,1.51,'matte','paper',{k:[1.25,1,.8],n:48}),
+      mass(-.15,3.035,-.5,1.2,.06,.55,'leafDark')],
+    life:[{kind:'orbit',at:[-.15,3.09,-.5],rx:1.78,rz:1.13,speed:.42,face:true,rig:'runner'}]
   },
-  /* A scheduling studio: a day's timeline across its wall, blocks of time
-     in rows with a line for now that moves across them, a clock whose hand
-     turns, an awning over the door, and a planning desk outside. */
-  calendar: {
-    crew: { x: 1.4, z: 1.5 },
-    parts: [
-      box(-0.7, 0, -1.2, 3.2, 0.14, 1.8, 'matte', 'ink'),
-      box(-0.7, 0.14, -1.2, 3.0, 1.96, 1.6, 'matte', 'stone'),
-      box(-0.7, 2.1, -1.2, 3.3, 0.16, 1.9, 'matte', 'tint'),
-      box(-0.7, 2.26, -1.2, 3.0, 0.1, 1.6, 'matte', 'ink'),
-      box(-1.6, 2.36, -1.6, 0.5, 0.3, 0.4, 'metal', 'steel'),
-      box(-0.7, 0.3, -0.39, 2.7, 1.5, 0.03, 'matte', 'board'),
-      box(-0.7, 0.26, -0.37, 2.8, 0.06, 0.06, 'matte', 'paper'),
-      box(-1.55, 1.42, -0.36, 0.7, 0.24, 0.03, 'glow', 'window'),
-      box(-0.7, 1.42, -0.36, 0.55, 0.24, 0.03, 'glow', 'screen'),
-      box(0.12, 1.42, -0.36, 0.6, 0.24, 0.03, 'glow', 'window'),
-      box(-1.45, 1.02, -0.36, 0.9, 0.24, 0.03, 'glow', 'screen'),
-      box(-0.2, 1.02, -0.36, 0.95, 0.24, 0.03, 'glow', 'window'),
-      box(-1.7, 0.62, -0.36, 0.5, 0.24, 0.03, 'glow', 'window'),
-      box(-0.95, 0.62, -0.36, 0.7, 0.24, 0.03, 'glow', 'screen'),
-      box(0.25, 0.62, -0.36, 0.4, 0.24, 0.03, 'glow', 'window'),
-      cyl(0.83, 1.05, -1.2, 0.42, 0.06, 'matte', 'paper', LIE_X),
-      torus(0.87, 1.05, -1.2, 0.42, 0.04, 'matte', 'ink', { n: 24, r: [0, Math.PI / 2, 0] }),
-      ...door(0.8, -1.55, 0.5, 0.8, 'x', 'tint'),
-      box(1.02, 0.95, -1.55, 0.4, 0.05, 0.8, 'matte', 'tint'),
-      ...pane(0.83, 0.45, -0.55, 0.45, 0.35, 'x'),
-      box(2.1, 0, -0.35, 0.55, 0.55, 1.1, 'matte', 'wood'),
-      box(2.1, 0.55, -0.35, 0.06, 0.38, 0.62, 'glow', 'screen'),
-      box(2.1, 0.55, 0.05, 0.3, 0.04, 0.2, 'matte', 'paper'),
-      box(2.55, 0, -0.35, 0.3, 0.42, 0.3, 'matte', 'ink'),
-      box(-2.3, 0, 1.5, 0.5, 0.35, 0.5, 'matte', 'ink'),
-      ball(-2.3, 0.35, 1.5, 0.3, 'matte', 'nori'),
-      ...planter(-2.4, -0.1, 1.1),
-      ...bench(-0.6, 1.2, 0.2),
-      ...lamp(2.6, 1.3, 1.2)
-    ],
-    life: [
-      { kind: 'slide', at: [-0.7, 0.34, -0.34], dir: [1, 0, 0], amp: 1.15, speed: 0.22, parts: [box(0, 0, 0, 0.04, 1.44, 0.03, 'matte', 'paper')] },
-      { kind: 'spin', at: [0.92, 1.47, -1.2], axis: 'x', speed: -0.8, parts: [box(0, 0, 0.1, 0.02, 0.03, 0.26, 'matte', 'ink')] },
-      { kind: 'pulse', at: [2.1, 0.75, -0.35], speed: 1.2, parts: [box(0, 0, 0, 0.07, 0.12, 0.12, 'glow', 'screen')] }
-    ]
+  calendar:{
+    crew:{x:1.8,z:2.5},
+    parts:[...frontage(-.55,-.65,3.55,3.5,4,'facade'),...streetFurniture(),...canopy(-.8,1.25,2.9,'tint'),
+      mass(1.7,.18,-.5,.85,4.6,3.2,'facadeCool'),
+      box(2.14,.6,-.4,.025,3.8,1.35,'glow','windowCool'),
+      ...signBoard(-.55,1.65,1.14,3.3,'tint'),
+      cyl(-.55,4.05,1.18,.43,.06,'matte','paper',LIE_Z),torus(-.55,4.05,1.23,.43,.045,'metal','gold',{n:24}),
+      box(-.55,4.45,1.27,.04,.04,.04,'matte','ink')],
+    life:[{kind:'spin',at:[-.55,4.47,1.29],axis:'z',speed:-.4,parts:[box(.02,-.03,0,.25,.045,.025,'matte','ink')]}]
   },
-  /* A reading pavilion and its library: two walls of shelves meeting at the
-     back, a ladder against them, a rug, a lectern whose open book turns its
-     pages, a reading chair and lamp, a globe, stacks of books, and a still
-     pool beside it. */
-  book: {
-    crew: { x: 1.6, z: 1.4 },
-    parts: [
-      box(-0.8, 0, -0.8, 3.1, 0.14, 3.1, 'matte', 'stone'),
-      box(-0.8, 0.14, -0.8, 2.8, 0.12, 2.8, 'matte', 'stone'),
-      box(-0.75, 0.26, -2.02, 2.7, 1.8, 0.36, 'matte', 'wood'),
-      box(-2.02, 0.26, -0.75, 0.36, 1.8, 2.7, 'matte', 'wood'),
-      box(-0.75, 2.06, -2.02, 2.9, 0.16, 0.5, 'matte', 'tint'),
-      box(-2.02, 2.06, -0.75, 0.5, 0.16, 2.9, 'matte', 'tint'),
-      box(-0.75, 0.9, -1.83, 2.5, 0.05, 0.03, 'matte', 'ink'),
-      box(-0.75, 1.5, -1.83, 2.5, 0.05, 0.03, 'matte', 'ink'),
-      box(-1.83, 0.9, -0.75, 0.03, 0.05, 2.5, 'matte', 'ink'),
-      box(-1.83, 1.5, -0.75, 0.03, 0.05, 2.5, 'matte', 'ink'),
-      ...spines(-1.95, 0.45, 0.4, -1.83, 'x'),
-      ...spines(-1.95, 0.45, 0.97, -1.83, 'x'),
-      ...spines(-1.95, 0.45, 1.56, -1.83, 'x'),
-      ...spines(-1.6, 0.45, 0.4, -1.83, 'z'),
-      ...spines(-1.6, 0.45, 0.97, -1.83, 'z'),
-      cyl(0.62, 0.26, -2.02, 0.13, 1.8, 'matte', 'paper', { n: 10 }),
-      cyl(-2.02, 0.26, 0.62, 0.13, 1.8, 'matte', 'paper', { n: 10 }),
-      box(0.1, 0.26, -1.75, 0.05, 1.7, 0.05, 'matte', 'woodLight', { r: [0.2, 0, 0] }),
-      box(0.4, 0.26, -1.75, 0.05, 1.7, 0.05, 'matte', 'woodLight', { r: [0.2, 0, 0] }),
-      box(0.25, 0.6, -1.66, 0.3, 0.03, 0.04, 'matte', 'woodLight'),
-      box(0.25, 1.0, -1.74, 0.3, 0.03, 0.04, 'matte', 'woodLight'),
-      box(0.25, 1.4, -1.82, 0.3, 0.03, 0.04, 'matte', 'woodLight'),
-      box(-0.6, 0.26, -0.6, 1.5, 0.015, 1.1, 'matte', 'tint', { r: [0, 0.2, 0] }),
-      box(-0.6, 0.27, -0.6, 0.34, 0.74, 0.34, 'matte', 'wood'),
-      box(-0.74, 1.01, -0.6, 0.3, 0.04, 0.46, 'matte', 'paper', { r: [0, 0, -0.18] }),
-      box(-0.46, 1.01, -0.6, 0.3, 0.04, 0.46, 'matte', 'paper', { r: [0, 0, 0.18] }),
-      box(-1.4, 0.26, 0.3, 0.55, 0.3, 0.55, 'matte', 'salmon'),
-      box(-1.62, 0.56, 0.3, 0.12, 0.45, 0.55, 'matte', 'salmon'),
-      box(-1.25, 0.26, -0.1, 0.05, 1.0, 0.05, 'metal', 'steel'),
-      ball(-1.25, 1.2, -0.1, 0.14, 'glow', 'window'),
-      cone(-1.25, 1.24, -0.1, 0.2, 0.16, 'matte', 'ink', { n: 10 }),
-      cyl(0.2, 0.26, 0.2, 0.05, 0.5, 'metal', 'steel', { n: 6 }),
-      ball(0.2, 0.72, 0.2, 0.2, 'matte', 'water'),
-      torus(0.2, 0.72, 0.2, 0.23, 0.02, 'metal', 'gold', { n: 20, r: [0.4, 0, 0] }),
-      box(-0.3, 0.27, 0.5, 0.3, 0.1, 0.22, 'matte', 'tint'),
-      box(-0.3, 0.37, 0.5, 0.26, 0.08, 0.2, 'matte', 'paper'),
-      box(-0.28, 0.45, 0.5, 0.24, 0.09, 0.18, 'matte', 'blueprint'),
-      cyl(2.0, 0, -1.0, 0.8, 0.05, 'metal', 'water', { n: 24 }),
-      torus(2.0, 0, -1.0, 0.86, 0.07, 'matte', 'stone', { n: 24, k: [1, 1, 1], r: [Math.PI / 2, 0, 0] }),
-      cyl(1.8, 0.05, -1.2, 0.14, 0.015, 'matte', 'leaf', { n: 8 }),
-      cyl(2.25, 0.05, -0.8, 0.1, 0.015, 'matte', 'leaf', { n: 8 }),
-      ...flowers(2.1, 0.3),
-      ...flowers(2.9, -1.7),
-      ...lamp(-2.7, 1.9, 1.1)
-    ],
-    life: [
-      { kind: 'swing', at: [-0.6, 1.05, -0.6], axis: 'z', base: -Math.PI / 2 + 0.15, amp: Math.PI / 2 - 0.25, speed: 0.9,
-        parts: [box(0.15, 0, 0, 0.3, 0.01, 0.42, 'matte', 'paper')] },
-      { kind: 'pulse', at: [-1.25, 1.2, -0.1], speed: 0.6, parts: [ball(0, -0.06, 0, 0.08, 'glow', 'window')] }
-    ]
+  book:{
+    crew:{x:1.7,z:2.5},
+    parts:[...frontage(-.35,-.65,4.5,3.5,2,'facadeWarm'),...streetFurniture(),
+      mass(-.35,2.85,-.65,4.75,.2,3.8,'stone'),
+      cone(-.35,3.05,-.65,2.75,.8,'matte','tint',{n:4,r:[0,Math.PI/4,0],k:[1,1,.78]}),
+      mass(-.35,0,1.35,3.4,.12,.65,'curb'),mass(-.35,.12,1.25,3.0,.12,.65,'curb'),
+      ...[-1.8,-.85,.15,1.1].flatMap(x=>[cyl(x,.24,1.24,.11,2.44,'matte','paper',{n:12}),mass(x,2.57,1.24,.35,.14,.38,'curb')]),
+      ...signBoard(-.35,1.77,1.3,3.35,'wood'),
+      mass(-.35,3.32,1.23,.6,.06,.43,'paper'),mass(-.53,3.38,1.23,.34,.07,.43,'paper'),mass(-.17,3.38,1.23,.34,.07,.43,'paper'),
+      ...spines(-1.6,1.0,.5,1.13,'x')],
+    life:[{kind:'swing',at:[-.35,3.45,1.23],axis:'z',base:-.1,amp:.6,speed:.6,parts:[box(.14,0,0,.28,.015,.4,'matte','paper')]}]
   },
-  /* A finance workspace: a vault with a round door whose wheel turns,
-     pillars and steps, stacks of coins where a coin drops now and then, and
-     a desk with an open ledger under a lamp. */
-  vault: {
-    crew: { x: 1.4, z: 1.5 },
-    parts: [
-      box(-0.9, 0, -1.2, 3.0, 0.14, 2.1, 'matte', 'ink'),
-      box(-0.9, 0.14, -1.2, 2.7, 2.06, 1.8, 'matte', 'stone'),
-      box(-0.9, 2.2, -1.2, 2.95, 0.18, 2.05, 'matte', 'ink'),
-      cone(-0.9, 2.38, -1.2, 1.9, 0.5, 'matte', 'stone', { n: 4, r: [0, Math.PI / 4, 0], k: [1, 1, 0.72], shade: 0.8 }),
-      box(-0.9, 0, -0.1, 1.9, 0.08, 0.5, 'matte', 'stone'),
-      box(-0.9, 0.08, -0.14, 1.6, 0.08, 0.4, 'matte', 'stone'),
-      cyl(-1.95, 0.14, -0.2, 0.13, 2.06, 'matte', 'paper', { n: 10 }),
-      cyl(0.15, 0.14, -0.2, 0.13, 2.06, 'matte', 'paper', { n: 10 }),
-      cyl(-0.9, 0.3, -0.21, 0.8, 0.14, 'metal', 'steel', Object.assign({ n: 28 }, LIE_Z)),
-      torus(-0.9, 0.3, -0.12, 0.78, 0.04, 'metal', 'gold', { n: 28 }),
-      box(-0.9, 1.9, -0.29, 1.6, 0.1, 0.03, 'glow', 'window'),
-      ...pane(0.47, 1.1, -1.2, 0.8, 0.5, 'x'),
-      cyl(1.7, 0, -1.6, 0.32, 0.55, 'metal', 'gold', { n: 16 }),
-      cyl(2.2, 0, -1.0, 0.3, 0.85, 'metal', 'gold', { n: 16 }),
-      cyl(1.55, 0, -0.75, 0.28, 0.32, 'metal', 'gold', { n: 16 }),
-      cyl(2.3, 0, -1.75, 0.22, 0.2, 'metal', 'gold', { n: 14 }),
-      box(-1.9, 0, 1.55, 1.2, 0.55, 0.7, 'matte', 'wood'),
-      box(-1.9, 0.55, 1.55, 0.85, 0.04, 0.5, 'matte', 'paper'),
-      box(-1.9, 0.59, 1.55, 0.02, 0.01, 0.46, 'matte', 'ink'),
-      box(-1.7, 0.59, 1.5, 0.3, 0.005, 0.02, 'matte', 'ink'),
-      box(-2.1, 0.59, 1.6, 0.3, 0.005, 0.02, 'matte', 'ink'),
-      box(-2.4, 0.55, 1.35, 0.06, 0.4, 0.06, 'metal', 'steel'),
-      ball(-2.4, 0.9, 1.35, 0.12, 'glow', 'window'),
-      box(-1.9, 0, 2.2, 0.45, 0.4, 0.4, 'matte', 'woodLight'),
-      box(-1.9, 0.4, 2.38, 0.45, 0.4, 0.06, 'matte', 'woodLight'),
-      ...planter(0.9, 0.5, 1),
-      ...planter(-2.6, -0.2, 0.9),
-      ...lamp(2.7, 1.1, 1.2)
-    ],
-    life: [
-      { kind: 'spin', at: [-0.9, 1.1, -0.06], axis: 'z', speed: 0.45, parts: [
-        cyl(0, -0.26, 0, 0.26, 0.1, 'metal', 'tint', Object.assign({ n: 16 }, LIE_Z)),
-        box(0, -0.03, 0.03, 1.1, 0.06, 0.05, 'metal', 'steel'), box(0, -0.55, 0.03, 0.06, 1.1, 0.05, 'metal', 'steel')] },
-      { kind: 'drop', at: [2.2, 0.85, -1.0], height: 1.6, speed: 0.9, parts: [cyl(0, 0, 0, 0.3, 0.06, 'metal', 'gold', { n: 16 })] }
-    ]
+  vault:{
+    crew:{x:1.8,z:2.5},
+    parts:[...frontage(-.35,-.6,4.4,3.7,3,'facadeCool'),...streetFurniture(),
+      ...signBoard(-.35,1.55,1.3,3.6,'tint'),
+      mass(-.35,3.98,-.6,4.75,.22,4.05,'curb'),
+      ...[-1.8,1.1].flatMap(x=>[mass(x,0,1.5,.44,1.5,.45,'curb'),mass(x,1.45,1.5,.58,.16,.58,'paper')]),
+      cyl(-.35,.38,1.4,.56,.12,'metal','steel',LIE_Z),torus(-.35,.38,1.5,.53,.04,'metal','gold',{n:24}),
+      mass(-.35,0,1.78,2.3,.12,.7,'curb')],
+    life:[{kind:'spin',at:[-.35,.94,1.59],axis:'z',speed:.28,parts:[box(0,-.025,0,.65,.05,.04,'metal','gold'),box(0,-.32,0,.05,.65,.04,'metal','gold')]}]
   },
-  /* A learning launchpad: a rocket on its pad beside a braced gantry whose
-     lights climb, steam at its base, a fuel tank, a small mission hut with a
-     turning dish, stacked letter blocks and a little slide. */
-  rocket: {
-    crew: { x: 1.6, z: 1.3 },
-    parts: [
-      cyl(-0.9, 0, -0.9, 1.45, 0.24, 'matte', 'ink', { n: 28 }),
-      ring(-0.9, 0.245, -0.9, 1.0, 1.1, 'glow', 'tint', { n: 40 }),
-      cyl(-0.9, 0.24, -0.9, 0.5, 2.0, 'matte', 'paper', { n: 18 }),
-      cyl(-0.9, 1.15, -0.9, 0.52, 0.3, 'matte', 'tint', { n: 18 }),
-      cyl(-0.9, 1.9, -0.9, 0.51, 0.08, 'matte', 'ink', { n: 18 }),
-      cone(-0.9, 2.24, -0.9, 0.5, 1.0, 'matte', 'tint', { n: 18 }),
-      cyl(-0.9, 1.62, -0.4, 0.15, 0.05, 'glow', 'window', Object.assign({ n: 12 }, LIE_Z)),
-      torus(-0.9, 1.62, -0.37, 0.15, 0.03, 'metal', 'steel', { n: 16 }),
-      box(-0.9, 0.24, -0.25, 0.08, 0.7, 0.45, 'matte', 'tint'),
-      box(-0.25, 0.24, -0.9, 0.45, 0.7, 0.08, 'matte', 'tint'),
-      box(-1.55, 0.24, -0.9, 0.45, 0.7, 0.08, 'matte', 'tint'),
-      cone(-0.9, 0.24, -0.9, 0.38, 0.3, 'metal', 'steel', { n: 14, r: [Math.PI, 0, 0] }),
-      box(-2.55, 0, -2.55, 0.42, 3.3, 0.42, 'metal', 'steel'),
-      box(-2.55, 0.6, -2.3, 0.05, 0.05, 0.6, 'metal', 'steel', { r: [0.9, 0, 0] }),
-      box(-2.55, 1.6, -2.3, 0.05, 0.05, 0.6, 'metal', 'steel', { r: [-0.9, 0, 0] }),
-      box(-2.0, 2.3, -2.0, 0.1, 0.1, 1.1, 'metal', 'steel', { r: [0, Math.PI / 4, 0] }),
-      box(-2.0, 1.2, -2.0, 0.1, 0.1, 1.1, 'metal', 'steel', { r: [0, Math.PI / 4, 0] }),
-      box(-2.55, 1.2, -2.55, 0.5, 0.08, 0.5, 'metal', 'steel'),
-      box(-2.55, 3.3, -2.55, 0.55, 0.08, 0.55, 'matte', 'ink'),
-      cyl(0.6, 0, -2.3, 0.35, 1.1, 'metal', 'steel', { n: 14 }),
-      ball(0.6, 0.92, -2.3, 0.35, 'metal', 'steel', { k: [1, 0.6, 1] }),
-      box(0.6, 0.4, -1.95, 0.5, 0.04, 0.04, 'matte', 'tint'),
-      box(2.2, 0, 0.2, 0.9, 0.7, 0.8, 'matte', 'stone'),
-      box(2.2, 0.7, 0.2, 1.0, 0.08, 0.9, 'matte', 'tint'),
-      ...pane(2.65, 0.35, 0.2, 0.45, 0.25, 'x'),
-      cyl(2.2, 0.78, 0.2, 0.03, 0.25, 'metal', 'steel', { n: 6 }),
-      box(-1.7, 0, 1.6, 0.55, 0.55, 0.55, 'matte', 'gold', { r: [0, 0.3, 0] }),
-      box(-1.0, 0, 2.0, 0.55, 0.55, 0.55, 'matte', 'salmon', { r: [0, -0.2, 0] }),
-      box(-1.35, 0.55, 1.8, 0.55, 0.55, 0.55, 'matte', 'tint', { r: [0, 0.1, 0] }),
-      box(-2.5, 0, 0.4, 0.3, 0.9, 0.3, 'matte', 'woodLight'),
-      box(-2.5, 0.9, 0.4, 0.4, 0.06, 0.4, 'matte', 'woodLight'),
-      box(-2.5, 0.25, 0.95, 0.34, 0.05, 1.1, 'matte', 'salmon', { r: [-0.72, 0, 0] }),
-      ...flowers(0.7, 1.6)
-    ],
-    life: [
-      { kind: 'pulse', at: [-2.3, 0.9, -2.3], speed: 1.6, copies: 3, spread: -1.0, climb: 1.0, parts: [ball(0, 0, 0, 0.1, 'glow', 'window')] },
-      { kind: 'rise', at: [-0.9, 0.22, -0.9], height: 0.9, speed: 1.1, copies: 3, spread: 2.1, ring: 0.55,
-        parts: [ball(0, 0, 0, 0.26, 'matte', 'paper', { k: [1, 0.8, 1] })] },
-      { kind: 'spin', at: [2.2, 1.05, 0.2], axis: 'y', speed: 0.7, parts: [
-        cone(0, 0, 0, 0.32, 0.16, 'metal', 'steel', { n: 14, r: [Math.PI + 0.5, 0, 0] })] }
-    ]
+  rocket:{
+    crew:{x:1.9,z:2.5},
+    parts:[...frontage(-.4,-.6,4.3,3.7,3,'facade'),...streetFurniture(),...canopy(-.6,1.55,3.2,'tint'),
+      ...signBoard(-.4,1.7,1.3,3.5,'tint'),
+      cyl(-.4,4.1,-.6,1.28,.17,'matte','curb',{n:32}),
+      ball(-.4,4.15,-.6,1.1,'metal','facadeCool',{n:20,k:[1,.65,1]}),
+      cyl(-.4,4.85,-.6,.29,.92,'matte','paper',{n:20}),cyl(-.4,5.08,-.6,.3,.16,'matte','tint',{n:20}),
+      cone(-.4,5.77,-.6,.29,.55,'matte','tint',{n:20}),
+      box(-.4,4.9,-.16,.07,.44,.4,'matte','tint'),box(.04,4.9,-.6,.4,.44,.07,'matte','tint'),
+      cyl(-.4,5.35,-.29,.09,.025,'glow','window',LIE_Z)],
+    life:[{kind:'spin',at:[1.13,4.25,-1.4],axis:'y',speed:.35,parts:[cyl(0,0,0,.045,.4,'metal','steel'),cone(0,.4,0,.45,.15,'metal','paper',{n:18,r:[Math.PI+.5,0,0]})]}]
   },
-  /* A sushi counter: a roll on its board where the chef's knife slices, a
-     little belt in front where plates go round, stools, lanterns under the
-     noren, and the capybara chef who runs it (the game's own premise). */
-  sushi: {
-    crew: { x: 2.0, z: 1.7 },
-    parts: [
-      box(-0.4, 0, -0.55, 3.4, 0.9, 1.1, 'matte', 'wood'),
-      box(-0.4, 0.9, -0.55, 3.6, 0.1, 1.3, 'matte', 'woodLight'),
-      box(-0.4, 0.12, -0.0, 3.3, 0.1, 0.02, 'matte', 'ink'),
-      box(-1.0, 1.0, -0.45, 1.4, 0.07, 0.75, 'matte', 'woodLight'),
-      cyl(-1.1, 1.07, -0.45, 0.27, 0.95, 'matte', 'nori', Object.assign({ n: 16 }, LIE_X)),
-      cyl(-0.615, 1.1, -0.45, 0.24, 0.02, 'matte', 'rice', Object.assign({ n: 16 }, LIE_X)),
-      cyl(-0.6, 1.23, -0.45, 0.1, 0.02, 'matte', 'salmon', Object.assign({ n: 10 }, LIE_X)),
-      cyl(0.55, 1.0, -0.5, 0.45, 0.05, 'matte', 'paper', { n: 20 }),
-      cyl(0.4, 1.05, -0.62, 0.16, 0.2, 'matte', 'nori', { n: 12 }),
-      cyl(0.72, 1.05, -0.55, 0.16, 0.2, 'matte', 'nori', { n: 12 }),
-      cyl(0.5, 1.05, -0.3, 0.16, 0.2, 'matte', 'nori', { n: 12 }),
-      cyl(0.4, 1.25, -0.62, 0.13, 0.02, 'matte', 'rice', { n: 12 }),
-      cyl(0.72, 1.25, -0.55, 0.13, 0.02, 'matte', 'rice', { n: 12 }),
-      cyl(0.5, 1.25, -0.3, 0.13, 0.02, 'matte', 'rice', { n: 12 }),
-      cyl(1.2, 1.0, -0.85, 0.12, 0.2, 'matte', 'paper', { n: 10 }),
-      cyl(1.2, 1.2, -0.85, 0.05, 0.08, 'matte', 'paper', { n: 8 }),
-      box(-2.1, 0, -2.6, 0.12, 2.5, 0.12, 'matte', 'wood'),
-      box(1.3, 0, -2.6, 0.12, 2.5, 0.12, 'matte', 'wood'),
-      box(-0.4, 2.45, -2.6, 3.6, 0.1, 0.14, 'matte', 'wood'),
-      box(-1.23, 1.85, -2.6, 1.6, 0.6, 0.04, 'matte', 'tint'),
-      box(0.43, 1.85, -2.6, 1.6, 0.6, 0.04, 'matte', 'tint'),
-      ball(-1.6, 1.95, -2.4, 0.16, 'glow', 'window', { k: [1, 1.3, 1] }),
-      ball(0.8, 1.95, -2.4, 0.16, 'glow', 'window', { k: [1, 1.3, 1] }),
-      cyl(-1.6, 2.2, -2.4, 0.01, 0.25, 'matte', 'ink', { n: 4 }),
-      cyl(0.8, 2.2, -2.4, 0.01, 0.25, 'matte', 'ink', { n: 4 }),
-      /* The chef stands behind the counter and looks out at you over it:
-         a blunt capybara head turned to the camera, a darker muzzle, small
-         ears and eyes, a chef's hat, and its paws on the counter. */
-      cyl(-0.4, 0, -1.8, 0.52, 1.35, 'matte', 'fur', { n: 14 }),
-      box(-0.4, 1.26, -1.7, 0.8, 0.6, 1.0, 'matte', 'fur', FACE),
-      box(-0.04, 1.3, -1.34, 0.6, 0.4, 0.16, 'matte', 'furDark', FACE),
-      box(0.02, 1.56, -1.28, 0.22, 0.09, 0.05, 'matte', 'ink', FACE),
-      ball(-0.37, 1.8, -2.1, 0.12, 'matte', 'furDark'),
-      ball(-0.79, 1.8, -1.68, 0.12, 'matte', 'furDark'),
-      box(0.01, 1.62, -1.82, 0.08, 0.08, 0.04, 'matte', 'ink', FACE),
-      box(-0.53, 1.62, -1.29, 0.04, 0.08, 0.08, 'matte', 'ink', FACE),
-      cyl(-0.45, 1.86, -1.75, 0.28, 0.3, 'matte', 'paper', { n: 12 }),
-      ball(-0.45, 2.08, -1.75, 0.35, 'matte', 'paper', { k: [1, 0.7, 1] }),
-      ball(-0.02, 0.95, -1.02, 0.13, 'matte', 'furDark', { k: [1, 0.7, 1.2] }),
-      box(-0.9, 0, 1.0, 2.6, 0.5, 0.9, 'matte', 'wood'),
-      box(-0.9, 0.5, 1.0, 2.7, 0.06, 1.0, 'matte', 'woodLight'),
-      torus(-0.9, 0.53, 1.0, 1.0, 0.07, 'metal', 'steel', { n: 32, k: [1.1, 0.34, 1], r: [Math.PI / 2, 0, 0] }),
-      cyl(-2.4, 0, 1.9, 0.18, 0.55, 'matte', 'ink', { n: 10 }),
-      cyl(-2.4, 0.55, 1.9, 0.26, 0.08, 'matte', 'tint', { n: 12 }),
-      cyl(-1.4, 0, 2.2, 0.18, 0.55, 'matte', 'ink', { n: 10 }),
-      cyl(-1.4, 0.55, 2.2, 0.26, 0.08, 'matte', 'tint', { n: 12 }),
-      cyl(-0.3, 0, 2.2, 0.18, 0.55, 'matte', 'ink', { n: 10 }),
-      cyl(-0.3, 0.55, 2.2, 0.26, 0.08, 'matte', 'tint', { n: 12 }),
-      ...planter(2.2, -1.9, 1)
-    ],
-    life: [
-      { kind: 'swing', at: [-0.55, 1.08, -0.05], axis: 'z', base: -0.2, amp: 0.25, speed: 4.2, parts: [
-        box(-0.3, 0, 0, 0.6, 0.02, 0.09, 'metal', 'steel'), box(-0.72, -0.02, 0, 0.26, 0.05, 0.09, 'matte', 'ink')] },
-      { kind: 'orbit', at: [-0.9, 0.6, 1.0], rx: 1.1, rz: 0.34, speed: 0.45, copies: 5, spread: Math.PI * 2 / 5, face: false, parts: [
-        cyl(0, 0, 0, 0.15, 0.03, 'matte', 'salmon', { n: 12 }), cyl(0, 0.03, 0, 0.09, 0.07, 'matte', 'rice', { n: 10 }),
-        cyl(0, 0.1, 0, 0.09, 0.02, 'matte', 'salmon', { n: 10 })] }
-    ]
+  sushi:{
+    crew:{x:1.95,z:2.5},
+    parts:[...frontage(-.5,-.7,4.25,3.45,2,'facadeWarm'),...streetFurniture(),
+      ...canopy(-.5,1.3,4.45,'salmon'),...signBoard(-.5,1.7,1.12,3.8,'wood'),
+      mass(-.5,.12,1.05,3.65,.7,.35,'wood'),mass(-.5,.82,1.13,3.8,.12,.58,'woodLight'),
+      ...[-1.7,-.9,-.1,.7].flatMap(x=>[box(x,1.45,1.76,.48,.35,.025,'matte','tint'),ball(x,1.12,1.54,.13,'glow','window')]),
+      ...[-1.6,-.6,.4].flatMap(x=>[cyl(x,0,2.05,.06,.38,'metal','steel'),cyl(x,.38,2.05,.23,.09,'matte','woodLight')]),
+      ball(.65,.96,.76,.25,'matte','fur',{k:[1,1,.8]}),ball(.65,1.25,.87,.21,'matte','fur'),ball(.65,1.35,1.04,.14,'matte','furDark',{k:[1,.55,.7]}),
+      cyl(.65,1.63,.87,.21,.19,'matte','paper'),
+      ...[-1.25,-.65,-.05].flatMap(x=>[cyl(x,.95,1.2,.18,.035,'matte','paper'),cyl(x,.985,1.2,.1,.12,'matte','nori'),cyl(x,1.105,1.2,.08,.01,'matte','rice')])],
+    life:[{kind:'swing',at:[.27,1.12,1.2],axis:'z',base:-.25,amp:.22,speed:2,parts:[box(0,0,0,.03,.13,.3,'metal','steel')]}]
   },
-  /* No miniature of its own yet: a small module with windows, a door, a
-     turning dish and a garden, plainly generic. */
-  generic: {
-    crew: { x: 1.4, z: 1.4 },
-    parts: [
-      box(-0.8, 0, -1.0, 2.6, 0.12, 2.0, 'matte', 'ink'),
-      box(-0.8, 0.12, -1.0, 2.4, 1.38, 1.8, 'matte', 'stone'),
-      box(-0.8, 1.5, -1.0, 2.6, 0.18, 2.0, 'matte', 'tint'),
-      ...pane(-1.2, 0.55, -0.09, 0.6, 0.35),
-      ...pane(-0.4, 0.55, -0.09, 0.6, 0.35),
-      ...door(0.43, -1.3, 0.45, 0.8, 'x'),
-      cyl(0.0, 1.68, -1.4, 0.06, 0.6, 'metal', 'steel', { n: 8 }),
-      box(-2.1, 0, 1.3, 0.6, 0.6, 0.6, 'matte', 'wood'),
-      box(-1.6, 0, 1.9, 0.45, 0.45, 0.45, 'matte', 'wood', { r: [0, 0.4, 0] }),
-      box(0.8, 0, 0.9, 1.2, 0.14, 0.6, 'matte', 'wood'),
-      ...flowers(0.5, 0.9), ...flowers(1.1, 0.9),
-      ...lamp(-2.5, -0.2, 1.1)
-    ],
-    life: [
-      { kind: 'spin', at: [0.0, 2.25, -1.4], axis: 'y', speed: 0.5, parts: [
-        cone(0, 0, 0, 0.5, 0.28, 'metal', 'steel', { n: 16, r: [Math.PI + 0.45, 0, 0] })] }
-    ]
+  generic:{
+    crew:{x:1.8,z:2.5},
+    parts:[...frontage(-.4,-.6,4.3,3.6,3,'facade'),...streetFurniture(),...canopy(-.5,1.4,2.9,'tint'),...signBoard(-.4,1.6,1.24,3.4,'tint')],
+    life:[{kind:'spin',at:[.6,4,-.5],axis:'y',speed:.4,parts:[cyl(0,0,0,.04,.3,'metal','steel'),cone(0,.3,0,.4,.12,'metal','steel',{n:16,r:[Math.PI+.45,0,0]})]}]
   }
 };
 
@@ -1043,6 +832,80 @@ export function scatter(districts, island, seed){
     }
   }
   return { items: items, ponds: ponds };
+}
+
+/* Streets are ambience, not connections between project records. The asphalt
+   slab is continuous; every block has a raised sidewalk and marked crossings. */
+export function cityParts(districts){
+  const out=[];
+  districts.forEach(d=>{
+    const x=d.x,z=d.z,p=TILE.pad;
+    out.push(box(x,.025,z,p*2+.3,.15,p*2+.3,'matte','curb',{bevel:.12}));
+    for(const side of [-1,1]){
+      /* Pavement seams and curb stones establish scale without textures. */
+      for(let a=-p+.7;a<p;a+=1.3){
+        out.push(box(x+a,.184,z+side*(p-.4),.025,.006,.65,'matte','windowDim'));
+        out.push(box(x+side*(p-.4),.184,z+a,.65,.006,.025,'matte','windowDim'));
+      }
+      const gapX=WORLD.stepX-2*p,gapZ=WORLD.stepZ-2*p;
+      for(let a=-1.15;a<=1.15;a+=.5){
+        out.push(box(x+side*(p+gapX/2),.03,z+a,gapX*.66,.01,.22,'matte','roadPaint'));
+        out.push(box(x+a,.03,z+side*(p+gapZ/2),.22,.01,gapZ*.66,'matte','roadPaint'));
+      }
+      for(let a=-3.5;a<=3.5;a+=2.2){
+        out.push(box(x+a,.024,z+side*(p+gapZ/2),.8,.01,.045,'matte','roadPaint'));
+        out.push(box(x+side*(p+gapX/2),.024,z+a,.045,.01,.8,'matte','roadPaint'));
+      }
+    }
+  });
+  streetLamps(districts).forEach(p => out.push(...lamp(p.x, p.z, 3.2)));
+  return out;
+}
+
+/* A few curbside lamps share merged geometry and painted light pools. They
+   are city furniture, independent of the state beacons on the blocks. */
+export function streetLamps(districts){
+  return districts.slice(0, 4).map(d => ({ x: d.x + TILE.pad + .32, z: d.z + TILE.pad - 1 }));
+}
+
+export const TRUCK_PARTS=[
+  mass(0,.28,0,1.02,.16,2.28,'ink'),mass(0,.45,-.32,1.03,.91,1.45,'paper'),
+  mass(0,.44,.7,1.01,.77,.66,'facadeCool'),box(0,.86,1.045,.79,.32,.02,'metal','windowCool'),
+  box(-.515,.9,.73,.018,.25,.4,'metal','windowCool'),box(.515,.9,.73,.018,.25,.4,'metal','windowCool'),
+  box(0,.58,-1.06,.9,.72,.02,'matte','curb'),box(0,.61,-1.075,.025,.63,.015,'matte','steel'),
+  ...[-1,1].flatMap(side=>[cyl(side*.5,.12,-.66,.23,.1,'matte','ink',LIE_X),cyl(side*.5,.12,.7,.23,.1,'matte','ink',LIE_X),
+    box(side*.34,.54,1.045,.19,.12,.035,'glow','window'),box(side*.34,.46,-1.1,.14,.09,.025,'glow','windowDim')])
+];
+export const RESIDENT_PARTS=[
+  mass(-.09,0,0,.12,.38,.15,'ink'),mass(.09,0,0,.12,.38,.15,'ink'),
+  mass(0,.37,0,.34,.39,.2,'facadeWarm'),ball(0,.76,0,.145,'matte','skin',{n:12}),
+  mass(-.23,.38,0,.1,.33,.11,'facadeWarm'),mass(.23,.38,0,.1,.33,.11,'facadeWarm'),
+  mass(.28,.25,.04,.19,.22,.15,'wood')
+];
+
+/* Constant-speed rounded rectangle: continuous position and heading at all
+   eight joins. This has no project/state inputs and conveys no work progress. */
+export function streetPose(bounds,time,offset){
+  const x0=bounds.minX,x1=bounds.maxX,z0=bounds.minZ,z1=bounds.maxZ;
+  const r=Math.min(1.5,(x1-x0)/4,(z1-z0)/4),wx=x1-x0-2*r,wz=z1-z0-2*r,arc=Math.PI*r/2;
+  const lengths=[wx,arc,wz,arc,wx,arc,wz,arc],total=lengths.reduce((a,b)=>a+b,0);
+  let s=((time+(offset||0))*1.1%total+total)%total,i=0;
+  while(i<7&&s>lengths[i]){s-=lengths[i];i++;}
+  let x,z,dx,dz;
+  if(i===0){x=x0+r+s;z=z0;dx=1;dz=0;}
+  else if(i===2){x=x1;z=z0+r+s;dx=0;dz=1;}
+  else if(i===4){x=x1-r-s;z=z1;dx=-1;dz=0;}
+  else if(i===6){x=x0;z=z1-r-s;dx=0;dz=-1;}
+  else{
+    const turn=(i-1)/2,theta=-Math.PI/2+turn*Math.PI/2+s/r;
+    const cx=turn===0||turn===1?x1-r:x0+r,cz=turn<1||turn===3?z0+r:z1-r;
+    x=cx+r*Math.cos(theta);z=cz+r*Math.sin(theta);dx=-Math.sin(theta);dz=Math.cos(theta);
+  }
+  return {x:x,z:z,turn:Math.atan2(dx,dz)};
+}
+export function trafficBounds(districts){
+  const island=islandOf(districts),r=island.reach;
+  return {minX:r.minX-WORLD.stepX/2,maxX:r.maxX+WORLD.stepX/2,minZ:r.minZ-WORLD.stepZ/2,maxZ:r.maxZ+WORLD.stepZ/2};
 }
 
 /* ---------- each place's real height ----------

@@ -48,9 +48,10 @@ const EXPORTS = [
   'BufferGeometry', 'Float32BufferAttribute',
   'BoxGeometry', 'CylinderGeometry', 'ConeGeometry', 'SphereGeometry', 'TorusGeometry',
   'RingGeometry', 'PlaneGeometry', 'CircleGeometry',
-  'MeshLambertMaterial', 'MeshPhongMaterial', 'MeshBasicMaterial', 'CanvasTexture',
+  'MeshLambertMaterial', 'MeshPhongMaterial', 'MeshStandardMaterial', 'MeshBasicMaterial', 'CanvasTexture',
   'Color', 'Vector3', 'Matrix4', 'Euler',
-  'HemisphereLight', 'DirectionalLight', 'AdditiveBlending', 'SRGBColorSpace'
+  'HemisphereLight', 'DirectionalLight', 'AdditiveBlending', 'SRGBColorSpace',
+  'PCFSoftShadowMap', 'ACESFilmicToneMapping', 'RoundedBoxGeometry'
 ];
 
 /* One command line, quoting only what needs it: npm and npx are scripts on
@@ -70,12 +71,13 @@ function main(){
 
     const pkg = path.join(WORK, 'package');
     const entry = path.join(WORK, 'entry.js');
-    fs.writeFileSync(entry, 'export { ' + EXPORTS.join(', ') + " } from './package/build/three.module.js';\n");
+    fs.writeFileSync(entry, 'export { ' + EXPORTS.filter(n => n !== 'RoundedBoxGeometry').join(', ') + " } from './package/build/three.module.js';\n" +
+      "export { RoundedBoxGeometry } from './package/examples/jsm/geometries/RoundedBoxGeometry.js';\n");
 
     const banner = '/* three.js ' + VERSION + ' (r' + VERSION.split('.')[1] + '), a subset for Mission Control.' +
       ' MIT License, Copyright 2010-2025 Three.js Authors: see LICENSE. Made by scripts/vendor-three.js. */';
     const outFile = path.join(WORK, 'three.min.js');
-    run(['npx', '--yes', 'esbuild@' + ESBUILD, 'entry.js'].concat(ESBUILD_ARGS, ['--outfile=three.min.js', '--banner:js=' + banner]));
+    run(['npx', '--yes', 'esbuild@' + ESBUILD, 'entry.js'].concat(ESBUILD_ARGS, ['--alias:three=./package/build/three.module.js', '--outfile=three.min.js', '--banner:js=' + banner]));
 
     const bytes = fs.readFileSync(outFile);
     const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
@@ -92,6 +94,8 @@ function main(){
       build: {
         tool: 'esbuild@' + ESBUILD,
         entry: 'package/build/three.module.js',
+        addons: ['package/examples/jsm/geometries/RoundedBoxGeometry.js'],
+        aliases: { three: './package/build/three.module.js' },
         args: ESBUILD_ARGS,
         exports: EXPORTS
       },

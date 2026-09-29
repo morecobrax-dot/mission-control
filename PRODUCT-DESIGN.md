@@ -66,7 +66,8 @@ another gradient, another border, another card.
 before another container. A page where everything is in a card is a page where
 nothing is emphasised.
 
-Colour carries state, never decoration. And it never carries state *alone*: a
+Interface signal colour carries state. Architectural colours and warm windows
+give the city its identity, independently of state. Status never carries state *alone*: a
 status shows a word and a shape as well as a hue. *(enforced)*
 
 ## One control, one predictable result
@@ -168,9 +169,10 @@ The product's own rules, on top of everything above.
   once and is the focus: the top stays compact so every place and label
   is on the first screen of a phone, a phone on its side and an iPad, above
   the tab bar.
-- **One island you look at, not one you fly.** Every project is a district
-  on one island, seen through a fixed camera with gentle depth: no orbit, no
-  zoom gesture, and nothing joins one project to another. Tap focuses,
+- **One miniature city you look at, not one you fly.** Every project owns
+  a titled city block on shared streets, seen through a fixed camera with
+  gentle depth: no orbit or zoom gesture. Roads are visual infrastructure,
+  not claims about dependencies or data flowing between projects. Tap focuses,
   Overview shows everything, a drag inside the world looks around the island,
   and the page scrolls everywhere else. A drag never opens anything. Moves
   are short and can be interrupted; with Reduce Motion they are instant.
@@ -201,11 +203,14 @@ The product's own rules, on top of everything above.
 - **The crew shows the state and nothing else.** A worker's station and pose
   come from the state alone. No record, no worker. A release-ready worker
   raises an arm once, when it becomes ready — never again on a reload.
-- **A place is alive only while its work is.** Each place does its own thing
+- **Project work is distinct from city ambience.** Each place does its own thing
   — runners on the track, plates on the belt, pages turning — only while its
   project is known to be under way. Where nothing is recorded, where work is
   blocked or paused, and under Reduce Motion, it holds still. Life never
-  speeds up, grows or counts with anything.
+  speeds up, grows or counts with anything. Separate residents and box trucks
+  travel the streets as decorative city life. They are not Claude agents,
+  proof of project activity or a progress metric. Their appearance never
+  changes the actual worker state.
 - **One focus.** One tap focuses a project, a second opens its brief. The
   focus is remembered, because it is what you come back to.
 - **Unknown is not a status.** A project with no recorded state says "Needs
@@ -238,10 +243,17 @@ The product's own rules, on top of everything above.
   never the conversation or session it opens.
 - **Actions appear only when they work.** A tool that is not set up is not
   shown; the brief says where to set it up instead.
-- **Motion carries meaning or nothing.** Only a project that needs you
-  breathes, and only a crew with work to do moves; blocked stands still and
-  paused sits. Motion settles a minute after you last touch the world, and
-  stops whenever it cannot be seen. Reduced motion stops all of it.
+- **Two honest motion layers.** Status workers and beacons represent the
+  declared project state; residents and trucks provide bounded city ambience.
+  Blocked workers stand still and paused workers sit. All motion settles five
+  minutes after you last touch the world, stops when hidden, and respects
+  Reduced Motion. Nothing claims live agent execution.
+- **Blue-hour architecture.** Soft bevels, physical matte materials, cool
+  ambient fill, warm windows and restrained contact shadows establish the
+  miniature-city look. Lighting is a mobile-friendly approximation, not
+  ray-traced global illumination. Each block has a distinct silhouette,
+  recognizable purpose and street-facing details; avoid generic props on
+  scattered platforms or a random forest between them.
 
 ## Real-device QA before shipping
 
