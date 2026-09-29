@@ -78,8 +78,9 @@ only in this file will drift; change the script and the number here together.
   downpipe, a planter. A blank wall wider than 4 m is a defect.
 - Roofs are usable places, not lids: track, equipment, access, a person working.
 - Details are real geometry. No decals, no textures.
-- Budget: about 70k triangles, about 70 draw calls, at most 25 materials per
-  diorama. See the asset report.
+- Budget: the district budget in Export below, checked by the export and by
+  the app's contracts. Detail is paid for in triangles; draw calls and
+  materials are paid for by the export's packing, not by removing detail.
 
 ## Materials
 
@@ -119,6 +120,11 @@ visible texture.
 - Warm neutral base with one identity hue and a small set of supporting hues.
   The golden diorama: blue identity, terracotta rubber, two greens, amber glow,
   graphite for the anchors (plinth base, base courses, work clothes).
+- Each district has its own identity hue and does not borrow another's. The
+  DayPlan district: dusty rose identity (`MC_DP_ROSE`, a deeper
+  `MC_DP_ROSE_DK` for shade sides), warm graphite walls (`MC_DP_GRAPHITE`)
+  and a warm stone for trims and the clock stage (`MC_DP_STONE`), on the
+  shared plinth, paving, greens and amber glow. No blue.
 - Richness comes from value and material difference, never from raising
   saturation. Architecture stays at 30 to 55 percent saturation; one accent
   per view may reach 70.
@@ -217,6 +223,12 @@ comes from.
 - Trees are several clumps in two greens on a tapered trunk, and in paving
   they stand in a tree pit. Planting in beds is clipped and edged. A single
   sphere on a stick is a primitive, not a tree.
+- A place may have its own quiet life: a few objects marked `mc_life`
+  (custom property) animated on an NLA track named `MC_LIFE`, linear and
+  looping. DayPlan's are the two second hands, the "now" gate walking the
+  timeline and the time ball. The app plays it only while the project is
+  known to be under way and holds its first frame otherwise. Life never
+  counts, fills or finishes anything, and a clock never tells the real time.
 
 ## Composition
 
@@ -242,16 +254,55 @@ comes from.
   the object because the shadow is semi-transparent black; it composites
   correctly over any light background.
 - Output is 8-bit PNG, sRGB, AgX baked in, with no metadata stamp (it would
-  embed a local path). No post grade, no vignette, no bloom, no depth of field.
+  embed a local path). A `.blend` is saved only through `save_blend`
+  (`mc_lib.py`): Blender's factory screens hold a file browser opened on the
+  user's home folder, and a plain save writes it into the file. No post grade, no vignette, no bloom, no depth of field.
   The lighting is the finish.
 
 ## Export
 
 - GLB is Y-up, metres, applied transforms, no cameras, no lights, no images.
-- Modifiers are baked on static meshes and joined per material. Status meshes
-  and skinned workers stay separate. No unused data.
-- Animation ships as five named clips, one per pose, built from each rig's
-  recorded clip list.
+- `export_glb.py <name>` works on a copy of the scene and never changes the
+  model, only how it is packed:
+  - Static meshes are baked and joined per material: one draw per material.
+  - Materials that differ only in base colour form a family (`FAMILIES` in
+    `mc_materials.py`: coated paint, mineral, rubber, foliage). A family is
+    one material whose colour is an 8-bit vertex colour; its roughness,
+    specular, coat and sheen are fixed in `FAMILY_RESPONSE`, and a member
+    whose response strays past `FAMILY_TOLERANCE` stops the export rather
+    than being averaged in. Glass, metal, wood, plastic, grass and glow
+    respond differently and keep their own materials.
+  - Every status light (rim, beacon) is joined into one `<prefix>_StatusLights`
+    mesh on `MC_STATUS_LIGHT`; helmet bands stay on the crew.
+  - Every worker is joined into one crew: one armature, one skinned mesh,
+    bones renamed `<role>__<bone>`, the roles and their authored poses in the
+    rig's `mc_crew` extras. Bone rolls are restored after the join. Authoring
+    stays one rig per worker.
+  - `mc_life` objects stay whole, so their clip moves them alone.
+  - After export, colours, normals and skin weights are stored in 8 bits
+    (`KHR_mesh_quantization`), and the file is audited against the budget.
+- Animation ships as five named clips, one per pose, each covering the whole
+  crew, plus `MC_LIFE` when the place has life. The app slices a clip per
+  role by bone prefix.
+- The district budget (`DISTRICT_BUDGET`, the same numbers in the app's
+  `field/world.js`):
+
+  | Per district | Budget | Golden | DayPlan |
+  | --- | --- | --- | --- |
+  | Draw calls | 24 | 19 | 21 |
+  | Triangles | 80,000 | 68,486 | 51,298 |
+  | Materials | 16 | 14 | 12 |
+  | Workers | 8 | 6 | 5 |
+  | File | 2,000,000 B | 1,581,172 B | 1,330,208 B |
+  | Textures | 0 | 0 | 0 |
+
+  Over budget, the export prints `BUDGET FAIL`, its audit says
+  `within_budget: false` and Blender exits with status 1; the app's
+  contract 30 fails the file. Meet the
+  budget by packing, never by flattening, dropping a worker, baking a status
+  light or merging materials that look different, and reject any pass that
+  changes a Cycles render visibly (`--preview` renders one from the packed
+  copy).
 - Ambient occlusion baking was evaluated and rejected for now. Cycles GI is
   the visual finish for stills, and in the app a bake needs a vertex colour or
   texture path in three.js that the world does not have today, plus extra
@@ -282,3 +333,13 @@ gaps, triangle and draw-call cost), and write the honest verdict down.
 - Surfaces are clean constants; the references carry slightly more colour
   variation within a material.
 - The hall's middle string course reads as a plain shelf.
+
+## Known limits of the DayPlan district
+
+- At phone overview size the clock face is a pale disc; the tower, its rose
+  crown and the graphite hall carry the identity, not the dial.
+- The schedule board and the timeline are blocks of colour: they suggest a
+  plan and never state one. The hour and minute hands stand at 10:10.
+- The graphite roof and hall are the darkest large surfaces in the city;
+  they read as a dispatch hall by their window ribbon and bays, and would go
+  heavy under a darker light rig.

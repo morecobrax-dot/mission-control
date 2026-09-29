@@ -1,19 +1,24 @@
-# Golden diorama: asset, export and render report
+# Authored districts: asset, export and render report
 
 Produced by the scripts in `art/blender/scripts/` in Blender 5.2 LTS, headless.
-Numbers come from `art/exports/golden-diorama.audit.json` and from the
-rendered files in `art/renders/`.
+Numbers come from `art/exports/<name>.audit.json` and from the rendered files
+in `art/renders/`. The golden diorama (the first project's place) came first;
+the DayPlan district is the second, and the pipeline's scale test.
 
 ## Rebuild
 
 ```
-blender -b -noaudio -P art/blender/scripts/build_master.py
+blender -b -noaudio -P art/blender/scripts/build_master.py -- [--only golden|dayplan]
 blender -b -noaudio art/blender/models/golden-diorama.blend -P art/blender/scripts/render.py -- --preset FINAL --out art/renders/golden-final.png --samples 128
 blender -b -noaudio art/blender/models/golden-diorama.blend -P art/blender/scripts/export_glb.py -- --out art/exports/golden-diorama.glb --report art/exports/golden-diorama.audit.json
 blender -b -noaudio -P art/blender/scripts/verify_glb.py -- art/exports/golden-diorama.glb
 ```
 
-Run from the repository root. No script embeds an absolute path.
+Run from the repository root. No script embeds an absolute path. The same
+steps with `dayplan-diorama` build, render and export the DayPlan district.
+A new district is a module in `art/blender/models/` (its `build`, `ACCENT`
+and `WORKERS`, drawing on the shared kit in `mc_kit.py`) and one line in
+`DIORAMAS` in `build_master.py`.
 
 ## Master file
 
@@ -26,6 +31,8 @@ from render), WORKER_BASE, STATUS_LIGHTS, PROJECT_CONTENT (empty) and EXPORT
 A new project starts by opening the master and adding to PROJECT_CONTENT.
 
 ## Export budget, before and after the final art pass
+
+(The export has since been packed: see "Export packing" below.)
 
 | Measure | Before | After |
 | --- | --- | --- |
@@ -175,3 +182,109 @@ Remaining gaps, in order:
    `LIGHT` in `field/world.js`). In the app the place is seen at the city
    camera's 13 degree yaw, not the renders' 45: at 45 a phone cannot show all
    six blocks at a readable size.
+
+## Export packing: Golden before and after
+
+The final art pass shipped at 67 draws and 25 materials, about three times
+what one of six districts can spend. The model was not touched; the export
+now packs it (see the art bible's Export section).
+
+| Measure | Approved export | Packed export |
+| --- | --- | --- |
+| File | 1 794 344 B | 1 581 172 B |
+| Triangles (counted from the file) | 68 038 | 68 486 |
+| Draw calls (primitives) | 67 | 19 |
+| Materials | 25 | 14 |
+| Meshes | 37 | 14 |
+| Skins, skeletons | 6, 6 | 1, 1 |
+| Textures | 0 | 0 |
+
+Where the 67 draws were: 23 static (architecture and props, one per mesh per
+material), 2 status lights (rim, beacon), 36 on six separate workers and 6
+helmet bands. Where the 19 are: 12 static, 1 status, 5 on the crew and 1 for
+its helmet bands.
+
+- Colour families took 16 materials to 4 (`MC_FAM_COATED`, `_MINERAL`,
+  `_RUBBER`, `_FOLIAGE`). Glass, lit glass, metal, dark metal, grass, the
+  composite, track line, dark wood, skin and the status light keep their
+  own: each answers light differently.
+- The crew is one skinned mesh and one skeleton; each worker still plays
+  its own clip.
+- Colours, normals and skin weights are 8-bit: the file shrank 12 percent
+  with slightly more geometry in it.
+- The extra 448 triangles are the status rim's bevel. The approved export
+  dropped that modifier from the rim (224 triangles); Cycles always drew it
+  (672). The packed export ships what the render shows.
+
+In the app at overview (dpr 2, a frame without shadows) the city went from
+178 to 130 draw calls, the shadow pass from 70 to 28, and a focused Golden
+from 82 to 35.
+
+**Visual check.** The packed copy rendered in Cycles with the approved
+settings (`--preview`), compared pixel by pixel with the approved final:
+mean difference 0.16 percent, 0.13 percent of pixels differ by more than 5
+percent, all on one worker's legs, which stand slightly differently (under a
+tenth of a metre) because of a leftover in that rig's source pose. No
+material, colour or silhouette change:
+`art/renders/golden-optimized-vs-approved.png`.
+
+## DayPlan district
+
+An operations and dispatch centre: a graphite dispatch hall with a
+control-room window ribbon and three loading bays, a clock tower with a rose
+crown and two faces, a schedule board, and a timeline walk laid in the
+paving (fixed blocks in rose, flexible blocks in stone, hour posts) along
+which a "now" gate walks.
+
+**Concept.** Three silhouettes were built and judged at thumbnail size
+(`art/renders/dayplan-concepts.png` and `-thumbnail.png`): A, the hall and
+clock tower; B, a sawtooth dispatch hall; C, a rotunda under a dial. A was
+chosen: the tower is the one vertical in the city that says "time" at 70 px.
+B read as a factory; C read as a mushroom, and its dial vanished at thumbnail
+size.
+
+| Per district | Budget | DayPlan |
+| --- | --- | --- |
+| Draw calls | 24 | 21 |
+| Triangles | 80 000 | 51 298 |
+| Materials | 16 | 12 |
+| Workers | 8 | 5 |
+| File | 2 000 000 B | 1 330 208 B |
+| Textures | 0 | 0 |
+
+Crew, in rose and graphite: a dispatcher at the board with a tablet
+(`WORKING`), a signaller by the tower (`SIGNAL`), a courier on the timeline
+walk (`ACTIVE`), a technician on the clock balcony with a wrench (`REPAIR`)
+and a coordinator with a clipboard (`IDLE`). Life (`MC_LIFE`, a 60 s loop):
+the two second hands, the "now" gate and the time ball. Status lights: the
+rim, the lamp atop the tower and the helmet bands, on `MC_STATUS_LIGHT`.
+
+Renders: `dayplan-draft-eevee.png`, `dayplan-final.png` (Cycles, 1800 px,
+128 samples), `dayplan-final-transparent.png`; in the app,
+`runtime/dayplan-focus-*.png`, `runtime/dayplan-states.png` and
+`runtime/dayplan-blender-vs-runtime.png`.
+
+## Two districts in the app
+
+Measured in headless Edge on an integrated Intel GPU that presents at 30 Hz,
+at overview, device pixel ratio 2, a frame without the shadow pass. Frame
+time is what one frame costs the GPU to finish, not the presentation rate.
+
+| | Golden only | Golden + DayPlan | Six authored (proxy) |
+| --- | --- | --- | --- |
+| Draw calls | 130 | 133 | 146 |
+| Triangles | 137k | 180k | 371k |
+| Frame, desktop viewport | 15.9 ms | 18.1 ms | 33.2 ms |
+| Frame, phone viewport | 9.5 ms | 9.5 ms | 13.0 ms |
+| Frame, tablet viewport | 13.4 ms | 15.3 ms | 26.3 ms |
+| Shadow refresh, added | 1.3 to 2.1 ms | 1.4 to 2.3 ms | about 3.1 ms |
+| Materials, programs | 37, 21 | 51, 21 | 114, 20 |
+| Authored files | 1.54 MB | 2.84 MB | about 8.7 MB, projected |
+| Animation per frame | 0.02 ms | 0.04 ms | 0.05 ms |
+
+The six-district proxy alternates the two real files over the six blocks.
+Its cost is fill, not geometry or state changes: at one device pixel the
+desktop frame is 13.3 ms, programs stay at about 20 because every district
+shares the same shader variants, and each authored place adds about 3 draw
+calls to the overview. Where the resolution must fall the world lowers it; a
+30 Hz screen no longer makes it do so on its own (see ARCHITECTURE.md).

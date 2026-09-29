@@ -20,18 +20,22 @@
    it appears, tests included.
 
    What is scanned: every text file in the working tree except
-   .git, node_modules and the git-ignored moodboards. Untracked
+   .git, node_modules and the git-ignored moodboards, and every
+   binary art file (.blend, .glb, .png) as the bytes it holds — a
+   compressed .blend decompressed, every frame of it. Untracked
    files are included on purpose — this is how one gets caught
    before it is committed.
    ========================================================= */
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 const ROOT = path.join(__dirname, '..');
 const SELF = ['scripts/secrets.js'];
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'references']);
-const TEXT_EXT = new Set(['.html', '.js', '.json', '.md', '.css', '.webmanifest', '.txt', '.yml', '.yaml']);
+const TEXT_EXT = new Set(['.html', '.js', '.json', '.md', '.css', '.webmanifest', '.txt', '.yml', '.yaml', '.py']);
+const BINARY_EXT = new Set(['.blend', '.glb', '.png']);
 
 const FIXTURE = /FAKE|FIXTURE|EXAMPLE|\.test\b|\.example\b|\.invalid\b/i;
 
@@ -79,6 +83,28 @@ function scanText(text){
   return hits;
 }
 
+/* The bytes of a binary file, as text the rules can read. A saved .blend
+   keeps more than its model: Blender's factory screens hold a file browser
+   opened on the user's Documents folder, and every .blend written from them
+   carried that path. Blender compresses with seekable zstd, many frames and
+   a seek table at the end; reading only the first frame (what one
+   decompress call does) misses the rest, so every frame is read. Returns
+   null when this Node cannot decompress zstd, and the scan fails closed. */
+const ZSTD = 0xFD2FB528, SEEKABLE = 0x8F92EAB1;
+function binaryText(buf){
+  if(buf.length < 4 || buf.readUInt32LE(0) !== ZSTD) return buf.toString('latin1');
+  if(typeof zlib.zstdDecompressSync !== 'function') return null;
+  if(buf.length < 9 || buf.readUInt32LE(buf.length - 4) !== SEEKABLE) return zlib.zstdDecompressSync(buf).toString('latin1');
+  const frames = buf.readUInt32LE(buf.length - 9), entry = (buf[buf.length - 5] & 0x80) ? 12 : 8;
+  const table = buf.length - 9 - frames * entry, parts = [];
+  for(let i = 0, at = 0; i < frames; i++){
+    const len = buf.readUInt32LE(table + i * entry);
+    parts.push(zlib.zstdDecompressSync(buf.subarray(at, at + len)));
+    at += len;
+  }
+  return Buffer.concat(parts).toString('latin1');
+}
+
 function walk(dir, out){
   fs.readdirSync(dir, { withFileTypes: true }).forEach(e => {
     if(SKIP_DIRS.has(e.name)) return;
@@ -90,15 +116,21 @@ function walk(dir, out){
 }
 
 function run(){
-  const files = walk(ROOT, []).filter(f => TEXT_EXT.has(path.extname(f).toLowerCase()));
+  const all = walk(ROOT, []), ext = f => path.extname(f).toLowerCase();
+  const files = all.filter(f => TEXT_EXT.has(ext(f))), binaries = all.filter(f => BINARY_EXT.has(ext(f)));
   const found = [];
+  const rel = full => path.relative(ROOT, full).split(path.sep).join('/');
   files.forEach(full => {
-    const rel = path.relative(ROOT, full).split(path.sep).join('/');
-    if(SELF.indexOf(rel) !== -1) return;
-    scanText(fs.readFileSync(full, 'utf8')).forEach(h => found.push(Object.assign({ file: rel }, h)));
+    if(SELF.indexOf(rel(full)) !== -1) return;
+    scanText(fs.readFileSync(full, 'utf8')).forEach(h => found.push(Object.assign({ file: rel(full) }, h)));
+  });
+  binaries.forEach(full => {
+    const text = binaryText(fs.readFileSync(full));
+    if(text === null) found.push({ file: rel(full), line: 0, label: 'compressed, unreadable here (needs Node 22.15+)', match: '' });
+    else scanText(text).forEach(h => found.push(Object.assign({ file: rel(full) }, h)));
   });
 
-  console.log('secret scan — ' + files.length + ' text files');
+  console.log('secret scan — ' + files.length + ' text files, ' + binaries.length + ' binary files');
   if(!found.length){
     console.log('  clean — no private link, credential or local path found');
     return 0;
@@ -114,4 +146,4 @@ function run(){
 }
 
 if(require.main === module) process.exit(run());
-module.exports = { run, scanText, RULES, FIXTURE };
+module.exports = { run, scanText, binaryText, RULES, FIXTURE };

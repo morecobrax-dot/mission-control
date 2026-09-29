@@ -105,6 +105,9 @@ OUTFITS = {
     'crew':    dict(vest='MC_PAINT_BLUE', shirt='MC_PAINT_NAVY', pants='MC_PLINTH_DK', stripe=True),
     'tech':    dict(vest='MC_PLINTH_DK', shirt='MC_PLINTH_DK', pants='MC_PAINT_NAVY', stripe=True),
     'kit': dict(vest='MC_PAINT_WHITE', shirt='MC_PAINT_BLUE', pants='MC_PAINT_NAVY', stripe=False),
+    # DayPlan's crew wears its district's rose on graphite
+    'dp_crew': dict(vest='MC_DP_ROSE', shirt='MC_DP_GRAPHITE', pants='MC_PLINTH_DK', stripe=True),
+    'dp_tech': dict(vest='MC_DP_GRAPHITE', shirt='MC_DP_GRAPHITE', pants='MC_DP_ROSE_DK', stripe=True),
 }
 
 
@@ -317,10 +320,12 @@ GD_WORKERS = [
 ]
 
 
-def place_golden_workers(coll, status_coll=None, layout=None):
-    status_coll = status_coll or bpy.data.collections['STATUS_LIGHTS']
+def place_workers(coll, status_coll, layout, prefix):
+    """A district's crew from its layout: (role, feet, facing, pose, prop, outfit)."""
     out = []
-    for tag, loc, rz, pose, prop, outfit in (layout or GD_WORKERS):
-        out.append(make_worker(coll, status_coll, name='GD_Worker_' + tag, loc=loc, rot_z=rz, pose=pose,
-                               prop=prop, outfit=outfit, scale=1.4))
+    for tag, loc, rz, pose, prop, outfit in layout:
+        arm, body = make_worker(coll, status_coll, name=prefix + '_Worker_' + tag, loc=loc, rot_z=rz, pose=pose,
+                                prop=prop, outfit=outfit, scale=1.4)
+        arm['mc_role'] = tag
+        out.append((arm, body))
     return out

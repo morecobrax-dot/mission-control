@@ -159,7 +159,10 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     Never commit a ChatGPT conversation link, a Claude session id or link, a
     token, an API key, a credential or a local machine path. Tests use obvious
     fixtures — `.test` hosts, ids that say `FAKE` — and `npm run secrets`
-    (inside `npm run verify`) fails on anything that looks real.
+    (inside `npm run verify`) fails on anything that looks real. It reads
+    binary art too, every frame of a compressed `.blend`: Blender stores a
+    file browser's folder in every save, so a `.blend` is saved only through
+    `save_blend` (`art/blender/scripts/mc_lib.py`).
 30. **Identity is public, state is yours or published, links are private.**
     Names, purposes, repositories, live URLs and `publicRepo` live in
     `PROJECT_REGISTRY`. A state you record lives in `data.projectStates` on the
@@ -263,6 +266,9 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     Nothing draws while the world is hidden, covered, off screen or lost; it
     draws at up to about 60 frames a second, lowers its resolution rather
     than its frame rate, and life settles after five untouched minutes.
+    Slow frames lower the resolution only when the frame's own measured cost
+    fills the gap (`shouldStepDown`): a screen presenting at 30 Hz is not a
+    slow renderer.
     Labels and the sign move by transform and are measured only when their
     words or room change — never read layout in a frame. Reduce Motion makes
     every move instant and stills every crew and every place. Status lights
@@ -306,4 +312,14 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     nothing in the file decides a status. Its rise is measured from the
     file. The look's recipe stays as its fallback. A new authored place is a
     Blender export, an `ASSETS` entry and an `APP_FILES` line — never code
-    per project.
+    per project. Its crew is one skeleton (`<role>__<bone>`) and its own
+    life is the `MC_LIFE` clip on `mc_life` nodes only.
+54. **An authored place fits its budget before it ships.** `DISTRICT_BUDGET`
+    (`world.js`, the same numbers in `export_glb.py`) caps draws, triangles,
+    materials, workers, bytes and textures; the export fails loudly over it
+    and contract 30 fails the file. Meet it by packing (joining a material's
+    meshes, colour families, one crew, compact vertex data), never by
+    flattening the model, baking away a status light, dropping a worker or
+    merging materials that look different. A pass that visibly changes a
+    Cycles render is rejected. Raise the budget only with measurements, and
+    keep `BUDGET` able to hold six places at it.

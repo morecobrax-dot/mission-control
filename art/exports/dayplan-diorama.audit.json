@@ -1,17 +1,16 @@
 {
-  "file": "golden-diorama.glb",
-  "bytes": 1581172,
-  "triangles": 68486,
-  "vertices_blender": 35873,
-  "mesh_objects": 14,
-  "draw_calls": 19,
-  "materials": 14,
+  "file": "dayplan-diorama.glb",
+  "bytes": 1330208,
+  "triangles": 51298,
+  "vertices_blender": 26753,
+  "mesh_objects": 16,
+  "draw_calls": 21,
+  "materials": 12,
   "material_names": [
     "MC_COMPOSITE_YELLOW",
     "MC_FAM_COATED",
     "MC_FAM_FOLIAGE",
     "MC_FAM_MINERAL",
-    "MC_FAM_RUBBER",
     "MC_GLASS",
     "MC_GLASS_LIT",
     "MC_GRASS",
@@ -19,16 +18,15 @@
     "MC_METAL_DARK",
     "MC_SKIN",
     "MC_STATUS_LIGHT",
-    "MC_TRACK_LINE",
     "MC_WOOD_DARK"
   ],
   "textures": 0,
   "texture_memory_bytes": 0,
-  "workers": 6,
-  "crew": "coach:WORKING,lifter:REPAIR,rest:IDLE,runner:ACTIVE,signal:SIGNAL,tech:REPAIR",
+  "workers": 5,
+  "crew": "coordinator:IDLE,courier:ACTIVE,dispatcher:WORKING,signaller:SIGNAL,tech:REPAIR",
   "status_meshes": [
-    "GD_Crew",
-    "GD_StatusLights"
+    "DP_Crew",
+    "DP_StatusLights"
   ],
   "clips": [
     "MC_IDLE",
@@ -40,27 +38,27 @@
   "budget": {
     "triangles": {
       "limit": 80000,
-      "actual": 68486,
+      "actual": 51298,
       "ok": true
     },
     "drawCalls": {
       "limit": 24,
-      "actual": 19,
+      "actual": 21,
       "ok": true
     },
     "materials": {
       "limit": 16,
-      "actual": 14,
+      "actual": 12,
       "ok": true
     },
     "workers": {
       "limit": 8,
-      "actual": 6,
+      "actual": 5,
       "ok": true
     },
     "bytes": {
       "limit": 2000000,
-      "actual": 1581172,
+      "actual": 1330208,
       "ok": true
     },
     "textures": {

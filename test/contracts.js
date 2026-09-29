@@ -1994,6 +1994,28 @@ function testSecrets(){
     'a macOS home path': ' /' + 'Users/someone/notes.txt'
   };
   Object.keys(planted).forEach(k => T('catches ' + k, scan.scanText('x ' + planted[k] + ' y').length > 0));
+
+  sub('binary art is read too: every .blend carried a home path the text scan never opened');
+  /* Blender writes seekable zstd: frames, then a seek table. One decompress
+     call reads only the first frame, and the path sat in a later one. */
+  const zlib = require('zlib');
+  const home = 'C:' + '\\' + 'Users' + '\\someone\\Documents';
+  if(typeof zlib.zstdCompressSync === 'function'){
+    const frames = [Buffer.from('BLENDER17-01v0502 model data'), Buffer.from('Save As Blender File ' + home + ' ')].map(b => zlib.zstdCompressSync(b));
+    const seek = Buffer.alloc(8 + frames.length * 8 + 9);
+    seek.writeUInt32LE(0x184D2A5E, 0); seek.writeUInt32LE(seek.length - 8, 4);
+    frames.forEach((f, i) => { seek.writeUInt32LE(f.length, 8 + i * 8); });
+    seek.writeUInt32LE(frames.length, seek.length - 9); seek[seek.length - 5] = 0; seek.writeUInt32LE(0x8F92EAB1, seek.length - 4);
+    T('a home path in a later frame of a compressed .blend is found', scan.scanText(scan.binaryText(Buffer.concat(frames.concat([seek])))).length > 0);
+  }
+  T('a home path in an uncompressed binary is found', scan.scanText(scan.binaryText(Buffer.from('\x89PNG tEXt ' + home, 'latin1'))).length > 0);
+  const blenderPy = ['art/blender/scripts', 'art/blender/models', 'art/blender/workers'].reduce((out, d) =>
+    out.concat(require('fs').readdirSync(require('path').join(H.ROOT, d)).filter(f => /\.py$/.test(f)).map(f => d + '/' + f)), []);
+  const saves = blenderPy.filter(f => /save_as_mainfile\(|save_mainfile\(/.test(require('fs').readFileSync(require('path').join(H.ROOT, f), 'utf8')));
+  const lib = require('fs').readFileSync(require('path').join(H.ROOT, 'art/blender/scripts/mc_lib.py'), 'utf8');
+  T('every .blend is saved through save_blend, which empties the file browser\'s whole buffer before it saves',
+    saves.join() === 'art/blender/scripts/mc_lib.py' &&
+    /space\.params\.directory = b'_' \* \d{4}\s*\n\s*space\.params\.directory = b'\/\/'\s*\n\s*bpy\.ops\.wm\.save_as_mainfile/.test(lib.replace(/\r/g, '')), saves.join());
   sub('and lets declared fixtures through');
   [FIX.chat, FIX.claude, FIX.claudeApp, 'https://chatgpt.com/c/FAKE-FIXTURE-0021', 'https://claude.ai/code/new']
     .forEach(f => T('passes the fixture ' + f.slice(0, 32), scan.scanText(f).length === 0));
@@ -3096,15 +3118,52 @@ async function testWorld(){
     const a = W.ASSETS[k], bin = fsx.readFileSync(at(a.url));
     const ok = bin.readUInt32LE(0) === 0x46546C67 && bin.readUInt32LE(4) === 2;
     const gl = ok ? JSON.parse(bin.slice(20, 20 + bin.readUInt32LE(12)).toString()) : {};
-    T(k + ': a binary glTF 2.0 file, under 2.5 MB', ok && bin.length < 2.5 * 1024 * 1024, bin.length + ' bytes');
+    T(k + ': a binary glTF 2.0 file', ok, bin.length + ' bytes');
+    /* The district budget, counted from the file as the renderer will draw
+       it: one draw per primitive, every triangle, every material. */
+    const prims = (gl.meshes || []).reduce((s, m) => s + m.primitives.length, 0);
+    const tris = (gl.meshes || []).reduce((s, m) => s + m.primitives.reduce((t, p) =>
+      t + (p.indices !== undefined ? gl.accessors[p.indices].count : gl.accessors[p.attributes.POSITION].count) / 3, 0), 0);
+    const crewNode = (gl.nodes || []).find(n => n.extras && n.extras.mc_crew);
+    const roles = crewNode ? String(crewNode.extras.mc_crew).split(',') : [];
+    const measured = { triangles: tris, drawCalls: prims, materials: (gl.materials || []).length, workers: roles.length,
+                       bytes: bin.length, textures: (gl.images || []).length };
+    const over = Object.keys(W.DISTRICT_BUDGET).filter(key => !(measured[key] <= W.DISTRICT_BUDGET[key]));
+    T(k + ': within the district budget (draw calls, triangles, materials, workers, bytes, textures)', over.length === 0,
+      JSON.stringify(measured) + (over.length ? ' over: ' + over.join() : ''));
+    const report = JSON.parse(read(a.url.replace(/\.glb$/, '.audit.json')));
+    T(k + ': its export audit is the file it sits beside, and within budget', report.within_budget === true && report.bytes === bin.length);
     T(k + ': it carries every clip the crew states name', W.ASSET_CLIPS.every(n => (gl.animations || []).some(x => x.name === n)), (gl.animations || []).map(x => x.name).join());
-    const rigs = (gl.nodes || []).filter(n => n.extras && n.extras.worker_pose);
-    T(k + ': every worker is posed with one of those clips, and wears a status band',
-      rigs.length > 0 && rigs.every(n => W.ASSET_CLIPS.indexOf('MC_' + n.extras.worker_pose) !== -1) &&
-      (gl.nodes || []).filter(n => n.extras && n.extras.status_role === 'helmet').length === rigs.length, rigs.length + ' workers');
+    /* One crew: every worker on one skeleton, each role's bones "<role>__<bone>". */
+    const skins = gl.skins || [];
+    const boneNames = skins.length ? skins[0].joints.map(j => gl.nodes[j].name) : [];
+    T(k + ': its crew is one skinned mesh on one skeleton, so a crew is a few draws, not a few per worker',
+      skins.length === 1 && roles.length > 0 && (gl.meshes || []).filter((m, mi) => (gl.nodes || []).some(n => n.mesh === mi && n.skin !== undefined)).length === 1,
+      skins.length + ' skins');
+    T(k + ': every role is posed with a clip the crew states name, and owns its own bones',
+      roles.every(r => { const [role, pose] = r.split(':');
+        return W.ASSET_CLIPS.indexOf('MC_' + pose) !== -1 && boneNames.filter(b => b.indexOf(role + W.CREW_JOIN) === 0).length === 11; }), roles.join());
+    T(k + ': no channel targets a bone twice-prefixed (the export once wrote "coach__coach__spine")',
+      !(gl.animations || []).some(an => an.channels.some(ch => /__.*__/.test(gl.nodes[ch.target.node].name))));
     const status = (gl.materials || []).filter(m => m.name === W.ASSET_STATUS_MATERIAL);
-    T(k + ': its status lights share one material, so a status recolours them without a rebuild', status.length === 1 &&
-      (gl.meshes || []).filter(m => m.primitives.some(p => gl.materials[p.material] === status[0])).length >= 3);
+    const statusMeshes = (gl.meshes || []).filter(m => m.primitives.some(p => gl.materials[p.material] === status[0]));
+    T(k + ': its status lights (rim, beacon, every helmet band) share one material, so a status recolours them without a rebuild',
+      status.length === 1 && statusMeshes.length === 2 && !!crewNode, statusMeshes.map(m => m.name).join());
+    const fams = (gl.materials || []).filter(m => /^MC_FAM_/.test(m.name));
+    T(k + ': a colour family is its vertex colour, never darkened (glTF would multiply in Blender\'s 0.8 default)',
+      fams.length > 0 && fams.every(m => !m.pbrMetallicRoughness || !m.pbrMetallicRoughness.baseColorFactor ||
+        m.pbrMetallicRoughness.baseColorFactor.every(v => v === 1)));
+    const attrs = name => [].concat(...(gl.meshes || []).map(m => m.primitives.map(p => p.attributes[name]).filter(i => i !== undefined))).map(i => gl.accessors[i]);
+    T(k + ': vertex data is compact: colours 8-bit, normals 8-bit (KHR_mesh_quantization), skin weights 8-bit',
+      attrs('COLOR_0').length > 0 && attrs('COLOR_0').every(x => x.componentType === 5121 && x.normalized) &&
+      attrs('NORMAL').every(x => x.componentType === 5120 && x.normalized) && attrs('WEIGHTS_0').every(x => x.componentType === 5121 && x.normalized) &&
+      (gl.extensionsRequired || []).indexOf('KHR_mesh_quantization') !== -1);
+    const life = (gl.animations || []).find(an => an.name === W.ASSET_LIFE_CLIP);
+    if(life) T(k + ': its life clip moves only its own life objects, never a worker or the building',
+      life.channels.every(ch => gl.nodes[ch.target.node].extras && gl.nodes[ch.target.node].extras.mc_life));
+    const lifeNodes = (gl.nodes || []).filter(n => n.extras && n.extras.mc_life);
+    T(k + ': a place with life objects ships its life clip, and every one of them moves in it',
+      lifeNodes.every(n => life && life.channels.some(ch => gl.nodes[ch.target.node] === n)), lifeNodes.length + ' life objects');
     T(k + ': no textures, so nothing to decode and no texture memory', !(gl.images || []).length && !(gl.textures || []).length);
     const sheen = (gl.materials || []).map(m => m.extensions && m.extensions.KHR_materials_sheen).filter(Boolean);
     T(k + ': sheen arrives at its authored weight, not at full strength (the exporter drops the weight; the export folds it into the colour)',
@@ -3137,7 +3196,23 @@ async function testWorld(){
   T('a worker changing what it does blends into it; under Reduce Motion, and on a first draw, it simply is',
     /w\.action\.crossFadeTo\(next, CLIP_FADE_S, false\)/.test(r3) && /if\(w\.action && !snap && !still\)/.test(r3) && /w\.pace = still \? 0 : plan\.pace;/.test(r3));
   T('a file that does not load gives the place back to its recipe, and never holds the world back for long',
-    /showAsset\(t, false\)/.test(r3) && /ASSET_WAIT_MS = \d{4,5};/.test(r3) && Number(/ASSET_WAIT_MS = (\d+);/.exec(r3)[1]) <= 15000);
+    /showAsset\(t, false\)/.test(r3) && /ASSET_WAIT_MS = \d{4,5};/.test(r3) && Number(/ASSET_WAIT_MS = (\d+);/.exec(r3)[1]) <= 6000);
+  T('a file that arrives after the world is shown still takes its place, and the layout follows its height',
+    /showAsset\(t, false, 'late'\)/.test(r3) &&
+    /if\(!t\.settled\)\{ t\.settled = true; S\.pending = Math\.max\(0, S\.pending - 1\); \}\s*if\(S\.order\.length && S\.w\)\{ S\.reroom = 0; relayout\(\); reframe\(\); \}/.test(r3));
+  T('two authored districts stand in the city together, each its own file and its own look',
+    Object.keys(W.ASSETS).length >= 2 && new Set(Object.values(W.ASSETS).map(a => a.url)).size === Object.keys(W.ASSETS).length);
+  T('no project is special in the renderer: it names no look, no project and no file',
+    !/'track'|'calendar'|golden|dayplan|\.glb/i.test(code(r3)));
+  T('each authored place is precached for offline, by its path', Object.values(W.ASSETS).every(a => read('sw.js').indexOf("'" + a.url + "'") !== -1));
+  T('the export and the app hold the same district budget',
+    Object.keys(W.DISTRICT_BUDGET).every(key => new RegExp("'" + key + "': " + W.DISTRICT_BUDGET[key] + '\\b').test(read('art/blender/scripts/export_glb.py'))));
+  T('the world budget holds six districts each at its own budget, so raising one never quietly breaks the other',
+    W.BUDGET.triangles >= 6 * W.DISTRICT_BUDGET.triangles && W.BUDGET.drawCalls >= 6 * W.DISTRICT_BUDGET.drawCalls);
+  T('a crew is there whole or not at all: one skeleton, so no state hides only some of it',
+    Object.keys(W.CREW).concat([undefined]).every(s => { const n = roles.map(r => W.assetCrew(s, r) === null); return n.every(Boolean) || n.every(x => !x); }));
+  T('a place\'s own life plays only while its project is known to be under way, and a place that stops holds its first moment',
+    /const on = lifeActive\(item\.workerState, still\);\s*a\.life\.timeScale = on \? lifeSpeed\(item\.workerState\) : 0;\s*if\(!on\) a\.life\.time = 0;/.test(r3));
   T('its materials are copied per place, so one project\'s state never recolours another\'s', /m = o\.material\.clone\(\);/.test(r3) && /THREE\.cloneSkinned\(file\.gltf\.scene\)/.test(r3));
 
   sub('one light for the whole world: the Blender studio rig, turned with the camera');
@@ -3223,8 +3298,18 @@ async function testWorld(){
     /if\(changed\('name'\)\)\{ t\.nameEl\.textContent = item\.name; t\.labelDirty = true; \}/.test(r3));
   T('up to about 60 frames a second, not 30', W.WORLD.frameMinMs >= 12 && W.WORLD.frameMinMs <= 16.7 &&
     /now - S\.lastRender < WORLD\.frameMinMs/.test(r3));
+  T('a screen presenting at 30 is not a slow renderer: a cheap frame keeps its resolution (iOS Low Power Mode, a battery-saving browser)',
+    W.shouldStepDown(33.3, 9, 2) === false && W.shouldStepDown(33.3, 13.6, 2) === false && W.shouldStepDown(16.7, 16, 2) === false);
+  T('a frame that fills the gap between frames does lower it, never below one pixel per pixel',
+    W.shouldStepDown(33.3, 25, 2) === true && W.shouldStepDown(50, 40, 1.5) === true && W.shouldStepDown(50, 45, W.WORLD.minPixelRatio) === false);
+  T('the step-down asks the frame what it costs, the lower of two, before it believes the gap',
+    /S\.probedCost = Math\.min\(frameCost\(false, 1\), frameCost\(false, 1\)\);\s*if\(shouldStepDown\(gap, S\.probedCost, S\.dpr\)\)/.test(r3));
+  T('a screen found presenting at 30 is not timed every second and a half for ever: each cheap verdict doubles the rest, a new size clears it',
+    /if\(S\.probeRest > 0\) S\.probeRest--;\s*else if\(gap > WORLD\.slowFrameMs/.test(r3) &&
+    /S\.probeWait = Math\.min\(PROBE_REST_MAX, S\.probeWait \* 2 \|\| 1\);\s*S\.probeRest = S\.probeWait;/.test(r3) &&
+    /S\.w = w; S\.h = h; S\.dpr = dpr;\s*S\.probeRest = 0; S\.probeWait = 0;/.test(r3) && Number((/const PROBE_REST_MAX = (\d+);/.exec(r3) || [])[1]) <= 64);
   T('frames that keep coming slowly lower the resolution a step',
-    /S\.slowSum \/ S\.slowCount > WORLD\.slowFrameMs && S\.dpr > WORLD\.minPixelRatio/.test(r3) && /S\.dprCap = nextPixelRatio\(S\.dpr\)/.test(r3));
+    /const gap = S\.slowSum \/ S\.slowCount;\s*if\(S\.probeRest > 0\) S\.probeRest--;\s*else if\(gap > WORLD\.slowFrameMs && S\.dpr > WORLD\.minPixelRatio\)/.test(r3) && /S\.dprCap = nextPixelRatio\(S\.dpr\)/.test(r3));
   T('the island is built once per layout, not per frame', /if\(layoutKey === land\.key\) return island;/.test(r3) && !/buildLand/.test(code(fnBody('tick') || '')));
   T('taps are hit-tested on the island, never by a box per district',
     /hitDistrict\(S\.order\.map/.test(r3) && !/world-hit/.test(r3 + style));

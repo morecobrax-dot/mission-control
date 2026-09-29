@@ -32,10 +32,10 @@ import * as THREE from '../vendor/three/three.min.js';
 import {
   WORLD, TILE, BEACON, eyeOf, project, chooseLayout, islandOf, islandOutline, focusFrame,
   clampFrame, panFrame, revealFrame, hitDistrict, labelAnchor, signAnchor, sameFrame, mixFrame,
-  pixelRatioFor, nextPixelRatio, districtPx, resolveLabels, resolveWithSign, createArbiter, CREW, CREW_FACING, poseFor, crewLoops,
+  pixelRatioFor, nextPixelRatio, shouldStepDown, districtPx, resolveLabels, resolveWithSign, createArbiter, CREW, CREW_FACING, poseFor, crewLoops,
   lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS, SCENERY,
   placeHeight, cityParts, streetLamps, TRUCK_PARTS, RESIDENT_PARTS, streetPose, trafficBounds,
-  assetFor, assetHeight, assetCrew, ASSET_STATUS_MATERIAL, LIGHT, lightDirection
+  assetFor, assetHeight, assetCrew, ASSET_STATUS_MATERIAL, ASSET_LIFE_CLIP, CREW_JOIN, LIGHT, lightDirection
 } from './world.js';
 
 export const REVISION = THREE.REVISION;
@@ -47,8 +47,9 @@ const BREATH_S = 2.6;            // an attention beacon's slow breath
 const POSE_EASE_S = 0.12;        // how quickly a worker settles into a new pose
 const SIGN = ' sign';             // the sign's place among the labels: never a project id
 const CLICK_AFTER_MS = 700;       // how long after a pan or an island tap its own click may still arrive
-const ASSET_WAIT_MS = 12000;      // an authored place not loaded by then is drawn from its recipe
+const ASSET_WAIT_MS = 5000;       // the world waits this long for authored places, then shows its recipe for one still coming
 const CLIP_FADE_S = 0.45;         // a worker changing what it does blends into it
+const PROBE_REST_MAX = 32;        // a cheap slow screen is timed again after 1, 2, 4 ... at most 32 windows of 45 frames (about 48 s at 30)
 
 /* ---------- colour, from the page's tokens ---------- */
 function parseColour(raw){
@@ -271,7 +272,7 @@ export function createWorld(host, hooks){
     raf: 0, lastRender: 0, lastTick: 0, lastWake: 0, onscreen: true, covered: false, lost: false, lostTimer: 0,
     destroyed: false, failed: false, frames: 0, cost: 0, swallowUntil: 0, dirty: false, reroom: 0,
     slowSum: 0, slowCount: 0, signFor: null, signHtml: null, signRoom: null, signEnter: 0, labelMax: 0,
-    pending: 0, shadowAt: 0, shadowRefreshes: 0
+    pending: 0, shadowAt: 0, shadowRefreshes: 0, probeRest: 0, probeWait: 0
   };
 
   /* ---------- shared resources ---------- */
@@ -552,36 +553,49 @@ export function createWorld(host, hooks){
       /* A skinned worker moves outside its bind-pose bounds. */
       if(o.isSkinnedMesh) o.frustumCulled = false;
     });
+    /* The crew is one skinned mesh on one skeleton (the export joins every
+       worker, export_glb.py): its rig says each role and the clip it was
+       posed with ("coach:WORKING,..."), and each role's bones are named
+       "<role>__<bone>", so each worker gets its own slice of every clip. */
     const mixer = new THREE.AnimationMixer(inst);
     const crew = [];
-    inst.children.forEach(rig => {
-      const pose = rig.userData && rig.userData.worker_pose;
-      if(!pose) return;
-      const names = new Set();
-      rig.traverse(o => names.add(o.name));
-      const clips = {};
-      file.gltf.animations.forEach(c => {
-        const tracks = c.tracks.filter(tr => names.has(trackTarget(tr.name)));
-        if(tracks.length) clips[c.name] = new THREE.AnimationClip(c.name, c.duration, tracks);
+    let crewRig = null;
+    inst.traverse(o => { if(!crewRig && o.userData && o.userData.mc_crew) crewRig = o; });
+    if(crewRig){
+      const bones = {};
+      crewRig.traverse(o => { const i = o.name.indexOf(CREW_JOIN); if(i > 0) (bones[o.name.slice(0, i)] = bones[o.name.slice(0, i)] || new Set()).add(o.name); });
+      String(crewRig.userData.mc_crew).split(',').forEach(entry => {
+        const [role, pose] = entry.split(':'), names = bones[role] || new Set(), clips = {};
+        file.gltf.animations.forEach(c => {
+          const tracks = c.tracks.filter(tr => names.has(trackTarget(tr.name)));
+          if(tracks.length) clips[c.name] = new THREE.AnimationClip(c.name, c.duration, tracks);
+        });
+        crew.push({ role: role, authored: 'MC_' + pose, clips: clips, action: null, pace: 0 });
       });
-      crew.push({ rig: rig, authored: 'MC_' + pose, clips: clips, action: null, pace: 0 });
-    });
-    return { root: inst, mixer: mixer, crew: crew, status: status, materials: Array.from(copies.values()),
-             height: TILE.padH + (box.max.y - box.min.y) * k, fading: 0 };
+    }
+    /* A place's own authored life (a clock, a light moving down a lane): one
+       clip, MC_LIFE, on its own nodes, played under the same rules as every
+       place's life (world.js lifeActive). */
+    const lifeClip = file.gltf.animations.find(c => c.name === ASSET_LIFE_CLIP);
+    const life = lifeClip ? mixer.clipAction(lifeClip, inst) : null;
+    if(life) life.play();
+    return { root: inst, mixer: mixer, crew: crew, crewNode: crewRig, life: life, status: status,
+             materials: Array.from(copies.values()), height: TILE.padH + (box.max.y - box.min.y) * k, fading: 0 };
   }
   /* The recipe gives way to the authored place, or comes back if it fails. */
-  function showAsset(t, on){
+  function showAsset(t, on, why){
     t.recipe.forEach(o => { o.visible = !on; });
     t.assetPad.forEach(o => { o.visible = on; });
     if(t.asset) t.asset.root.visible = on;
     t.height = on && t.asset ? t.asset.height : placeHeight(t.theme);
-    t.assetState = on ? 'on' : 'failed';
+    t.assetState = on ? 'on' : why || 'failed';
     renderer.shadowMap.needsUpdate = true;
   }
+  /* A place settles once, for the reveal; a file that arrives after the
+     world has shown its recipe still takes its place, and the layout follows
+     its height. */
   function settleAsset(t){
-    if(t.settled) return;
-    t.settled = true;
-    S.pending = Math.max(0, S.pending - 1);
+    if(!t.settled){ t.settled = true; S.pending = Math.max(0, S.pending - 1); }
     if(S.order.length && S.w){ S.reroom = 0; relayout(); reframe(); }
     S.dirty = true;
     wake();
@@ -589,7 +603,7 @@ export function createWorld(host, hooks){
   function startAsset(t, spec){
     t.assetState = 'loading';
     S.pending++;
-    const late = setTimeout(() => { if(!t.asset && !S.destroyed){ showAsset(t, false); settleAsset(t); } }, ASSET_WAIT_MS);
+    const late = setTimeout(() => { if(!t.asset && !S.destroyed){ showAsset(t, false, 'late'); settleAsset(t); } }, ASSET_WAIT_MS);
     loadAsset(spec).then(file => {
       if(S.destroyed || t.dropped) return;
       t.asset = buildAsset(t, spec, file);
@@ -628,9 +642,11 @@ export function createWorld(host, hooks){
       }
     }
     const still = rm();
+    /* One crew, so one visibility: without a record nobody is there. */
+    const present = a.crew.some(w => !!assetCrew(item.workerState, w.authored));
+    if(a.crewNode) a.crewNode.visible = present;
     a.crew.forEach(w => {
       const plan = assetCrew(item.workerState, w.authored);
-      w.rig.visible = !!plan;
       if(!plan) return;
       const clip = w.clips[plan.clip] || w.clips[w.authored];
       if(!clip) return;
@@ -647,6 +663,13 @@ export function createWorld(host, hooks){
       } else if(w.action) w.action.stop();
       w.action = next;
     });
+    /* Its life runs only while the project is known to be under way; a place
+       that stops holds its first moment. */
+    if(a.life){
+      const on = lifeActive(item.workerState, still);
+      a.life.timeScale = on ? lifeSpeed(item.workerState) : 0;
+      if(!on) a.life.time = 0;
+    }
     /* The new pose is drawn even when nothing is advancing. */
     a.mixer.update(0);
     renderer.shadowMap.needsUpdate = true;
@@ -899,6 +922,7 @@ export function createWorld(host, hooks){
     if(w === S.w && h === S.h && dpr === S.dpr) return;
     const shaped = w !== S.w || h !== S.h;
     S.w = w; S.h = h; S.dpr = dpr;
+    S.probeRest = 0; S.probeWait = 0;             // a new size costs something new: time it again when slow
     renderer.setPixelRatio(dpr);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
@@ -996,7 +1020,8 @@ export function createWorld(host, hooks){
     if(rm() || now - S.lastWake > WORLD.ambientSeconds * 1000) return false;
     if(streetLife.length) return true;
     for(const t of S.tiles.values()){
-      if(t.asset && t.asset.root.visible && t.asset.crew.some(w => w.rig.visible && w.pace > 0)) return true;
+      if(t.asset && t.asset.root.visible && ((t.asset.crewNode && t.asset.crewNode.visible && t.asset.crew.some(w => w.pace > 0)) ||
+         (t.asset.life && t.asset.life.timeScale > 0))) return true;
       if(crewLoops(t.state.workerState, false) || lifeActive(t.state.workerState, false) || (t.state.attention && t.state.attention.length)) return true;
     }
     return false;
@@ -1143,10 +1168,25 @@ export function createWorld(host, hooks){
     if(again && gapMs > 0 && gapMs < 250){
       S.slowSum += gapMs; S.slowCount++;
       if(S.slowCount >= 45){
-        if(S.slowSum / S.slowCount > WORLD.slowFrameMs && S.dpr > WORLD.minPixelRatio){
-          S.dprCap = nextPixelRatio(S.dpr);
-          S.dpr = 0;
-          resize();
+        /* Slow gaps alone do not say the renderer is slow: a screen or a
+           power mode presenting at 30 makes every gap 33 ms however cheap
+           the frame. Time one frame and step down only if it fills the gap. */
+        const gap = S.slowSum / S.slowCount;
+        if(S.probeRest > 0) S.probeRest--;
+        else if(gap > WORLD.slowFrameMs && S.dpr > WORLD.minPixelRatio){
+          /* The lower of two frames: a one-off (a shader compiling, a shadow
+             refresh) never costs the resolution. */
+          S.probedCost = Math.min(frameCost(false, 1), frameCost(false, 1));
+          if(shouldStepDown(gap, S.probedCost, S.dpr)){
+            S.dprCap = nextPixelRatio(S.dpr);
+            S.dpr = 0;
+            resize();
+          } else {
+            /* A cheap frame at 30: the probe is two extra frames, so a screen
+               found presenting at 30 is asked again ever less often. */
+            S.probeWait = Math.min(PROBE_REST_MAX, S.probeWait * 2 || 1);
+            S.probeRest = S.probeWait;
+          }
         }
         S.slowSum = 0; S.slowCount = 0;
       }
@@ -1380,32 +1420,42 @@ export function createWorld(host, hooks){
       running: !!S.raf, awake: awake(), lost: S.lost, failed: S.failed, tiles: S.tiles.size,
       built: placeGeos.size + partGeos.size, traffic: streetTime, residents: streetLife.filter(a => a.resident).length, centres: centres, life: life,
       sign: S.signFor ? { id: S.signFor, x: S.signX, y: S.signY, shown: !!S.signShown } : null,
-      shadowMap: key.shadow.mapSize.x, shadowRefreshes: S.shadowRefreshes, pending: S.pending,
+      shadowMap: key.shadow.mapSize.x, shadowRefreshes: S.shadowRefreshes, pending: S.pending, probedCost: S.probedCost || null,
       assets: Array.from(S.tiles.values()).filter(t => t.assetState).map(t => ({
         id: t.id, state: t.assetState, height: Math.round(t.height * 100) / 100,
-        crew: t.asset ? t.asset.crew.map(w => ({ role: w.rig.name, clip: w.action ? w.action.getClip().name : null, pace: w.pace, shown: w.rig.visible })) : [],
+        crew: t.asset ? t.asset.crew.map(w => ({ role: w.role, clip: w.action ? w.action.getClip().name : null, pace: w.pace, shown: !!(t.asset.crewNode && t.asset.crewNode.visible) })) : [],
+        life: t.asset && t.asset.life ? { pace: t.asset.life.timeScale, time: Math.round(t.asset.life.time * 100) / 100 } : null,
         status: t.asset && t.asset.status ? '#' + t.asset.status.emissive.getHexString(THREE.SRGBColorSpace) : null
       }))
     };
   }
 
-  /* What the QA measures: the whole cost of a frame, CPU and GPU, as the
-     mean of n synchronous renders each finished by a one-pixel readback,
-     with and without the shadow pass. Never called by the app. */
+  /* The whole cost of a frame, CPU and GPU: the mean of n renders, each
+     finished by a one-pixel readback so the time includes the GPU's work. */
+  const probePx = new Uint8Array(4);
+  function frameCost(shadow, n){
+    const gl = renderer.getContext(), k = Math.max(1, n | 0), t0 = performance.now();
+    for(let i = 0; i < k; i++){
+      if(shadow) renderer.shadowMap.needsUpdate = true;
+      renderer.render(scene, camera);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, probePx);
+    }
+    return Math.round((performance.now() - t0) / k * 100) / 100;
+  }
+
+  /* What the QA measures, with and without the shadow pass. Never called by
+     the app. */
   function measure(n){
-    const gl = renderer.getContext(), px = new Uint8Array(4), k = Math.max(1, n | 0);
-    const time = shadow => {
-      const t0 = performance.now();
-      for(let i = 0; i < k; i++){
-        renderer.shadowMap.needsUpdate = shadow;
-        renderer.render(scene, camera);
-        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-      }
-      return Math.round((performance.now() - t0) / k * 100) / 100;
-    };
-    time(false);
-    const frameMs = time(false), calls = renderer.info.render.calls, triangles = renderer.info.render.triangles;
-    return { frameMs: frameMs, frameWithShadowMs: time(true), calls: calls, triangles: triangles, shadowCalls: renderer.info.render.calls - calls };
+    frameCost(false, n);
+    const frameMs = frameCost(false, n), calls = renderer.info.render.calls, triangles = renderer.info.render.triangles;
+    const withShadow = frameCost(true, n), shadowCalls = renderer.info.render.calls - calls;
+    const k = Math.max(1, n | 0), t0 = performance.now();
+    for(let i = 0; i < k; i++) S.tiles.forEach(t => { if(t.asset) t.asset.mixer.update(0); });
+    const animMs = Math.round((performance.now() - t0) / k * 1000) / 1000;
+    const materials = new Set();
+    scene.traverse(o => { if(o.isMesh && o.visible) materials.add(o.material); });
+    return { frameMs: frameMs, frameWithShadowMs: withShadow, calls: calls, triangles: triangles, shadowCalls: shadowCalls,
+             animMs: animMs, materials: materials.size, programs: renderer.info.programs ? renderer.info.programs.length : null };
   }
 
   return { draw: draw, focus: focus, destroy: destroy, stats: stats, measure: measure };

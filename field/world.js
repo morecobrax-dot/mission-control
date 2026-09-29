@@ -44,14 +44,24 @@ export const WORLD = {
   frameMinMs: 15,                // at most about 60 frames a second, even on a 120 Hz screen
   ambientSeconds: 300,           // life settles after five minutes untouched, until someone touches it again
   maxPixelRatio: 2, minPixelRatio: 1, maxCanvasPixels: 2500000,
-  slowFrameMs: 21                // frames slower than this, for a second, lower the drawing resolution a step
+  slowFrameMs: 21,               // frames slower than this, for a second, may lower the drawing resolution a step,
+  costShare: 0.6                 // but only when a frame's own cost fills this share of the gap between frames
 };
 
 /* Budgets reported by render3d.js and checked in the browser QA: at
-   overview, with the six registered projects, one of them authored (a frame
-   without the shadow pass measured 178 calls and 137k triangles; the
-   authored place is about 70 calls, one per authored material). */
-export const BUDGET = { drawCalls: 200, triangles: 160000, threeGzipBytes: 190000 };
+   overview, with the six registered projects, a frame without the shadow
+   pass. Measured: one authored place 130 calls and 137k triangles, two 133
+   and 180k, all six authored (the two files alternated) 146 and 371k. An
+   authored place is about 20 calls, so calls stay nearly flat; triangles are
+   six districts at their own budget (DISTRICT_BUDGET) plus the streets. */
+export const BUDGET = { drawCalls: 200, triangles: 500000, threeGzipBytes: 190000 };
+
+/* What one authored district may cost, from what Mission Control needs: six
+   of them at the overview inside the world's budget, a phone downloading
+   each over a mobile connection, and a crew that still reads. Checked
+   against every exported file (contract 30) and by the export itself
+   (art/blender/scripts/export_glb.py holds the same numbers). */
+export const DISTRICT_BUDGET = { triangles: 80000, drawCalls: 24, materials: 16, workers: 8, bytes: 2000000, textures: 0 };
 
 /* A district: its pad (a square of half side `pad` in its own frame, so a
    diamond on the island), the scale its recipe is drawn at, and its crew. */
@@ -336,6 +346,15 @@ export function mixFrame(a, b, t){
 export function pixelRatioFor(dpr, w, h){
   const area = Math.max(1, w * h);
   return Math.max(0.5, Math.min(dpr || 1, WORLD.maxPixelRatio, Math.sqrt(WORLD.maxCanvasPixels / area)));
+}
+/* Whether slow frames are the renderer's fault. A screen or power mode that
+   presents at 30 a second (iOS Low Power Mode, a browser saving battery)
+   makes every gap about 33 ms however cheap the frame is, and a lower
+   resolution buys nothing there. The renderer times one frame, CPU and GPU;
+   only when that cost fills most of the gap does the resolution step down. */
+export function shouldStepDown(gapMs, costMs, dpr){
+  if(!(gapMs > WORLD.slowFrameMs) || !(dpr > WORLD.minPixelRatio)) return false;
+  return costMs >= gapMs * WORLD.costShare;
 }
 export function nextPixelRatio(current){
   const steps = [2, 1.75, 1.5, 1.25, 1];
@@ -744,7 +763,8 @@ export function environmentFor(theme){ return ENVIRONMENTS[theme] || ENVIRONMENT
    its authored width, measured from the exported file, so framing and
    hit-testing know how tall it stands before it has loaded. */
 export const ASSETS = {
-  track: { url: './art/exports/golden-diorama.glb', span: 10.0, rise: 0.433 }
+  track: { url: './art/exports/golden-diorama.glb', span: 10.0, rise: 0.433 },
+  calendar: { url: './art/exports/dayplan-diorama.glb', span: 10.0, rise: 0.596 }
 };
 export function assetFor(theme){ return ASSETS[theme] || null; }
 
@@ -752,6 +772,10 @@ export function assetFor(theme){ return ASSETS[theme] || null; }
    light in an authored place shares (docs/3D-ASSET-REPORT.md). */
 export const ASSET_CLIPS = ['MC_IDLE', 'MC_WORKING', 'MC_ACTIVE', 'MC_SIGNAL', 'MC_REPAIR'];
 export const ASSET_STATUS_MATERIAL = 'MC_STATUS_LIGHT';
+/* A place's own life, authored as one clip on its own nodes. */
+export const ASSET_LIFE_CLIP = 'MC_LIFE';
+/* The export joins every worker into one crew; a bone is "<role>__<bone>". */
+export const CREW_JOIN = '__';
 
 /* What an authored worker does in each crew state. `authored` is the clip
    it was posed with in Blender (its role: the coach's clipboard, the

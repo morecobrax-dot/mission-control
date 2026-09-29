@@ -348,12 +348,33 @@ page script, in two ES modules the page imports after its first paint:
   place, and draws it on the plain pad in place of the recipe, whose crew,
   life, beacon and painted light step aside. Its status lights (rim, beacon,
   helmet bands) share one material, recoloured from the button's `--sig` and
-  dark without a record; a paused place is dimmed. Each worker gets its own
-  slice of every clip, and `assetCrew(workerState, role)` says what it does:
-  its own job while building, a signal when something needs you, still when
-  blocked or paused, gone without a record. Clips cross-fade; under Reduce
-  Motion and on a first draw they simply are. A file that fails, or has not
-  loaded in 12 s, gives the district back to its recipe.
+  dark without a record; a paused place is dimmed. A place's crew is one
+  skinned mesh on one skeleton, each role's bones named
+  `<role>__<bone>` (`CREW_JOIN`) and the roles listed in the rig's
+  `mc_crew` extras; the renderer slices every clip per role by that prefix,
+  and `assetCrew(workerState, role)` says what each does: its own job while
+  building, a signal when something needs you, still when blocked or paused.
+  With no record the whole crew is hidden, since one skeleton cannot hide a
+  part of itself. Clips cross-fade; under Reduce Motion and on a first draw
+  they simply are. A place's own life (a clock's second hand, a gate that
+  walks its timeline) is one clip, `MC_LIFE` (`ASSET_LIFE_CLIP`), that moves
+  only nodes marked `mc_life`: it plays at `lifeSpeed` while `lifeActive`
+  says the project is under way and otherwise stands at its first moment.
+  A file that fails, or has not loaded in 5 s, gives the district back to
+  its recipe; if it arrives later it still takes its place, and the layout
+  follows its height.
+- **Adding an authored place** is data, not renderer code: export the file,
+  add a line to `ASSETS` (the look, the file, the plinth width, the rise the
+  export audit measured) and the file to `APP_FILES`. The renderer names no
+  look, project or file, and contract 30 checks each file against
+  `DISTRICT_BUDGET` — at most 24 draws, 80k triangles, 16 materials, 8
+  workers, 2 MB and no textures — which the export (`export_glb.py`) also
+  enforces and writes into the file's audit. The export keeps the model and
+  changes how it is packed: meshes of one material joined, materials that
+  differ only in colour folded into one family whose colour is per vertex,
+  every worker joined into one crew, the status lights joined into one
+  mesh, and normals, colours and skin weights stored in 8 bits
+  (`KHR_mesh_quantization`).
 
 Three.js 0.186.1 is vendored in `vendor/three/`: a subset of only the
 classes the world imports, tree-shaken and minified by esbuild,
@@ -409,7 +430,14 @@ A frame only moves things: labels and the sign move by `transform`, and are
 measured when their words or their room change, never in a frame (0.3.1 read
 label sizes on every frame of a zoom). When frames keep arriving slowly, the
 drawing resolution steps down (2, 1.75, 1.5, 1.25, 1 device pixels per CSS
-pixel) and never back up in that visit. Under Reduce Motion every camera move
+pixel) and never back up in that visit — but only when the frame itself is
+the reason. A screen presenting at 30 Hz (iOS Low Power Mode, a
+battery-saving browser) spaces cheap frames 33 ms apart, so before it steps
+down the renderer times two frames of its own (the lower of the two, each
+finished by a one-pixel read) and `shouldStepDown` believes the gap only
+when that cost fills `costShare` of it. Timing is two extra frames, so after
+each cheap verdict the next is further off (1, 2, 4 … 32 windows of 45
+frames, about 48 s at 30 Hz); a new size starts over. Under Reduce Motion every camera move
 is instant and nothing loops. The drawing buffer is at most 2 device pixels
 per CSS pixel and 2.5 million pixels.
 
@@ -605,6 +633,7 @@ foundation expects them.
 | Layout, camera, gestures, crews | `field/world.js` — and contract 30 |
 | A project's authored place | Blender (`art/blender`), then `export_glb.py` into `art/exports/`; its look in `ASSETS` (`world.js`) with the rise measured from the file; the file in `APP_FILES`, then `npm run config:sync` |
 | What an authored crew does in each state | `assetCrew` (`world.js`) — and contract 30 |
+| What one authored place may cost | `DISTRICT_BUDGET` (`world.js`) and the same numbers in `export_glb.py` — contract 30 holds them equal, and `BUDGET` must still hold six |
 | The world's light | `LIGHT` (`world.js`) and the `--light-*` tokens |
 | The Three.js version | `scripts/vendor-three.js`, then `npm run verify` |
 | A file the app loads | `APP_FILES`, then `npm run config:sync` |

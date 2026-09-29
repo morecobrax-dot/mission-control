@@ -1,10 +1,13 @@
-"""Build the master scene and the golden diorama.
+"""Build the master scene and the authored dioramas.
 
-  blender -b -noaudio -P art/blender/scripts/build_master.py -- [--no-diorama]
+  blender -b -noaudio -P art/blender/scripts/build_master.py -- [--only golden|dayplan] [--no-diorama]
 
 Writes:
-  art/blender/mission-control-master.blend        rig + platform + library + worker, no project
-  art/blender/models/golden-diorama.blend    the master with the diorama in PROJECT_CONTENT
+  art/blender/mission-control-master.blend     rig + platform + library + worker, no project
+  art/blender/models/<name>.blend              the master with one diorama in PROJECT_CONTENT
+
+A diorama is a module in art/blender/models with build(coll, status_coll),
+its WORKERS and its ACCENT (the platform band's material): DIORAMAS below.
 """
 import os
 import sys
@@ -18,6 +21,12 @@ import mc_materials
 import mc_platform
 import mc_rig
 import mc_render
+import mc_worker
+
+DIORAMAS = {
+    'golden': dict(module='golden_diorama', file='golden-diorama.blend', prefix='GD'),
+    'dayplan': dict(module='dayplan_diorama', file='dayplan-diorama.blend', prefix='DP'),
+}
 
 
 def swatches(coll):
@@ -35,7 +44,7 @@ def swatches(coll):
         link(o, coll)
 
 
-def build_common(with_diorama):
+def build_common(accent='MC_PAINT_BLUE'):
     reset_scene()
     C = ensure_collections()
     mc_materials.build_library()
@@ -47,35 +56,38 @@ def build_common(with_diorama):
     mc_rig.build_world()
     mc_rig.build_floor(C['WORLD'])
     mc_rig.colour_management()
-    mc_platform.build_platform(C['PLATFORM_BASE'], accent='MC_PAINT_BLUE', status_coll=C['STATUS_LIGHTS'])
-    try:
-        import mc_worker
-        mc_worker.build_worker_base(C['WORKER_BASE'], C['STATUS_LIGHTS'])
-    except ImportError:
-        pass
+    mc_platform.build_platform(C['PLATFORM_BASE'], accent=accent, status_coll=C['STATUS_LIGHTS'])
+    mc_worker.build_worker_base(C['WORKER_BASE'], C['STATUS_LIGHTS'])
     return C
+
+
+def build_diorama(name):
+    spec = DIORAMAS[name]
+    module = __import__(spec['module'])
+    C = build_common(module.ACCENT)
+    module.build(C['PROJECT_CONTENT'], C['STATUS_LIGHTS'])
+    mc_worker.place_workers(C['PROJECT_CONTENT'], C['STATUS_LIGHTS'], module.WORKERS, spec['prefix'])
+    mc_render.apply('DRAFT')
+    out = os.path.join(BLENDER_DIR, 'models', spec['file'])
+    bpy.context.scene['mc_note'] = name + ' diorama on the shared master rig.'
+    save_blend(out)
+    print('SAVED', out)
 
 
 def main():
     args = script_args()
-    C = build_common(False)
-    mc_render.apply('DRAFT')
-    bpy.context.scene['mc_note'] = 'Master: rig, platform, library, worker. No project content.'
-    bpy.ops.wm.save_as_mainfile(filepath=MASTER)
-    print('SAVED', MASTER)
+    only = args[args.index('--only') + 1] if '--only' in args else None
+    if not only:
+        build_common()
+        mc_render.apply('DRAFT')
+        bpy.context.scene['mc_note'] = 'Master: rig, platform, library, worker. No project content.'
+        save_blend(MASTER)
+        print('SAVED', MASTER)
     if '--no-diorama' in args:
         return
-    import golden_diorama
-    golden_diorama.build(C['PROJECT_CONTENT'], C['STATUS_LIGHTS'])
-    try:
-        import mc_worker
-        mc_worker.place_golden_workers(C['PROJECT_CONTENT'])
-    except (ImportError, AttributeError):
-        pass
-    out = os.path.join(BLENDER_DIR, 'models', 'golden-diorama.blend')
-    bpy.context.scene['mc_note'] = 'golden diorama on the shared master rig.'
-    bpy.ops.wm.save_as_mainfile(filepath=out)
-    print('SAVED', out)
+    for name in ([only] if only else list(DIORAMAS)):
+        build_diorama(name)
 
 
-main()
+if __name__ == '__main__':
+    main()

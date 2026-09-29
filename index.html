@@ -1679,6 +1679,22 @@ function validateAppId(id){
    ========================================================= */
 const APP_UPDATES = [
   {
+    id: 'v0-7-0',
+    version: '0.7.0',
+    title: 'A second authored place',
+    date: '2026-09-29',
+    summary: 'DayPlan\'s block is now a hand-made dispatch centre with a clock tower, and every authored block draws with far less work.',
+    newFeatures: [
+      'DayPlan is a dispatch centre: a clock tower, a schedule board, loading bays and a timeline walked by a "now" gate, with its own crew',
+      'Its clocks and timeline move only while the project is under way, and stand still otherwise or under Reduce Motion'
+    ],
+    improvements: [
+      'Authored blocks draw in about a third of the steps, with the same look, so more of them fit on a phone',
+      'A phone saving battery at 30 frames a second keeps the city sharp instead of lowering its resolution',
+      'A block whose model arrives late still takes its place, and the city opens sooner while it waits'
+    ]
+  },
+  {
     id: 'v0-6-0',
     version: '0.6.0',
     title: 'The first authored place',
@@ -3420,7 +3436,8 @@ function watchLayout(){
    Three.js subset they import. `npm run config:sync` copies this list into
    sw.js, so a fresh install precaches the world and it opens offline. A
    contract checks every file exists. */
-const APP_FILES = ['./field/world.js', './field/render3d.js', './vendor/three/three.min.js', './art/exports/golden-diorama.glb'];
+const APP_FILES = ['./field/world.js', './field/render3d.js', './vendor/three/three.min.js', './art/exports/golden-diorama.glb',
+  './art/exports/dayplan-diorama.glb'];
 const WORLD_MODULE = './field/render3d.js';
 
 function fieldScene(views){

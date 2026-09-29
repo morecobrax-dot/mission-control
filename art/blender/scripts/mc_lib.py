@@ -376,3 +376,20 @@ def grid_windows(face, x0, y0, x1, y1, z0, floors, cols, ww, wh, sill, floor_h,
 def set_custom(obj, **kw):
     for k, v in kw.items():
         obj[k] = v
+
+
+def save_blend(path):
+    """Save the open file with nothing of this machine in it. Blender's factory
+    screens keep a file browser (the Shading workspace's) opened on the user's
+    Documents folder, and a .blend stores it: the first .blend files here
+    carried a home path into a public repository. `npm run secrets` reads
+    every frame of every .blend and fails on one."""
+    for screen in bpy.data.screens:
+        for area in screen.areas:
+            for space in area.spaces:
+                if space.type == 'FILE_BROWSER' and space.params:
+                    # A fixed-size buffer: bytes past a short value's end are
+                    # still written, so fill it all before setting it.
+                    space.params.directory = b'_' * 2048
+                    space.params.directory = b'//'
+    bpy.ops.wm.save_as_mainfile(filepath=path)

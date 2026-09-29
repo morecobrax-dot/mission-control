@@ -46,6 +46,12 @@ PALETTE = {
     'yellow':       '#F1BE3B',
     'plinth':       '#EBE3D6',
     'plinth_dk':    '#34373E',
+    # DayPlan: its Mission Control identity (the rose of --tint-calendar) on
+    # the warm graphite of its own app, with light stone and a deeper rose
+    'dp_rose':      '#CB7F9E',
+    'dp_rose_dk':   '#9E5673',
+    'dp_graphite':  '#3A3633',
+    'dp_stone':     '#E4D8C6',
 }
 
 
@@ -138,6 +144,10 @@ def build_library():
     lib['MC_PAINT_BLUE'] = pbr('MC_PAINT_BLUE', P['paint_blue'], 0.4, coat=0.3, coat_rough=0.2)
     lib['MC_PAINT_NAVY'] = pbr('MC_PAINT_NAVY', P['paint_navy'], 0.4, coat=0.3, coat_rough=0.2)
     lib['MC_PAINT_SLATE'] = pbr('MC_PAINT_SLATE', P['paint_slate'], 0.88, spec=0.25, sheen=0.2)   # rubber floor
+    lib['MC_DP_ROSE'] = pbr('MC_DP_ROSE', P['dp_rose'], 0.42, coat=0.28, coat_rough=0.2)
+    lib['MC_DP_ROSE_DK'] = pbr('MC_DP_ROSE_DK', P['dp_rose_dk'], 0.42, coat=0.28, coat_rough=0.2)
+    lib['MC_DP_GRAPHITE'] = pbr('MC_DP_GRAPHITE', P['dp_graphite'], 0.46, coat=0.25, coat_rough=0.22)
+    lib['MC_DP_STONE'] = pbr('MC_DP_STONE', P['dp_stone'], 0.48, coat=0.2, coat_rough=0.25)
     # rubber: dead matte, low specular, a dusty sheen at grazing angles
     lib['MC_TRACK'] = pbr('MC_TRACK', P['track'], 0.92, var=0.04, spec=0.2, sheen=0.35, sheen_rough=0.6)
     lib['MC_TRACK_LINE'] = pbr('MC_TRACK_LINE', P['track_line'], 0.7, var=0.03, spec=0.35)
@@ -230,3 +240,87 @@ def fold_sheen_weight(mat_):
     t = b.inputs['Sheen Tint'].default_value
     b.inputs['Sheen Tint'].default_value = (t[0] * w, t[1] * w, t[2] * w, 1.0)
     b.inputs['Sheen Weight'].default_value = 1.0
+
+
+# ---------------------------------------------------------------- families
+# Materials that answer light the same way and differ only in colour. At
+# export they become one material each, the colour carried per vertex, so a
+# district costs one draw per family instead of one per paint colour. A
+# material that answers light differently never joins a family: the export
+# refuses a family whose members differ by more than FAMILY_TOLERANCE.
+FAMILIES = {
+    'MC_FAM_COATED': ['MC_PAINT_WHITE', 'MC_PAINT_CREAM', 'MC_PAINT_BLUE', 'MC_PAINT_NAVY',
+                      'MC_PLINTH', 'MC_PLINTH_DK', 'MC_WOOD',
+                      'MC_DP_ROSE', 'MC_DP_ROSE_DK', 'MC_DP_GRAPHITE', 'MC_DP_STONE'],
+    'MC_FAM_MINERAL': ['MC_CONCRETE', 'MC_CONCRETE_DK', 'MC_PAVER', 'MC_SOIL', 'MC_ROAD'],
+    'MC_FAM_RUBBER': ['MC_TRACK', 'MC_PAINT_SLATE'],
+    'MC_FAM_FOLIAGE': ['MC_LEAF', 'MC_LEAF_DARK'],
+}
+# Each family's response is fixed here, not averaged from whoever joins it:
+# a new district's paint must never shift an approved district's material.
+# The values are the approved golden diorama's members, averaged once.
+FAMILY_RESPONSE = {
+    'MC_FAM_COATED': {'Roughness': 0.45, 'Coat Weight': 0.307, 'Coat Roughness': 0.221, 'Specular IOR Level': 0.5,
+                      'IOR': 1.45},
+    'MC_FAM_MINERAL': {'Roughness': 0.902, 'Coat Weight': 0.0, 'Specular IOR Level': 0.29, 'IOR': 1.45},
+    'MC_FAM_RUBBER': {'Roughness': 0.9, 'Specular IOR Level': 0.225, 'Sheen Weight': 1.0, 'Sheen Roughness': 0.55,
+                      'Sheen Tint': 0.275, 'IOR': 1.45},
+    'MC_FAM_FOLIAGE': {'Roughness': 0.61, 'Sheen Weight': 1.0, 'Sheen Roughness': 0.5, 'Sheen Tint': 0.4,
+                       'Subsurface Weight': 0.135, 'IOR': 1.45},
+}
+FAMILY_INPUTS = ['Roughness', 'Metallic', 'Coat Weight', 'Coat Roughness', 'Specular IOR Level', 'IOR',
+                 'Sheen Weight', 'Sheen Roughness', 'Subsurface Weight', 'Transmission Weight']
+FAMILY_TOLERANCE = {'Roughness': 0.12, 'Metallic': 0.0, 'Coat Weight': 0.22, 'Coat Roughness': 0.2,
+                    'Specular IOR Level': 0.25, 'IOR': 0.1, 'Sheen Weight': 0.0, 'Sheen Roughness': 0.15,
+                    'Subsurface Weight': 0.1, 'Transmission Weight': 0.0, 'Sheen Tint': 0.2}
+COLOUR_ATTRIBUTE = 'MC_Colour'
+
+
+def family_of(name):
+    for fam, members in FAMILIES.items():
+        if name in members:
+            return fam
+    return None
+
+
+def _bsdf(m):
+    return m.node_tree.nodes.get('Principled BSDF') if m and m.node_tree else None
+
+
+def base_colour(m):
+    b = _bsdf(m)
+    return tuple(b.inputs['Base Color'].default_value) if b else (1.0, 1.0, 1.0, 1.0)
+
+
+def build_family(fam):
+    """The family's one material: its fixed response, with the base colour read
+    from the vertex colour. Raises if a member answers light differently from
+    the family by more than FAMILY_TOLERANCE."""
+    members = [bpy.data.materials.get(n) for n in FAMILIES[fam]]
+    members = [m for m in members if m and _bsdf(m)]
+    m, nodes, links, bsdf = _new(fam)
+    want = FAMILY_RESPONSE[fam]
+    for inp in FAMILY_INPUTS:
+        if inp in want:
+            bsdf.inputs[inp].default_value = want[inp]
+    t = want.get('Sheen Tint', 1.0)
+    bsdf.inputs['Sheen Tint'].default_value = (t, t, t, 1.0)
+    off = []
+    for mm in members:
+        b = _bsdf(mm)
+        for inp in FAMILY_INPUTS:
+            if abs(b.inputs[inp].default_value - bsdf.inputs[inp].default_value) > FAMILY_TOLERANCE[inp] + 1e-6:
+                off.append('%s %s %.2f vs %.2f' % (mm.name, inp, b.inputs[inp].default_value, bsdf.inputs[inp].default_value))
+        tint = sum(b.inputs['Sheen Tint'].default_value[:3]) / 3
+        if b.inputs['Sheen Weight'].default_value > 0 and abs(tint - t) > FAMILY_TOLERANCE['Sheen Tint'] + 1e-6:
+            off.append('%s Sheen Tint %.2f vs %.2f' % (mm.name, tint, t))
+    if off:
+        raise ValueError('%s: members answer light differently: %s' % (fam, '; '.join(off)))
+    # glTF writes the unlinked default as baseColorFactor, which three.js
+    # multiplies with the vertex colour: it must be white, not Blender's 0.8
+    bsdf.inputs['Base Color'].default_value = (1.0, 1.0, 1.0, 1.0)
+    col = nodes.new('ShaderNodeVertexColor')
+    col.layer_name = COLOUR_ATTRIBUTE
+    links.new(col.outputs['Color'], bsdf.inputs['Base Color'])
+    m.use_fake_user = False
+    return m
