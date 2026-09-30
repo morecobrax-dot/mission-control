@@ -268,6 +268,14 @@ The product's own rules, on top of everything above.
 - **Two times, never confused.** "Updated" is when the project's status was
   written; "Checked" is when this device last asked. Asking again never
   makes old news look new.
+- **Older is a date, not a state.** A record last updated 14 or more days
+  ago (elapsed, whatever the time zone) is older, and only that: the hub's
+  one line counts them quietly — "2 last updated 14+ days ago", with a clock
+  and no status colour — and the brief gives the date, the age in days and
+  a quiet line saying so. It never changes a status, attention, a worker,
+  a light or a count, never warns, and never takes the world's room. An
+  unknown or unreadable time claims nothing. After a failed check the brief
+  says the saved copy is shown and when it was fetched. *(enforced)*
 - **No state, no light.** A beacon is lit only by a known state; an unknown
   project's lamp is a ring. Identity light — the lit lip, the accent rim, the
   pool under the project in focus — belongs to the place, and every accent

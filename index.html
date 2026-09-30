@@ -927,6 +927,15 @@ body.scroll-locked{
 .hub-summary.is-clear{ color: var(--text-dim); }
 .hub-summary.is-clear svg{ color: var(--sig-stable); }
 .hub-summary .sep{ color: var(--border); }
+/* An older record is a date, not a status: no status hue on its clock.
+   The line may then take two lines, in the height one had (28px), so the
+   world keeps its room: the older part moves down whole, and the line sits
+   beside the attention buttons only where there is room for it there. */
+.hub-summary.is-aged{ flex: 1 1 12em; min-width: 0; flex-wrap: wrap; row-gap: 0; line-height: 1.15; }
+.hub-summary.is-aged-only{ flex-basis: 6em; }
+.hub-summary .hub-aged{ display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.hub-summary.is-aged-only .hub-aged{ white-space: normal; }
+.hub-summary .hub-aged svg, .hub-summary.is-clear .hub-aged svg{ flex-shrink: 0; color: currentColor; }
 
 /* ---- The project field ----
    Named .project-field, never .field: that is the foundation's form-field
@@ -1259,6 +1268,8 @@ html.hub-screen #view-home{ padding-bottom: 0; }
 .source-detail code{ font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-dim); overflow-wrap: anywhere; }
 .source-warn{ display: flex; align-items: flex-start; gap: var(--space-xs); color: var(--warning); }
 .source-warn svg{ flex-shrink: 0; margin-top: 1px; }
+.source-aged{ display: flex; align-items: flex-start; gap: var(--space-xs); color: var(--text-dim); }
+.source-aged svg{ flex-shrink: 0; margin-top: 1px; }
 
 .tools{
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
@@ -1714,6 +1725,22 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-9-3',
+    version: '0.9.3',
+    title: 'How old is this?',
+    date: '2026-09-30',
+    summary: 'The hub now tells you, quietly, when some project statuses were last updated 14 or more days ago.',
+    newFeatures: [
+      'The summary under the counts adds how many project statuses were last updated 14+ days ago, only when there are some'
+    ],
+    improvements: [
+      'A brief shows the date its status was written and how many days ago, apart from when this device last checked',
+      'After a check that failed or was made offline, the brief says it is showing the copy saved on this device, and when it was fetched',
+      'Checking again never makes an old status look new: only a newer status from the repository changes its date',
+      'An older status is only information: it never changes a status, what needs you, the counts or the city'
+    ]
+  },
   {
     id: 'v0-9-2',
     version: '0.9.2',
@@ -3191,6 +3218,7 @@ function projectView(id){
     currentTask: state ? state.currentTask : null,
     nextAction: state ? state.nextAction : null,
     lastUpdated: state ? state.updatedAt : null,
+    age: state ? statusAgeOf(state.updatedAt, Date.now()) : null,
     source: source,
     connected: source === 'repository',
     /* Where a published status would come from, and how the last check
@@ -3427,7 +3455,7 @@ function toastRefresh(r){
     return;
   }
   toast(changed ? (changed === 1 ? '1 project' : changed + ' projects') + ' updated from the repositories'
-                : 'Repository status is up to date', 'success');
+                : 'Checked. No repository has published a newer status', 'success');
 }
 
 /* How long ago, in the words a person uses: minutes, hours, days, then the
@@ -3445,6 +3473,56 @@ function ageText(iso){
   if(d < 14) return d + (d === 1 ? ' day ago' : ' days ago');
   return 'on ' + formatDate(iso);
 }
+
+/* =========================================================
+   STATUS AGE — how old the record a project shows is
+   ---------------------------------------------------------
+   Read from the effective record's own updatedAt: the time its
+   repository wrote it, or the time you recorded it here. Never
+   from fetchedAt or checkedAt — those say when this device
+   asked, not how new the news is — so a check that finds
+   nothing newer leaves the age exactly where it was.
+   Elapsed time between two instants, in whole days of 24
+   hours, so no time zone or daylight-saving change moves it.
+   From 14 days a record is older: a quiet line in the summary
+   and in the brief, and nothing else — never a status,
+   attention, a worker, a light or a count. A time without a
+   zone, or none, claims nothing; one a little ahead of this
+   device's clock (a repository may be up to a day ahead) is
+   age 0, never negative. Derived at every render, never stored.
+   ========================================================= */
+const STATUS_OLDER_DAYS = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
+function statusAgeOf(iso, now){
+  if(typeof iso !== 'string' || !ISO_TIME.test(iso)) return null;
+  const t = Date.parse(iso);
+  if(isNaN(t) || !isFinite(now)) return null;
+  const ms = now - t;
+  return { days: Math.floor(Math.max(0, ms) / DAY_MS), ahead: ms < 0, older: ms >= STATUS_OLDER_DAYS * DAY_MS };
+}
+/* The brief's words for it: how long ago, in days once it is a day old
+   (never switching to a date, so an older record still says how old), and
+   with the date it was written. */
+function statusAgoText(iso, age){
+  if(!age) return 'at an unknown time';
+  if(age.ahead) return 'ahead of this device\'s clock';
+  if(age.days < 1) return ageText(iso);
+  return age.days + (age.days === 1 ? ' day ago' : ' days ago');
+}
+function statusAgeWords(iso, age){
+  return age ? formatDate(iso) + ' · ' + statusAgoText(iso, age) : null;
+}
+function olderCountText(n){
+  return (n === 1 ? '1 project status was' : n + ' project statuses were') + ' last updated ' + STATUS_OLDER_DAYS + '+ days ago';
+}
+/* In the hub's one line it has little room, so it shows the short form
+   and says the whole sentence to a screen reader. */
+function olderSummaryHtml(n){
+  return '<span class="hub-aged" title="' + escapeAttr(olderCountText(n) + '.') + '">' + clockIcon(13) +
+    '<span aria-hidden="true">' + escapeHtml(n + ' last updated ' + STATUS_OLDER_DAYS + '+ days ago') + '</span>' +
+    '<span class="sr-only">' + escapeHtml(olderCountText(n) + '.') + '</span></span>';
+}
+function clockIcon(s){ return svg('<circle cx="8" cy="8" r="5.8"/><path d="M8 4.9V8l2.2 1.4"/>', s); }
 
 /* =========================================================
    SELECTION AND LAYOUT
@@ -3587,7 +3665,7 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = 'f9d151b9863e';
+const APP_RELEASE = 'e952f9797b38';
 const WORLD_MODULE = './release/render3d.e821bb45a953.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
@@ -3780,7 +3858,21 @@ function setWorldLayout(on){
    whatever it gets. Measured only while the hub is shown: a hidden hub
    has no size, and it is measured again as it comes back. */
 const FIELD_MIN = 280, FIELD_MIN_SHORT = 180, FIELD_MAX = 1000;
+/* The older note alone (every state known, the attention buttons speaking)
+   rides beside the buttons where they leave it room, and otherwise folds
+   to a screen reader's line rather than take a row from the world. Read
+   with the layout, as fitField is, never in a frame. */
+function placeOlderNote(){
+  const note = document.getElementById('hubSummary'), strip = document.getElementById('attentionList');
+  if(!note || !strip || typeof note.getBoundingClientRect !== 'function' || !note.classList) return;
+  note.classList.remove('sr-only');
+  if(!note.classList.contains('is-aged-only')) return;
+  const s = strip.getBoundingClientRect(), n = note.getBoundingClientRect();
+  if(s.bottom > s.top && n.top >= s.bottom - 1) note.classList.add('sr-only');
+}
+
 function fitField(){
+  placeOlderNote();
   const field = document.getElementById('projectField'), home = document.getElementById('view-home');
   const vh = window.innerHeight, vw = window.innerWidth;
   const short = vh <= 500 && vw > vh;
@@ -4070,7 +4162,9 @@ function renderHub(given){
    box. It says only what is known: "Nothing needs you" when every state is
    known and none asks for you; while some are unknown, that nothing
    RECORDED asks for you, and how many are unknown — which the counts above
-   leave out. Absent when attention buttons speak and every state is known. */
+   leave out. Absent when attention buttons speak and every state is known.
+   When some recorded states are older (STATUS AGE), it says how many, and
+   only that: they still count exactly as they did. */
 function renderHubSummary(views){
   const el = document.getElementById('hubSummary');
   if(!el) return;
@@ -4078,17 +4172,21 @@ function renderHubSummary(views){
   const asking = attentionQueue(views).length;
   const n = c.unrecorded;
   const unknown = n + ' of ' + c.projects + (n === 1 ? ' needs' : ' need') + ' an update';
+  const older = views.filter(v => v.recorded && v.age && v.age.older).length;
+  const aged = older ? olderSummaryHtml(older) : '';
   let html = '', clear = false;
   if(!asking && !n){
     clear = true;
-    html = checkIcon(14) + '<span>Nothing needs you right now.</span>';
+    html = checkIcon(14) + '<span>Nothing needs you right now' + (older ? '' : '.') + '</span>' + aged;
   } else if(!asking){
     html = signalIcon('unrecorded', 14) + '<span>No recorded attention items</span>' +
-      '<span class="sep" aria-hidden="true">·</span><span>' + escapeHtml(unknown) + '</span>';
+      '<span class="sep" aria-hidden="true">·</span><span>' + escapeHtml(unknown) + '</span>' + aged;
   } else if(n){
-    html = signalIcon('unrecorded', 14) + '<span>' + escapeHtml(unknown + ', not counted') + '</span>';
+    html = signalIcon('unrecorded', 14) + '<span>' + escapeHtml(unknown + ', not counted') + '</span>' + aged;
+  } else if(older){
+    html = aged;
   }
-  el.className = 'hub-summary' + (clear ? ' is-clear' : '');
+  el.className = 'hub-summary' + (clear ? ' is-clear' : '') + (older ? ' is-aged' + (html === aged ? ' is-aged-only' : '') : '');
   if(html){ el.innerHTML = html; el.removeAttribute('hidden'); }
   else { el.innerHTML = ''; el.setAttribute('hidden', ''); }
 }
@@ -4196,7 +4294,7 @@ function briefHtml(v, docked){
     ['Phase', v.phase],
     ['Current work', v.currentTask, true],
     ['Next action', v.nextAction, true],
-    ['Last updated', v.lastUpdated ? formatDate(v.lastUpdated) + (v.connected ? ' · ' + ageText(v.lastUpdated) : '') : null]
+    ['Last updated', v.lastUpdated ? (statusAgeWords(v.lastUpdated, v.age) || 'At an unknown time') : null]
   ];
   return '<article class="brief">' +
     '<div class="brief-head">' +
@@ -4223,21 +4321,28 @@ function briefHtml(v, docked){
 /* Where this project's state comes from, said quietly: a source is
    provenance, not a status. Everything a repository wrote is escaped text. */
 function sourcePanelHtml(v){
+  /* Three times, never confused: when the record was written (the Last
+     updated row, and this line once it is older), when this device last
+     asked, and — after a check that failed — that the saved copy is shown. */
+  const aged = v.age && v.age.older ? '<p class="source-aged">' + clockIcon(13) + '<span>' + escapeHtml(v.connected
+    ? 'Last updated ' + STATUS_OLDER_DAYS + '+ days ago by its repository. A check that finds nothing newer does not change this date.'
+    : 'Last updated ' + STATUS_OLDER_DAYS + '+ days ago on this device.') + '</span></p>' : '';
   if(!v.repo){
     return '<div class="source-panel"><p class="source-detail">Kept by hand on this device. Its repository ' +
-      'is private, so Mission Control never asks it for anything.</p></div>';
+      'is private, so Mission Control never asks it for anything.</p>' + aged + '</div>';
   }
   const e = v.repo.entry;
   const where = '<code>' + escapeHtml(v.repo.path + '/' + STATUS_FILE) + '</code>';
-  const checked = e && e.checkedAt ? 'Checked ' + escapeHtml(ageText(e.checkedAt)) + '.' : 'Not checked yet.';
+  const checked = e && e.checkedAt ? 'Checked ' + escapeHtml(ageText(e.checkedAt)) + ' by this device.' : 'Not checked by this device yet.';
   const problem = checkProblemHtml(e);
   const warn = text => '<p class="source-warn">' + warnIcon(13) + '<span>' + text + '</span></p>';
   if(v.connected){
     return '<div class="source-panel">' +
       '<p class="source-line">' + svg(repoIconPaths(), 14) +
-        escapeHtml(v.recorded ? 'From repository · updated ' + ageText(v.lastUpdated) : 'From repository') + '</p>' +
+        escapeHtml(v.recorded ? 'From repository · updated ' + statusAgoText(v.lastUpdated, v.age) : 'From repository') + '</p>' +
       '<p class="source-detail">Maintained in ' + where + '. ' + checked + '</p>' +
-      (problem ? warn(problem + (e.snapshot ? ' Showing the status fetched ' + escapeHtml(ageText(e.fetchedAt)) + '.' : '')) : '') +
+      aged +
+      (problem ? warn(problem + (e.snapshot ? ' Showing the copy saved on this device, fetched ' + escapeHtml(ageText(e.fetchedAt)) + '.' : '')) : '') +
       (v.hasManual ? '<p class="source-detail">The state you recorded for it on this device is kept.</p>' : '') +
     '</div>';
   }
@@ -4248,15 +4353,15 @@ function sourcePanelHtml(v){
       '<p class="source-detail">' + (v.hasManual ? 'Showing the state you recorded on this device.'
                                                  : 'Set to your own state, which is not recorded yet.') +
         ' Published in ' + where + '. ' + checked + '</p>' +
-      (problem ? warn(problem) : '') +
+      aged + (problem ? warn(problem) : '') +
     '</div>';
   }
   if(e && e.outcome === 'missing'){
     return '<div class="source-panel"><p class="source-detail">Nothing is published at ' + where + ' yet. ' +
-      checked + '</p></div>';
+      checked + '</p>' + aged + '</div>';
   }
   return '<div class="source-panel"><p class="source-detail">Mission Control reads ' + where +
-    ' once it is published. ' + checked + '</p>' + (problem ? warn(problem) : '') + '</div>';
+    ' once it is published. ' + checked + '</p>' + aged + (problem ? warn(problem) : '') + '</div>';
 }
 
 /* The last check, when it did not get a fresh answer, in words. */
@@ -4842,10 +4947,10 @@ Domain.wire    = () => {
      asks the repositories that are due. */
   window.addEventListener('visibilitychange', () => {
     if(document.visibilityState === 'hidden') flushFormDrafts();
-    else refreshStatuses('front');
+    else { keepFocusAcross(renderMissionControl); refreshStatuses('front'); }
   });
   window.addEventListener('pagehide', flushFormDrafts);
-  window.addEventListener('pageshow', e => { if(e && e.persisted) refreshStatuses('front'); });
+  window.addEventListener('pageshow', e => { if(e && e.persisted){ keepFocusAcross(renderMissionControl); refreshStatuses('front'); } });
   watchLayout();
   /* A rotation, a resized window or a docked brief gives the world a new
      box; the world reframes itself inside it. */

@@ -2797,7 +2797,7 @@ function testRefresh(){
         const n = raw.calls.length;
         return c.refreshNow().then(() => {
           T('Refresh asks now, whatever the schedule', raw.calls.length === n + 5);
-          T('and says what it found', /Repository status is up to date|updated from the repositories/.test(toasts()));
+          T('and says what it found', /No repository has published a newer status|updated from the repositories/.test(toasts()));
         });
       });
     }).then(() => {
@@ -2840,7 +2840,7 @@ function testRefresh(){
         const v = c.projectView('capybara-sushi');
         T('the project still shows the last status it published', v.connected && v.recorded && v.signal === 'needs_qa');
         T('its brief says what went wrong and what is shown',
-          /The status file is no longer in the repository\. Showing the status fetched/.test(c.briefHtml(v, false)));
+          /The status file is no longer in the repository\. Showing the copy saved on this device, fetched/.test(c.briefHtml(v, false)));
         T('other projects are untouched by one project\'s failures', entry('loop').outcome === 'ok');
       });
     }).then(() => {
@@ -2854,7 +2854,7 @@ function testRefresh(){
           entry('loop').outcome === 'offline' && entry('loop').snapshot.nextAction === 'FAKE first');
         T('the toast says the last status is still shown', /Offline\. The last status each repository published is still shown/.test(toasts()));
         T('the brief says the last check was offline',
-          /The last check was made offline\. Showing the status fetched 2 hours ago/.test(c.briefHtml(c.projectView('loop'), false)));
+          /The last check was made offline\. Showing the copy saved on this device, fetched 2 hours ago/.test(c.briefHtml(c.projectView('loop'), false)));
         clock.advance(30 * 1000);
         T('a failure that may pass is not retried at once', c.statusDue('loop', clock.now()) === false);
         clock.advance(31 * 1000);
@@ -2922,6 +2922,165 @@ function testRefresh(){
    whole, the layout and camera keep every project reachable at
    a readable size, and a touch is a tap or a pan, never both.
    ========================================================= */
+/* =========================================================
+   CONTRACT 32 — STATUS AGE
+   How old the record a project shows is: its own updatedAt,
+   never when this device asked. A Refresh that finds nothing
+   newer must not make old news look new, and an older record
+   is a quiet word, never a status, attention, light or count.
+   ========================================================= */
+function testStatusAge(){
+  section('CONTRACT 32 — status age: how old the shown record is, never when it was asked');
+  const DAY = 24 * 60 * 60 * 1000;
+  const NOW = Date.parse('2026-10-20T12:00:00Z');
+  const iso = ms => new Date(ms).toISOString();
+  const manual = (id, over) => Object.assign({ id: id, status: 'stable', needsQa: false, needsDecision: false, blocker: null,
+    version: null, phase: null, currentTask: null, nextAction: 'FAKE own next step', updatedAt: iso(NOW - 20 * DAY) }, over || {});
+
+  sub('the rule: 14 elapsed days from the record\'s own time, or no claim at all');
+  {
+    const c = H.loadApp().ctx, age = s => c.statusAgeOf(s, NOW);
+    T('one documented threshold, 14 days of 24 hours', c.STATUS_OLDER_DAYS === 14 && c.DAY_MS === DAY);
+    T('exactly 14 days is older; a millisecond less is not',
+      age(iso(NOW - 14 * DAY)).older === true && age(iso(NOW - 14 * DAY)).days === 14 &&
+      age(iso(NOW - 14 * DAY + 1)).older === false && age(iso(NOW - 14 * DAY + 1)).days === 13);
+    T('a time with no zone, a date alone, garbage or nothing claims nothing',
+      [null, undefined, '', 'yesterday', '2026-10-01', '2026-10-01T10:00:00', '2026-13-45T99:00:00Z', 42].every(s => age(s) === null));
+    T('a time a little ahead of this device\'s clock is age 0, never negative, and never older',
+      (a => a.days === 0 && a.ahead === true && a.older === false)(age(iso(NOW + 8 * 60 * 60 * 1000))));
+    T('and the brief says so in words, never "just now" or a negative age',
+      c.statusAgoText(iso(NOW + 8 * 60 * 60 * 1000), age(iso(NOW + 8 * 60 * 60 * 1000))) === 'ahead of this device\'s clock' &&
+      c.statusAgoText('last week', age('last week')) === 'at an unknown time' && c.statusAgoText(iso(NOW - 30 * DAY), age(iso(NOW - 30 * DAY))) === '30 days ago');
+    T('the same instant in any zone is the same age: the device\'s zone never enters',
+      JSON.stringify(age('2026-10-06T08:00:00-04:00')) === JSON.stringify(age('2026-10-06T12:00:00Z')) &&
+      JSON.stringify(age('2026-10-06T14:00:00+02:00')) === JSON.stringify(age('2026-10-06T12:00:00Z')));
+    T('elapsed across a daylight-saving change is still whole 24-hour days',
+      c.statusAgeOf('2026-03-01T12:00:00Z', Date.parse('2026-03-15T12:00:00Z')).days === 14 &&
+      c.statusAgeOf('2026-10-19T12:00:00Z', Date.parse('2026-11-02T12:00:00Z')).older === true);
+  }
+
+  sub('older is a quiet word: status, attention, workers, lights and counts never change');
+  const shared = new Map(), ns = 'mission-control.';
+  shared.set(ns + 'sys.schemaVersion', '1');
+  shared.set(ns + 'data.projectStates', JSON.stringify([
+    manual('loop'), manual('dayplan', { updatedAt: iso(NOW - 13 * DAY) }),
+    manual('daily-verse', { status: 'building', needsQa: true, updatedAt: iso(NOW - 30 * DAY) }),
+    manual('space-kindergarten', { updatedAt: 'last week' })]));
+  const app = H.loadApp({ sharedStorage: shared });
+  const c = app.ctx, d = app.dom.document;
+  const html = id => d.getElementById(id).innerHTML;
+  const text = id => html(id).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const clock = clockOn(c, iso(NOW - 25 * DAY));
+  c.renderMissionControl();
+  const semantics = () => JSON.stringify({ counts: c.hudCounts(c.allViews()), queue: c.attentionQueue(c.allViews()).map(v => v.id),
+    scene: c.fieldScene(c.allViews()), hud: html('hud'), attention: html('attentionList'), field: html('projectField') });
+  const young = semantics();
+  T('while every record is young, the summary says only what it said before', text('hubSummary') === '2 of 6 need an update, not counted');
+  clock.set(iso(NOW)); c.renderMissionControl();
+  const v = id => c.projectView(id);
+  T('each project\'s age is its effective record\'s own', v('loop').age.days === 20 && v('loop').age.older &&
+    v('dayplan').age.days === 13 && !v('dayplan').age.older && v('daily-verse').age.older);
+  T('an unreadable record time is recorded but claims no age', v('space-kindergarten').recorded && v('space-kindergarten').age === null);
+  T('an unrecorded project has no age at all', v('personal-savings').age === null && !v('personal-savings').recorded);
+  T('counts, attention, the queue, the world\'s scene, its lights and crews are exactly what they were', semantics() === young);
+  T('the summary adds how many are older, after what it already said: short on screen, whole to a screen reader',
+    text('hubSummary') === '2 of 6 need an update, not counted 2 last updated 14+ days ago 2 project statuses were last updated 14+ days ago.' &&
+    /<span aria-hidden="true">2 last updated 14\+ days ago<\/span><span class="sr-only">2 project statuses were last updated 14\+ days ago\.<\/span>/.test(html('hubSummary')) &&
+    d.getElementById('hubSummary').className === 'hub-summary is-aged');
+  T('its clock is quiet: no status hue', /\.hub-summary \.hub-aged svg, \.hub-summary\.is-clear \.hub-aged svg\{ flex-shrink: 0; color: currentColor; \}/.test(H.readApp()));
+  /* 0.9.2's approved hub keeps its room: the line takes a second line inside
+     the height one had, and where it would stand alone on a row of its own
+     (every state known, the attention buttons speaking and filling their
+     row) it folds to a screen reader's line instead of taking the world's
+     height. Browser QA measures the boxes; this holds the rules. */
+  const src = H.readApp();
+  T('the older line never takes the world\'s room: two lines in one line\'s height, folded where it would stand alone',
+    /\.hub-summary\.is-aged\{ flex: 1 1 12em; min-width: 0; flex-wrap: wrap; row-gap: 0; line-height: 1\.15; \}/.test(src) &&
+    /function fitField\(\)\{\r?\n  placeOlderNote\(\);/.test(src) &&
+    /note\.classList\.remove\('sr-only'\);\s*if\(!note\.classList\.contains\('is-aged-only'\)\) return;[\s\S]{0,200}if\(s\.bottom > s\.top && n\.top >= s\.bottom - 1\) note\.classList\.add\('sr-only'\);/.test(src));
+
+  sub('the brief: when the record was written, and that it is older');
+  let brief = c.briefHtml(v('loop'), false);
+  T('the date it was written and its age in days, for a record kept on this device',
+    new RegExp('Last updated</span><span class="detail-value">' + c.formatDate(iso(NOW - 20 * DAY)).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' · 20 days ago<').test(brief));
+  T('and a quiet line saying it is older, where it was recorded', /class="source-aged">[\s\S]*Last updated 14\+ days ago on this device\./.test(brief));
+  T('a young record carries no such line', !/source-aged/.test(c.briefHtml(v('dayplan'), false)) && /· 13 days ago</.test(c.briefHtml(v('dayplan'), false)));
+  T('an unreadable time says so, and claims nothing', /At an unknown time/.test(c.briefHtml(v('space-kindergarten'), false)) &&
+    !/source-aged/.test(c.briefHtml(v('space-kindergarten'), false)));
+
+  const raw = mockRaw(c);
+  raw.answers['capybara-sushi'] = answer(200, statusFile('capybara-sushi', { updatedAt: iso(NOW - 20 * DAY) }));
+  const entry = id => (JSON.parse(shared.get(ns + c.KEYS.repoStatus) || '[]').find(r => r.id === id)) || null;
+  const toasts = () => d.getElementById('toastHost').children.map(t => t.innerHTML).join(' | ');
+  return c.checkProjectNow('capybara-sushi').then(() => {
+    sub('a check that finds nothing newer never makes old news look new');
+    T('an adopted repository status is aged by its publisher\'s time', v('capybara-sushi').connected && v('capybara-sushi').age.days === 20);
+    clock.advance(60 * 60 * 1000);
+    return c.checkProjectNow('capybara-sushi');
+  }).then(() => {
+    const e = entry('capybara-sushi');
+    T('asking again moves the device\'s times only', e.checkedAt === iso(NOW + 60 * 60 * 1000) && e.fetchedAt === e.checkedAt &&
+      e.snapshot.updatedAt === iso(NOW - 20 * DAY));
+    T('so the age, the summary and the brief still say 20 days',
+      v('capybara-sushi').age.days === 20 && v('capybara-sushi').age.older && /3 project statuses were last updated 14\+ days ago/.test(text('hubSummary')) &&
+      /· 20 days ago</.test(c.briefHtml(v('capybara-sushi'), false)));
+    brief = c.briefHtml(v('capybara-sushi'), false);
+    T('the brief tells the record\'s time from the device\'s check',
+      /From repository · updated 20 days ago</.test(brief) && /Checked just now by this device\./.test(brief) &&
+      /Last updated 14\+ days ago by its repository\. A check that finds nothing newer does not change this date\./.test(brief));
+    T('and the toast never calls an old status up to date', /No repository has published a newer status/.test(toasts()) && !/up to date/.test(toasts()));
+    c.navigator.onLine = false;
+    clock.advance(2 * 60 * 60 * 1000);
+    return c.checkProjectNow('capybara-sushi');
+  }).then(() => {
+    T('a failed check keeps the age and says the saved copy is shown',
+      v('capybara-sushi').age.days === 20 &&
+      /The last check was made offline\. Showing the copy saved on this device, fetched 2 hours ago\./.test(c.briefHtml(v('capybara-sushi'), false)));
+    c.navigator.onLine = true;
+    raw.answers['capybara-sushi'] = answer(200, statusFile('capybara-sushi', { updatedAt: iso(clock.now() - 60 * 1000) }));
+    return c.checkProjectNow('capybara-sushi');
+  }).then(() => {
+    T('only a newer status from the publisher makes it young', v('capybara-sushi').age.days === 0 && !v('capybara-sushi').age.older &&
+      /2 project statuses were last updated 14\+ days ago/.test(text('hubSummary')));
+
+    sub('switching source switches whose time it is');
+    raw.answers.loop = answer(200, statusFile('loop', { status: 'stable', updatedAt: iso(clock.now() - 2 * DAY) }));
+    return c.checkProjectNow('loop');
+  }).then(() => {
+    T('your own record shows, and its own age', v('loop').source === 'manual' && v('loop').age.older);
+    c.useRepositoryUpdates('loop');
+    T('the repository\'s status shows, and its own age', v('loop').connected && v('loop').age.days === 2 && !v('loop').age.older);
+    c.useManualState('loop');
+    T('and back again: yours, and yours', v('loop').source === 'manual' && v('loop').age.older && v('loop').age.days === 20);
+
+    sub('the other summary lines, with older records');
+    const all = new Map([[ns + 'sys.schemaVersion', '1'], [ns + 'data.projectStates', JSON.stringify(
+      ['loop', 'dayplan', 'daily-verse', 'personal-savings', 'space-kindergarten', 'capybara-sushi'].map((id, i) => manual(id, { updatedAt: iso(NOW - (i < 1 ? 15 : 3) * DAY) })))]]);
+    const b = H.loadApp({ sharedStorage: all }), bc = b.ctx, bd = b.dom.document;
+    clockOn(bc, iso(NOW)); bc.renderMissionControl();
+    const btext = () => bd.getElementById('hubSummary').innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    T('every state known and none asking: nothing needs you, and one is older',
+      btext() === 'Nothing needs you right now 1 last updated 14+ days ago 1 project status was last updated 14+ days ago.' &&
+      bd.getElementById('hubSummary').className === 'hub-summary is-clear is-aged');
+    bc.openStateForm('dayplan'); bc.toggleSwitch('stateQa'); bc.saveStateForm(); bc.__flush();
+    T('one asking and every state known: the line stays only to say one is older, and may fold',
+      btext() === '1 last updated 14+ days ago 1 project status was last updated 14+ days ago.' &&
+      bd.getElementById('hubSummary').getAttribute('hidden') === null && bd.getElementById('hubSummary').className === 'hub-summary is-aged is-aged-only');
+    T('and saving a state makes that record young, with no other effect', bc.projectView('dayplan').age.days === 0 && /class="attn-pill sig-needs_qa"/.test(bd.getElementById('attentionList').innerHTML));
+
+    sub('derived at every render, never stored; coming back redraws it');
+    const stored = [...shared.values()].join('\n') + [...all.values()].join('\n');
+    T('no age, no "older" flag and no freshness record is written anywhere', !/"older"|"age"|"days"|"ahead"/.test(stored));
+    T('your records keep their own times', JSON.parse(shared.get(ns + 'data.projectStates')).find(r => r.id === 'loop').updatedAt === iso(NOW - 20 * DAY));
+    const t0 = btext();
+    clockOn(bc, iso(NOW + 12 * DAY));
+    bc.window.dispatch('visibilitychange');
+    T('coming back to the app redraws the ages, with no timer: the young records crossed 14 days',
+      t0 !== btext() && /5 project statuses were last updated 14\+ days ago/.test(btext()));
+    T('no timer or interval anywhere derives it', !/setInterval\(/.test(H.readApp()));
+  });
+}
+
 async function testWorld(){
   section('CONTRACT 30 — the world: pinned, presentation-only, whole, reachable');
   const fsx = require('fs'), px = require('path'), crypto = require('crypto'), zlib = require('zlib');
@@ -4013,7 +4172,10 @@ function swSandbox(opts){
     const e = net.get(href);
     if(typeof e === 'function') return e(req);
     if(e === 'fail') throw new TypeError('network down');
-    if(e === 'hang') return new Promise((_, no) => req.signal.addEventListener('abort', () => no(new Error('aborted'))));
+    if(e === 'hang') return new Promise((_, no) => {
+      const s = req.heldSignal || req.signal;
+      if(s.aborted) no(new Error('aborted')); else s.addEventListener('abort', () => no(new Error('aborted')));
+    });
     if(!e) return new Response('not found', { status: 404 });
     return new Response(e.body, { status: e.status || 200 });
   };
@@ -4021,7 +4183,16 @@ function swSandbox(opts){
   let skipped = 0;
   const self = { location: new URL(BASE + 'sw.js'), registration: { active: o.active ? {} : null, scope: BASE },
     addEventListener(t, fn){ (listeners[t] = listeners[t] || []).push(fn); }, skipWaiting(){ skipped++; return Promise.resolve(); } };
-  const ctx = vm.createContext({ self, caches, fetch, crypto: globalThis.crypto, Request, Response, URL, Headers, AbortController,
+  /* Node's Request follows the signal it is given only through a weak
+     reference, so a garbage collection at the wrong moment cut the link: an
+     abort the worker sent never reached the never-answering file, and the
+     suite hung whenever an earlier contract happened to allocate more. The
+     stand-in keeps the worker's own signal and the fake network listens to
+     that one. */
+  class HeldRequest extends Request {
+    constructor(input, init){ super(input, init); this.heldSignal = (init && init.signal) || null; }
+  }
+  const ctx = vm.createContext({ self, caches, fetch, crypto: globalThis.crypto, Request: HeldRequest, Response, URL, Headers, AbortController,
     setTimeout: (fn, ms) => setTimeout(fn, ms >= 60000 ? 20 : ms), clearTimeout, console });
   vm.runInContext(fs.readFileSync(path.join(H.ROOT, 'sw.js'), 'utf8'), ctx);
   const RELEASE = vm.runInContext('RELEASE', ctx), CACHE_NAME = vm.runInContext('CACHE_NAME', ctx);
@@ -4224,5 +4395,5 @@ module.exports = {
   testMobile, testDesignSystem, testPWA, testRelease, testStress,
   testAccessibility, testContamination, testSourcesOfTruth,
   testRegistry, testStatusModel, testPrivateLinks, testHub, testFieldSeam, testSecrets,
-  testBackupBoundary, testStatusContract, testConnectedState, testRefresh, testWorld, testReleaseConsistency
+  testBackupBoundary, testStatusContract, testConnectedState, testRefresh, testStatusAge, testWorld, testReleaseConsistency
 };

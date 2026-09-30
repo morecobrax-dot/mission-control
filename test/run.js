@@ -53,6 +53,7 @@ const SUITES = [
   C.testStatusContract,
   C.testConnectedState,
   C.testRefresh,
+  C.testStatusAge,
   C.testWorld,
   C.testReleaseConsistency
 ];

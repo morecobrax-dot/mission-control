@@ -250,7 +250,11 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     minute after a failure that may pass, an hour after a 403 or 429. One
     request per project in flight, an 8-second timeout, nothing sent offline.
     `updatedAt` is the publisher's time and `checkedAt` the device's: never
-    show one as the other. Contract 29.
+    show one as the other. Contract 29. A status's age is its effective
+    record's own `updatedAt` (`statusAgeOf`), elapsed, never a check time;
+    14 days makes it older, a quiet word in the summary and the brief and
+    nothing else — no status, attention, light, count, timer or stored
+    flag, and never the world's room. Contract 32.
 46. **Identity never wears a status colour.** Every `--tint-*` stays at least
     ΔE 20 (CIELAB) from every `--sig-*`, and a beacon is lit only by a known
     state. Contract 24 measures both.

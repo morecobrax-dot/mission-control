@@ -251,6 +251,23 @@ than the snapshot kept.
 when it last asked. The screen says "updated" only of the first, so asking
 again never makes old news look new.
 
+**Status age** (0.9.3, `statusAgeOf`). How old the record a project shows
+is: the effective record's own `updatedAt` — the repository's, or the one
+you recorded — never `fetchedAt` or `checkedAt`. Elapsed time between two
+instants in whole 24-hour days, so no time zone or daylight-saving change
+moves it; a time without a zone, or none, claims nothing, and a time ahead
+of this device's clock is age 0. From `STATUS_OLDER_DAYS` (14) a record is
+older: `projectView` carries `age`, the hub summary adds a short count
+("2 last updated 14+ days ago", the whole sentence for a screen reader) and
+the brief says the date, the age in days and that it is older. Nothing else
+reads it — status, attention, the HUD, the world's lights and crews are
+exactly what they were. Derived at every render (and on return to the
+app, which now redraws), never stored, never on a timer. The summary keeps
+the approved hub's room: with older records it may take two lines in its
+one line's height, and where it would stand alone on a row of its own
+beside full attention buttons, `placeOlderNote` (run by `fitField`) folds
+it to a screen reader's line. Contract 32.
+
 **Publishers' gate** (`scripts/project-status.js`). One checker, kept here and
 copied byte for byte into every publishing repository (contract 1, checker
 revision 1 — its git blob is the same in all of them). Each publisher's
