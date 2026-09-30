@@ -52,6 +52,32 @@ PALETTE = {
     'dp_rose_dk':   '#9E5673',
     'dp_graphite':  '#3A3633',
     'dp_stone':     '#E4D8C6',
+    # Daily Verse: warm limestone and the night-sky indigo of its app, trimmed
+    # in the bronze of --tint-book
+    'dv_limestone': '#E8DDC7',
+    'dv_indigo':    '#353C66',
+    'dv_bronze':    '#B38258',
+    # Personal Savings: pale civic stone (--tint-vault) and a deep bank green
+    'ps_stone':     '#E3DBCE',
+    'ps_green':     '#2F5A44',
+    'ps_green_lt':  '#6E9A7C',
+    'ps_brass':     '#C49C5C',
+    # Space Kindergarten: the periwinkle of --tint-rocket and a deep-space indigo
+    'sk_periwinkle': '#8FA2F2',
+    'sk_indigo':    '#2E3673',
+    'sk_yellow':    '#F0C24B',
+    # Capy Sushi: the coral of --tint-sushi, lime plaster, charcoal roof tiles,
+    # salmon, and the capybara's own brown
+    'cs_coral':     '#DB8466',
+    'cs_plaster':   '#F2E7D3',
+    'cs_charcoal':  '#36322F',
+    'cs_salmon':    '#F29A74',
+    'cs_capy':      '#9C6D47',
+    'cs_tile':      '#3B3735',
+    'dv_slate':     '#5B5C63',
+    'ps_roof':      '#3F6B53',
+    # one metal for fittings that should read as brass, not aluminium
+    'brass':        '#C9A25E',
 }
 
 
@@ -148,6 +174,10 @@ def build_library():
     lib['MC_DP_ROSE_DK'] = pbr('MC_DP_ROSE_DK', P['dp_rose_dk'], 0.42, coat=0.28, coat_rough=0.2)
     lib['MC_DP_GRAPHITE'] = pbr('MC_DP_GRAPHITE', P['dp_graphite'], 0.46, coat=0.25, coat_rough=0.22)
     lib['MC_DP_STONE'] = pbr('MC_DP_STONE', P['dp_stone'], 0.48, coat=0.2, coat_rough=0.25)
+    for key in ('dv_limestone', 'dv_indigo', 'dv_bronze', 'ps_stone', 'ps_green', 'ps_green_lt', 'ps_brass', 'sk_periwinkle',
+                'sk_indigo', 'sk_yellow', 'cs_coral', 'cs_plaster', 'cs_charcoal', 'cs_salmon', 'cs_capy'):
+        name = 'MC_' + key.upper()
+        lib[name] = pbr(name, P[key], 0.45, coat=0.28, coat_rough=0.22)
     # rubber: dead matte, low specular, a dusty sheen at grazing angles
     lib['MC_TRACK'] = pbr('MC_TRACK', P['track'], 0.92, var=0.04, spec=0.2, sheen=0.35, sheen_rough=0.6)
     lib['MC_TRACK_LINE'] = pbr('MC_TRACK_LINE', P['track_line'], 0.7, var=0.03, spec=0.35)
@@ -158,6 +188,10 @@ def build_library():
     lib['MC_CONCRETE_DK'] = pbr('MC_CONCRETE_DK', P['concrete_dk'], 0.9, var=0.05, spec=0.3)
     lib['MC_PAVER'] = pbr('MC_PAVER', P['paver'], 0.86, var=0.05, spec=0.35)
     lib['MC_ROAD'] = pbr('MC_ROAD', P['road'], 0.9, var=0.04, spec=0.3)
+    # fired roof tile: matte ceramic, so a big tilted roof never mirrors the sky
+    lib['MC_CS_TILE'] = pbr('MC_CS_TILE', P['cs_tile'], 0.88, var=0.04, spec=0.32)
+    lib['MC_DV_SLATE'] = pbr('MC_DV_SLATE', P['dv_slate'], 0.86, var=0.04, spec=0.35)
+    lib['MC_PS_ROOF'] = pbr('MC_PS_ROOF', P['ps_roof'], 0.86, var=0.04, spec=0.35)     # patinated copper, matte
     # display plinth: a lacquered light ledge over a dark satin base
     lib['MC_PLINTH'] = pbr('MC_PLINTH', P['plinth'], 0.5, coat=0.35, coat_rough=0.18)
     lib['MC_PLINTH_DK'] = pbr('MC_PLINTH_DK', P['plinth_dk'], 0.42, coat=0.4, coat_rough=0.2)
@@ -166,6 +200,7 @@ def build_library():
     lib['MC_GLASS_LIT'] = emissive('MC_GLASS_LIT', P['glass_lit'], 2.6)
     # metal: brushed aluminium, and dark powder-coated steel
     lib['MC_METAL'] = pbr('MC_METAL', P['metal'], 0.24, metal=1.0, var=0.04)
+    lib['MC_BRASS'] = pbr('MC_BRASS', P['brass'], 0.3, metal=1.0, var=0.03)
     lib['MC_METAL_DARK'] = pbr('MC_METAL_DARK', P['metal_dark'], 0.38, metal=0.35, var=0.0, coat=0.35, coat_rough=0.3)
     # wood: oiled and varnished, warmer and glossier than anything mineral
     lib['MC_WOOD'] = pbr('MC_WOOD', P['wood'], 0.5, var=0.06, coat=0.35, coat_rough=0.3)
@@ -251,8 +286,11 @@ def fold_sheen_weight(mat_):
 FAMILIES = {
     'MC_FAM_COATED': ['MC_PAINT_WHITE', 'MC_PAINT_CREAM', 'MC_PAINT_BLUE', 'MC_PAINT_NAVY',
                       'MC_PLINTH', 'MC_PLINTH_DK', 'MC_WOOD',
-                      'MC_DP_ROSE', 'MC_DP_ROSE_DK', 'MC_DP_GRAPHITE', 'MC_DP_STONE'],
-    'MC_FAM_MINERAL': ['MC_CONCRETE', 'MC_CONCRETE_DK', 'MC_PAVER', 'MC_SOIL', 'MC_ROAD'],
+                      'MC_DP_ROSE', 'MC_DP_ROSE_DK', 'MC_DP_GRAPHITE', 'MC_DP_STONE',
+                      'MC_DV_LIMESTONE', 'MC_DV_INDIGO', 'MC_DV_BRONZE', 'MC_PS_STONE', 'MC_PS_GREEN',
+                      'MC_PS_GREEN_LT', 'MC_PS_BRASS', 'MC_SK_PERIWINKLE', 'MC_SK_INDIGO', 'MC_SK_YELLOW', 'MC_CS_CORAL', 'MC_CS_PLASTER',
+                      'MC_CS_CHARCOAL', 'MC_CS_SALMON', 'MC_CS_CAPY'],
+    'MC_FAM_MINERAL': ['MC_CONCRETE', 'MC_CONCRETE_DK', 'MC_PAVER', 'MC_SOIL', 'MC_ROAD', 'MC_CS_TILE', 'MC_DV_SLATE', 'MC_PS_ROOF'],
     'MC_FAM_RUBBER': ['MC_TRACK', 'MC_PAINT_SLATE'],
     'MC_FAM_FOLIAGE': ['MC_LEAF', 'MC_LEAF_DARK'],
 }

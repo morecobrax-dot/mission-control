@@ -50,10 +50,10 @@ export const WORLD = {
 
 /* Budgets reported by render3d.js and checked in the browser QA: at
    overview, with the six registered projects, a frame without the shadow
-   pass. Measured: one authored place 130 calls and 137k triangles, two 133
-   and 180k, all six authored (the two files alternated) 146 and 371k. An
-   authored place is about 20 calls, so calls stay nearly flat; triangles are
-   six districts at their own budget (DISTRICT_BUDGET) plus the streets. */
+   pass. Measured (0.8.0): two authored places 133 calls and 180k triangles,
+   all six authored 135 and 309k. An authored place is about 20 calls and
+   replaces its recipe, so calls stay nearly flat; triangles are six districts
+   at their own budget (DISTRICT_BUDGET) plus the streets. */
 export const BUDGET = { drawCalls: 200, triangles: 500000, threeGzipBytes: 190000 };
 
 /* What one authored district may cost, from what Mission Control needs: six
@@ -764,7 +764,11 @@ export function environmentFor(theme){ return ENVIRONMENTS[theme] || ENVIRONMENT
    hit-testing know how tall it stands before it has loaded. */
 export const ASSETS = {
   track: { url: './release/golden-diorama.e0b21a1c4dcc.glb', span: 10.0, rise: 0.433 },
-  calendar: { url: './release/dayplan-diorama.c60794997357.glb', span: 10.0, rise: 0.596 }
+  calendar: { url: './release/dayplan-diorama.c60794997357.glb', span: 10.0, rise: 0.596 },
+  book: { url: './release/dailyverse-diorama.97f674076d4d.glb', span: 10.0, rise: 0.479 },
+  vault: { url: './release/savings-diorama.9099b2690506.glb', span: 10.0, rise: 0.497 },
+  rocket: { url: './release/spacek-diorama.7b9d1f6a6052.glb', span: 10.0, rise: 0.571 },
+  sushi: { url: './release/capysushi-diorama.5e636e127ee4.glb', span: 10.0, rise: 0.403 }
 };
 export function assetFor(theme){ return ASSETS[theme] || null; }
 

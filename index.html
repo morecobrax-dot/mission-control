@@ -1687,6 +1687,23 @@ function validateAppId(id){
    ========================================================= */
 const APP_UPDATES = [
   {
+    id: 'v0-8-0',
+    version: '0.8.0',
+    title: 'The whole city',
+    date: '2026-09-29',
+    summary: 'Every project now has its own hand-made place in the city, with its own crew at work.',
+    newFeatures: [
+      'Daily Verse is a reading observatory: a quiet hall, a garden pool, and a dome that turns with its telescope',
+      'Personal Savings is a civic savings hall: a columned portico, an open vault, and a revolving door',
+      'Space Kindergarten is a little launch academy: a rocket on its pad, a capsule classroom, and planets going round',
+      'Capy Sushi is a small sushi house: a kitchen counter with plates on the move, a terrace, and a capybara in the pond'
+    ],
+    improvements: [
+      'All six places share one light, one crew and one way of showing status, so the city reads as one place',
+      'Each place moves only while its project is under way, and stands still under Reduce Motion'
+    ]
+  },
+  {
     id: 'v0-7-1',
     version: '0.7.1',
     title: 'Updates that arrive whole',
@@ -3463,13 +3480,17 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = '6ad0ca39f8af';
-const WORLD_MODULE = './release/render3d.2005a1094718.js';
-const APP_FILES = ['./release/dayplan-diorama.c60794997357.glb',
+const APP_RELEASE = 'f351a9039676';
+const WORLD_MODULE = './release/render3d.1dddab0564c7.js';
+const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
+  './release/dailyverse-diorama.97f674076d4d.glb',
+  './release/dayplan-diorama.c60794997357.glb',
   './release/golden-diorama.e0b21a1c4dcc.glb',
-  './release/render3d.2005a1094718.js',
+  './release/render3d.1dddab0564c7.js',
+  './release/savings-diorama.9099b2690506.glb',
+  './release/spacek-diorama.7b9d1f6a6052.glb',
   './release/three.min.0c9283a1079c.js',
-  './release/world.06d1a3f9a533.js'];
+  './release/world.4f89ecac17ff.js'];
 /* APP-RELEASE-END */
 
 function fieldScene(views){

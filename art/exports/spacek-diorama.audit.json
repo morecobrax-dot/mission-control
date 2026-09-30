@@ -1,0 +1,70 @@
+{
+  "file": "spacek-diorama.glb",
+  "bytes": 1132352,
+  "triangles": 43692,
+  "vertices_blender": 22686,
+  "mesh_objects": 14,
+  "draw_calls": 19,
+  "materials": 11,
+  "material_names": [
+    "MC_FAM_COATED",
+    "MC_FAM_FOLIAGE",
+    "MC_FAM_MINERAL",
+    "MC_GLASS",
+    "MC_GLASS_LIT",
+    "MC_GRASS",
+    "MC_METAL",
+    "MC_METAL_DARK",
+    "MC_SKIN",
+    "MC_STATUS_LIGHT",
+    "MC_WOOD_DARK"
+  ],
+  "textures": 0,
+  "texture_memory_bytes": 0,
+  "workers": 5,
+  "crew": "controller:WORKING,explorer:ACTIVE,signaller:SIGNAL,teacher:WORKING,technician:REPAIR",
+  "status_meshes": [
+    "SK_Crew",
+    "SK_StatusLights"
+  ],
+  "clips": [
+    "MC_IDLE",
+    "MC_WORKING",
+    "MC_ACTIVE",
+    "MC_SIGNAL",
+    "MC_REPAIR"
+  ],
+  "budget": {
+    "triangles": {
+      "limit": 80000,
+      "actual": 43692,
+      "ok": true
+    },
+    "drawCalls": {
+      "limit": 24,
+      "actual": 19,
+      "ok": true
+    },
+    "materials": {
+      "limit": 16,
+      "actual": 11,
+      "ok": true
+    },
+    "workers": {
+      "limit": 8,
+      "actual": 5,
+      "ok": true
+    },
+    "bytes": {
+      "limit": 2000000,
+      "actual": 1132352,
+      "ok": true
+    },
+    "textures": {
+      "limit": 0,
+      "actual": 0,
+      "ok": true
+    }
+  },
+  "within_budget": true
+}

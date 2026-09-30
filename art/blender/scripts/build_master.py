@@ -1,6 +1,6 @@
 """Build the master scene and the authored dioramas.
 
-  blender -b -noaudio -P art/blender/scripts/build_master.py -- [--only golden|dayplan] [--no-diorama]
+  blender -b -noaudio -P art/blender/scripts/build_master.py -- [--only <name>] [--no-diorama]
 
 Writes:
   art/blender/mission-control-master.blend     rig + platform + library + worker, no project
@@ -26,6 +26,10 @@ import mc_worker
 DIORAMAS = {
     'golden': dict(module='golden_diorama', file='golden-diorama.blend', prefix='GD'),
     'dayplan': dict(module='dayplan_diorama', file='dayplan-diorama.blend', prefix='DP'),
+    'dailyverse': dict(module='dailyverse_diorama', file='dailyverse-diorama.blend', prefix='DV'),
+    'savings': dict(module='savings_diorama', file='savings-diorama.blend', prefix='PS'),
+    'spacek': dict(module='spacek_diorama', file='spacek-diorama.blend', prefix='SK'),
+    'capysushi': dict(module='capysushi_diorama', file='capysushi-diorama.blend', prefix='CS'),
 }
 
 

@@ -28,22 +28,26 @@
  */
 
 /* APP-CACHE-BEGIN */
-const CACHE_NAME = 'mission-control-v0.7.1-bf37f711c175';
+const CACHE_NAME = 'mission-control-v0.8.0-f46e7226ac92';
 /* APP-CACHE-END */
 
 /* APP-FILES-BEGIN */
 const RELEASE = {
-  id: '6ad0ca39f8af',
+  id: 'f351a9039676',
   files: [
-    ['./index.html', '9367fb1bee33d83d55d01327a296153b4b7626c0f29db30fa7bc942d7cee608f', 237709],
+    ['./index.html', 'dbeeb36825cbb13ddfdde58e04e234eb9c96a727a797f9e8e4d8253717b2b73c', 238842],
     ['./manifest.webmanifest', '774e9d6751d74a9ae1e205dcfd4c3ff4e602d58bb2ad7ca749d1b9f4328efe42', 583],
     ['./icon-192.png', '0158e8011a048dd9d51da60afed6ccae8a9d66932e9f424b6e2c15e6e2eb00d1', 20289],
     ['./icon-512.png', '04ec5545111e900e3b2bc584c9d7fd33f126f0d2d4a4464c8e627b467048a31d', 86533],
+    ['./release/capysushi-diorama.5e636e127ee4.glb', '5e636e127ee4642568ed4ca26a2f0faee3c434cb93ecb25ac698c71a0d21e81e', 1011368],
+    ['./release/dailyverse-diorama.97f674076d4d.glb', '97f674076d4d35d758a3f22e96b4c4048dec29f170891aa78d0ec221c5be358a', 1216940],
     ['./release/dayplan-diorama.c60794997357.glb', 'c60794997357d1ebaf75a7d67d6c2673b83a1f6fdf5b199f3806e10ac957cca9', 1330208],
     ['./release/golden-diorama.e0b21a1c4dcc.glb', 'e0b21a1c4dccae20cab54981955546cdd9f250d4d75a98a02caaa9fb9481d52e', 1581172],
-    ['./release/render3d.2005a1094718.js', '2005a10947187d58d45ea384a08ece73199ccdd948f838cc6540ae587012c238', 69913],
+    ['./release/render3d.1dddab0564c7.js', '1dddab0564c78a0b4d00a286dbe9136668df4547f5459df716c7e8c539b5d141', 69913],
+    ['./release/savings-diorama.9099b2690506.glb', '9099b2690506df593e611c7aa501363747e53f305f20c02ff6f6c72332a82c4e', 1085452],
+    ['./release/spacek-diorama.7b9d1f6a6052.glb', '7b9d1f6a60522e0724ec3611dffd44cdac35ed71973154a5ce170ae8c3f8a80e', 1132352],
     ['./release/three.min.0c9283a1079c.js', '0c9283a1079c2dcb73462eea6746a8ccfa791eadb65ccfbb753bdd867a59a5f9', 639129],
-    ['./release/world.06d1a3f9a533.js', '06d1a3f9a5336ed6bd618ec21ed44c1a801571ee2a53bd8d049388c5a46be6d6', 60797]
+    ['./release/world.4f89ecac17ff.js', '4f89ecac17ff914ddc6a21bf27a652b4aec275a4ee0dc3ef84e79a5ae8d03b00', 61145]
   ]
 };
 /* APP-FILES-END */

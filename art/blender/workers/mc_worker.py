@@ -108,6 +108,15 @@ OUTFITS = {
     # DayPlan's crew wears its district's rose on graphite
     'dp_crew': dict(vest='MC_DP_ROSE', shirt='MC_DP_GRAPHITE', pants='MC_PLINTH_DK', stripe=True),
     'dp_tech': dict(vest='MC_DP_GRAPHITE', shirt='MC_DP_GRAPHITE', pants='MC_DP_ROSE_DK', stripe=True),
+    # each district's crew wears its own identity over a dark or light base
+    'dv_crew': dict(vest='MC_DV_BRONZE', shirt='MC_DV_INDIGO', pants='MC_PLINTH_DK', stripe=True),
+    'dv_study': dict(vest='MC_DV_INDIGO', shirt='MC_DV_LIMESTONE', pants='MC_PLINTH_DK', stripe=False),
+    'ps_crew': dict(vest='MC_PS_GREEN', shirt='MC_PS_STONE', pants='MC_PLINTH_DK', stripe=True),
+    'ps_clerk': dict(vest='MC_PS_STONE', shirt='MC_PS_GREEN', pants='MC_PS_GREEN', stripe=False),
+    'sk_crew': dict(vest='MC_SK_PERIWINKLE', shirt='MC_SK_INDIGO', pants='MC_SK_INDIGO', stripe=True),
+    'sk_suit': dict(vest='MC_PAINT_WHITE', shirt='MC_SK_PERIWINKLE', pants='MC_PAINT_WHITE', stripe=True),
+    'cs_chef': dict(vest='MC_PAINT_WHITE', shirt='MC_PAINT_WHITE', pants='MC_CS_CHARCOAL', stripe=False),
+    'cs_crew': dict(vest='MC_CS_CORAL', shirt='MC_CS_CHARCOAL', pants='MC_CS_CHARCOAL', stripe=True),
 }
 
 
@@ -150,6 +159,12 @@ def _body(name, coll, vest, pants, shirt, prop=None, stripe=False):
     elif prop == 'tablet':
         P.add('box', 'forearm.L', DK, (0.235, 0.07, 0.49), (0.03, 0.2, 0.15))
         P.add('box', 'forearm.L', 'MC_GLASS_LIT', (0.218, 0.07, 0.49), (0.006, 0.17, 0.12))
+    elif prop == 'book':                          # an open book, read at chest height
+        P.add('box', 'forearm.L', WD, (0.2, 0.1, 0.5), (0.2, 0.15, 0.02), tilt=-35)
+        P.add('box', 'forearm.L', 'MC_PAINT_WHITE', (0.2, 0.1, 0.515), (0.18, 0.13, 0.02), tilt=-35)
+    elif prop == 'tray':                          # a serving tray carrying a bowl
+        P.add('cyl', 'forearm.L', 'MC_METAL', (0.2, 0.12, 0.47), (0.15, 0.15, 0.015), seg=20)
+        P.add('sphere', 'forearm.L', 'MC_PAINT_WHITE', (0.2, 0.12, 0.5), (0.06, 0.06, 0.035), seg=12, rings=6)
     elif prop == 'wrench':
         P.add('box', 'forearm.R', 'MC_METAL', (-0.205, 0.0, 0.36), (0.035, 0.035, 0.2))
         P.add('box', 'forearm.R', 'MC_METAL', (-0.205, 0.0, 0.27), (0.07, 0.035, 0.035))

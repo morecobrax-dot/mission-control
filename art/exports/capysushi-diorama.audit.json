@@ -1,0 +1,69 @@
+{
+  "file": "capysushi-diorama.glb",
+  "bytes": 1011368,
+  "triangles": 39992,
+  "vertices_blender": 20894,
+  "mesh_objects": 11,
+  "draw_calls": 15,
+  "materials": 10,
+  "material_names": [
+    "MC_FAM_COATED",
+    "MC_FAM_FOLIAGE",
+    "MC_FAM_MINERAL",
+    "MC_GLASS",
+    "MC_GLASS_LIT",
+    "MC_METAL",
+    "MC_METAL_DARK",
+    "MC_SKIN",
+    "MC_STATUS_LIGHT",
+    "MC_WOOD_DARK"
+  ],
+  "textures": 0,
+  "texture_memory_bytes": 0,
+  "workers": 5,
+  "crew": "chef:WORKING,host:SIGNAL,prep:REPAIR,rider:IDLE,server:IDLE",
+  "status_meshes": [
+    "CS_Crew",
+    "CS_StatusLights"
+  ],
+  "clips": [
+    "MC_IDLE",
+    "MC_WORKING",
+    "MC_ACTIVE",
+    "MC_SIGNAL",
+    "MC_REPAIR"
+  ],
+  "budget": {
+    "triangles": {
+      "limit": 80000,
+      "actual": 39992,
+      "ok": true
+    },
+    "drawCalls": {
+      "limit": 24,
+      "actual": 15,
+      "ok": true
+    },
+    "materials": {
+      "limit": 16,
+      "actual": 10,
+      "ok": true
+    },
+    "workers": {
+      "limit": 8,
+      "actual": 5,
+      "ok": true
+    },
+    "bytes": {
+      "limit": 2000000,
+      "actual": 1011368,
+      "ok": true
+    },
+    "textures": {
+      "limit": 0,
+      "actual": 0,
+      "ok": true
+    }
+  },
+  "within_budget": true
+}

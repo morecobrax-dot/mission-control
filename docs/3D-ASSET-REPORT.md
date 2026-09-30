@@ -288,3 +288,86 @@ desktop frame is 13.3 ms, programs stay at about 20 because every district
 shares the same shader variants, and each authored place adds about 3 draw
 calls to the overview. Where the resolution must fall the world lowers it; a
 30 Hz screen no longer makes it do so on its own (see ARCHITECTURE.md).
+
+## The complete city (0.8.0)
+
+Four districts joined the first project's and DayPlan's, through the same pipeline and
+with no renderer code: each is a module in `art/blender/models/`, one line in
+`DIORAMAS`, an export, one line in `ASSETS`, and `npm run config:sync`.
+
+**Concepts.** Twelve massing studies on the shared platform, camera and light
+(`art/renders/city-concepts.png` and `-thumbnail.png`), judged at thumbnail
+size, for difference from the other five, and for room for workers:
+
+| District | Chosen | Rejected |
+| --- | --- | --- |
+| Daily Verse | A: reading hall + observatory dome, a garden court | B: one great dome read as a pudding (DayPlan's rotunda failure); C: a cloister and tower read as a monastery, too literal, and its tower competed with DayPlan's |
+| Personal Savings | A: a columned portico under a pediment, low wings | B: a round safe house read as a cartoon helmet; C: stepped terraces read as nothing, and edged toward a progress bar |
+| Space Kindergarten | A: a rocket on its pad, a service tower, a classroom | B: a planet on stilts read as a flying saucer; C: low domes and tubes had no silhouette |
+| Capy Sushi | A: a deep-eaved hip roof over an open counter, a terrace | B: a round pavilion read as a black pudding; C: a row of stalls read as houses |
+
+Concept A of Space Kindergarten also had a dome; the dome went to Daily
+Verse alone, and the classroom became a rounded capsule with portholes.
+
+**Audits** (budget 24 draws, 80,000 triangles, 16 materials, 8 workers, 2 MB,
+0 textures):
+
+| District | Draws | Triangles | Materials | Workers | File | Life |
+| --- | --- | --- | --- | --- | --- | --- |
+| Daily Verse | 18 | 49,902 | 12 | 5 | 1.22 MB | the dome and telescope turn |
+| Personal Savings | 16 | 43,694 | 12 | 5 | 1.09 MB | the revolving door |
+| Space Kindergarten | 19 | 43,692 | 11 | 5 | 1.13 MB | planets, and the booth's dish |
+| Capy Sushi | 15 | 39,992 | 10 | 5 | 1.01 MB | plates along the counter |
+
+New paints joined the coated family and roofs the mineral family, so a new
+palette cost no draws; brass (`MC_BRASS`, fittings only) is the one new
+material. The first project's and DayPlan's files are unchanged; DayPlan rebuilt from its
+refactored module exports the same JSON, vertices and triangles (only the
+order of triangles within seven index buffers differs).
+
+**Crews** (the shared rig; two shared props added, `book` and `tray`):
+
+- Daily Verse: an astronomer at the telescope on the gallery, a librarian at
+  the book cart, a reader at a terrace desk, a gardener, the keeper at the
+  gate.
+- Personal Savings: a greeter under the portico, an archivist at the open
+  vault, a courier unloading the van, a planner with a tablet, a guard.
+- Space Kindergarten: a technician on the tower's arm at the capsule, a
+  teacher at the crater, a controller at the booth, a signaller at the pad,
+  an explorer running across the plaza.
+- Capy Sushi: the chef at the counter, a server with a tray, a prep cook at
+  the produce crates, a delivery rider at the scooter, a host at the door.
+
+**Found in review and fixed:** a coated roof mirrored the sky and washed a
+dark roof pale (roofs are now mineral); large brass faces read black in the
+app (metal is for fittings); a steel "ring" at the vault was a solid disc that
+hid the vault from the app's frontal camera; three blues in one column (Daily
+Verse's roof is slate).
+
+**The six-district city in the app** (headless Edge, integrated Intel GPU,
+overview, a frame without the shadow pass):
+
+| | 2 authored | 6 authored |
+| --- | --- | --- |
+| Draw calls, shadow calls | 133, 46 | 135, 98 |
+| Triangles | 180k | 309k |
+| Materials, programs | 51, 21 | 104, 20 |
+| Frame at 1x, 708x669 | 7.5 ms | 12.2 ms |
+| Frame, desktop | 16.5 ms at 1.75x | 50.1 ms at 2x |
+| Frame, iPhone viewport, 2x | 7.8 ms | 12.1 ms |
+| Frame, iPad viewport, 1.75x | 12.7 ms | 20.6 ms |
+| Shadow pass added | 2.3 ms | 3.1 ms |
+| Animation per frame | 0.02-0.04 ms | 0.04-0.05 ms |
+| Models downloaded | 2.8 MB | 7.2 MB |
+| World ready | 0.4-1.1 s | 0.4-1.3 s |
+
+Each new district adds 1.1 to 1.4 ms at 1x, linearly; none is an outlier.
+Draws stay flat because an authored place replaces its recipe, and programs
+do not grow. The cost is fill: the desktop's 50 ms at 2x is the 1x frame
+over four times the pixels, and the world's step-down takes the desktop to
+1.25x within five seconds, where it costs about 16 ms. At 30 Hz the iPhone
+viewport keeps 2x (each timing check costs 12 to 15 ms against a 35 ms gap).
+The phase 3E projection (146 draws, 371k triangles) was pessimistic on
+triangles; the real desktop frame at 2x (50 ms) is higher than its proxy
+estimate (33 ms), because the new districts' materials fill more of the
+view.

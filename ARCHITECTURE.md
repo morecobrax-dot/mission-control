@@ -338,7 +338,9 @@ page script, in two ES modules the page imports after its first paint:
   changes shape. Building masses use small bevels; shared Standard materials
   and one cached directional shadow map provide soft, grounded lighting. A status change swaps a material or a visibility; nothing
   is rebuilt.
-- **Authored places.** A look may instead be drawn from a GLB authored in
+- **Authored places.** Since 0.8.0 every one of the six required looks is
+  drawn this way (the first project, DayPlan, Daily Verse, Personal Savings, Space
+  Kindergarten, Capy Sushi). A look may be drawn from a GLB authored in
   Blender (`art/blender`, `docs/3D-ART-BIBLE.md`): `ASSETS` in `world.js` maps
   the registry's `visualTheme` to the file, the width its plinth is drawn at
   and its measured rise. Blender owns the geometry, materials and clips; the

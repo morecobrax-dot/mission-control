@@ -110,6 +110,16 @@ visible texture.
 - No grunge, dirt, scratches or noise in colour. This is clean by design.
 - Glass is dark so it reads as glass against light walls. A share of panes are
   lit amber interiors for life, never more than a quarter.
+- Big faces are never metal. In the app a metallic surface reflects the
+  prefiltered sky, and a large flat one facing the camera mirrors its dark
+  lower half and reads as a black hole (a brass vault door did, in 0.8.0's
+  first pass). Metal is for fittings — handles, a telescope, lamp stems, a
+  sundial; a large "brass" face is a coated paint (`MC_PS_BRASS`).
+- Big tilted roofs are matte. The coated paint family's clear coat mirrors
+  the sky across a large sloped plane and washes a dark roof to pale grey.
+  Roofing is mineral: fired tile (`MC_CS_TILE`), slate (`MC_DV_SLATE`),
+  patinated copper (`MC_PS_ROOF`), all in the mineral family, so they cost
+  no draw.
 
 ## Colour and value
 
@@ -125,6 +135,22 @@ visible texture.
   `MC_DP_ROSE_DK` for shade sides), warm graphite walls (`MC_DP_GRAPHITE`)
   and a warm stone for trims and the clock stage (`MC_DP_STONE`), on the
   shared plinth, paving, greens and amber glow. No blue.
+- Daily Verse: warm limestone (`MC_DV_LIMESTONE`), the bronze of its
+  identity for the dome and trims (`MC_DV_BRONZE`), a slate roof, indigo
+  for small accents only (`MC_DV_INDIGO`), brass for fittings.
+- Personal Savings: pale civic stone (`MC_PS_STONE`), a deep bank green
+  for doors and frames (`MC_PS_GREEN`, `MC_PS_GREEN_LT` for awnings), a
+  matte copper-green roof, a coated brass for its big brass faces.
+- Space Kindergarten: white and periwinkle (`MC_SK_PERIWINKLE`), a deep
+  indigo base (`MC_SK_INDIGO`), a warm yellow for fins, stars and play
+  (`MC_SK_YELLOW`).
+- Capy Sushi: lime plaster (`MC_CS_PLASTER`), dark timber, a fired tile
+  roof, coral for noren, awning and stools (`MC_CS_CORAL`), salmon, and
+  the capybara's brown (`MC_CS_CAPY`).
+- Across the city the palettes are placed, not scattered: no two
+  neighbouring districts share a dominant hue (Daily Verse's roof is slate,
+  not indigo, so the first project, Daily Verse and Space Kindergarten are not three
+  blues in one column).
 - Richness comes from value and material difference, never from raising
   saturation. Architecture stays at 30 to 55 percent saturation; one accent
   per view may reach 70.
@@ -226,7 +252,12 @@ comes from.
 - A place may have its own quiet life: a few objects marked `mc_life`
   (custom property) animated on an NLA track named `MC_LIFE`, linear and
   looping. DayPlan's are the two second hands, the "now" gate walking the
-  timeline and the time ball. The app plays it only while the project is
+  timeline and the time ball; Daily Verse's observatory dome turns with its
+  telescope; Personal Savings' revolving door turns; Space Kindergarten's
+  planets go round their sun and its dish turns; Capy Sushi's plates travel
+  along the counter (one object moving one plate-pitch and back, the ends
+  under hoods). Build it with `mc_kit`'s `life_object`, or `life_group`
+  to join several paints of one family into one draw. The app plays it only while the project is
   known to be under way and holds its first frame otherwise. Life never
   counts, fills or finishes anything, and a clock never tells the real time.
 
@@ -287,14 +318,14 @@ comes from.
 - The district budget (`DISTRICT_BUDGET`, the same numbers in the app's
   `field/world.js`):
 
-  | Per district | Budget | Golden | DayPlan |
-  | --- | --- | --- | --- |
-  | Draw calls | 24 | 19 | 21 |
-  | Triangles | 80,000 | 68,486 | 51,298 |
-  | Materials | 16 | 14 | 12 |
-  | Workers | 8 | 6 | 5 |
-  | File | 2,000,000 B | 1,581,172 B | 1,330,208 B |
-  | Textures | 0 | 0 | 0 |
+  | Per district | Budget | Golden | DayPlan | Daily Verse | Savings | Space K. | Capy Sushi |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | Draw calls | 24 | 19 | 21 | 18 | 16 | 19 | 15 |
+  | Triangles | 80,000 | 68,486 | 51,298 | 49,902 | 43,694 | 43,692 | 39,992 |
+  | Materials | 16 | 14 | 12 | 12 | 12 | 11 | 10 |
+  | Workers | 8 | 6 | 5 | 5 | 5 | 5 | 5 |
+  | File (MB) | 2.00 | 1.58 | 1.33 | 1.22 | 1.09 | 1.13 | 1.01 |
+  | Textures | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
   Over budget, the export prints `BUDGET FAIL`, its audit says
   `within_budget: false` and Blender exits with status 1; the app's
@@ -343,3 +374,15 @@ gaps, triangle and draw-call cost), and write the honest verdict down.
 - The graphite roof and hall are the darkest large surfaces in the city;
   they read as a dispatch hall by their window ribbon and bays, and would go
   heavy under a darker light rig.
+
+## Known limits of the four districts of 0.8.0
+
+- Daily Verse: the pool is the dark glass mirror, so it reads as still
+  night water rather than daylight water; the arched windows' round heads
+  are discs over a square recess, convincing only at city scale.
+- Personal Savings: symmetry makes it the most formal, least lively place;
+  its life is only the revolving door, small from the overview.
+- Space Kindergarten: the flat paving between the crater, the booth and the
+  pad is the emptiest ground in the city.
+- Capy Sushi: the plate belt and the chef sit under the awning and are
+  seen only in focus; from the overview the roof and terrace carry it.

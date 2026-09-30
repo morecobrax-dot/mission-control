@@ -1,0 +1,71 @@
+{
+  "file": "dailyverse-diorama.glb",
+  "bytes": 1216940,
+  "triangles": 49902,
+  "vertices_blender": 25939,
+  "mesh_objects": 14,
+  "draw_calls": 18,
+  "materials": 12,
+  "material_names": [
+    "MC_BRASS",
+    "MC_FAM_COATED",
+    "MC_FAM_FOLIAGE",
+    "MC_FAM_MINERAL",
+    "MC_GLASS",
+    "MC_GLASS_LIT",
+    "MC_GRASS",
+    "MC_METAL",
+    "MC_METAL_DARK",
+    "MC_SKIN",
+    "MC_STATUS_LIGHT",
+    "MC_WOOD_DARK"
+  ],
+  "textures": 0,
+  "texture_memory_bytes": 0,
+  "workers": 5,
+  "crew": "astronomer:REPAIR,gardener:REPAIR,keeper:SIGNAL,librarian:REPAIR,reader:WORKING",
+  "status_meshes": [
+    "DV_Crew",
+    "DV_StatusLights"
+  ],
+  "clips": [
+    "MC_IDLE",
+    "MC_WORKING",
+    "MC_ACTIVE",
+    "MC_SIGNAL",
+    "MC_REPAIR"
+  ],
+  "budget": {
+    "triangles": {
+      "limit": 80000,
+      "actual": 49902,
+      "ok": true
+    },
+    "drawCalls": {
+      "limit": 24,
+      "actual": 18,
+      "ok": true
+    },
+    "materials": {
+      "limit": 16,
+      "actual": 12,
+      "ok": true
+    },
+    "workers": {
+      "limit": 8,
+      "actual": 5,
+      "ok": true
+    },
+    "bytes": {
+      "limit": 2000000,
+      "actual": 1216940,
+      "ok": true
+    },
+    "textures": {
+      "limit": 0,
+      "actual": 0,
+      "ok": true
+    }
+  },
+  "within_budget": true
+}

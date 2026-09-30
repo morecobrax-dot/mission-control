@@ -187,3 +187,117 @@ def paver_joints(B, x0, x1, y0, y1, step=1.5, skip=()):
     while y <= y1 + 1e-6:
         rect(j, x0, x1, y - 0.012, y + 0.012, Z, 0.008)
         y += step
+
+
+# ---------------------------------------------------------------- life
+# A place's own life is one clip, MC_LIFE, on objects marked `mc_life`
+# (docs/3D-ART-BIBLE.md). These make such an object and its keys.
+def push_life(o):
+    """The object's keys become its part of the MC_LIFE clip, linear."""
+    ad = o.animation_data
+    act = ad.action
+    for layer in act.layers:
+        for strip in layer.strips:
+            for cb in strip.channelbags:
+                for fc in cb.fcurves:
+                    for k in fc.keyframe_points:
+                        k.interpolation = 'LINEAR'
+    tr = ad.nla_tracks.new()
+    tr.name = 'MC_LIFE'
+    st = tr.strips.new('MC_LIFE', 1, act)
+    st.name = 'MC_LIFE'
+    ad.action = None
+    o['mc_life'] = True
+    return o
+
+
+def key(o, prop, frames):
+    for f, v in frames:
+        setattr(o, prop, v)
+        o.keyframe_insert(prop, frame=f)
+
+
+def life_object(name, material, coll, build, at, bevel=0.0):
+    b = MB(name, mat(material), coll, bevel=bevel, smooth_=bevel == 0.0 and None)
+    build(b)
+    o = b.done()
+    o.location = at
+    return o
+
+
+def life_group(name, parts, coll, at):
+    """One life object from several materials: [(material, build(mb)), ...]
+    joined into one mesh, so it moves as one and, when its paints share a
+    colour family, exports as one draw."""
+    objs = []
+    for i, (material, build) in enumerate(parts):
+        b = MB('%s_%d' % (name, i), mat(material), coll, bevel=0.0, smooth_=True)
+        build(b)
+        o = b.done()
+        if o:
+            objs.append(o)
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    if len(objs) > 1:
+        bpy.ops.object.join()
+    o = bpy.context.view_layer.objects.active
+    o.name = name
+    o.location = at
+    o.select_set(False)
+    return o
+
+
+# ---------------------------------------------------------------- shared forms
+def gable(mb, x0, x1, y0, y1, z0, rise, ridge='x'):
+    """A pitched roof volume: a triangular section with its ridge along x (or
+    y), from eave to eave. Five faces, so the builder's bevel catches its edges."""
+    import bmesh
+    bm = mb.bm
+    if ridge == 'x':
+        cy = (y0 + y1) / 2
+        a = [bm.verts.new(p) for p in ((x0, y0, z0), (x0, y1, z0), (x0, cy, z0 + rise))]
+        b = [bm.verts.new(p) for p in ((x1, y0, z0), (x1, y1, z0), (x1, cy, z0 + rise))]
+    else:
+        cx = (x0 + x1) / 2
+        a = [bm.verts.new(p) for p in ((x0, y0, z0), (x1, y0, z0), (cx, y0, z0 + rise))]
+        b = [bm.verts.new(p) for p in ((x0, y1, z0), (x1, y1, z0), (cx, y1, z0 + rise))]
+    bm.faces.new(a)
+    bm.faces.new(b[::-1])
+    for i in range(3):
+        j = (i + 1) % 3
+        bm.faces.new((a[i], a[j], b[j], b[i]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    return mb
+
+
+def bench(B, x, y, along='x', length=1.3, seat='MC_WOOD', back=1):
+    """A slatted bench on dark steel legs; its back on the +y (or +x) side,
+    or the other side with back=-1, so a sitter faces what the bench faces."""
+    s, l = B.get(seat, 0.02, tag='Bench'), B.get('MC_METAL_DARK', 0.01, tag='BenchLegs')
+    if along == 'x':
+        s.box(x, y, Z + 0.4, length, 0.38, 0.08)
+        s.box(x, y + 0.2 * back, Z + 0.62, length, 0.06, 0.34)
+        for o in (-length * 0.38, length * 0.38):
+            l.box(x + o, y, Z + 0.05, 0.06, 0.32, 0.36)
+    else:
+        s.box(x, y, Z + 0.4, 0.38, length, 0.08)
+        s.box(x + 0.2 * back, y, Z + 0.62, 0.06, length, 0.34)
+        for o in (-length * 0.38, length * 0.38):
+            l.box(x, y + o, Z + 0.05, 0.32, 0.06, 0.36)
+
+
+def beacon(B, status_coll, prefix, x, y, z, r=0.28):
+    """The place's status lamp in a small cage on a dark base: the one light the
+    app recolours (MC_STATUS_LIGHT), wherever the architecture carries it."""
+    B.get('MC_METAL_DARK', 0.015, tag='BeaconBase', sm=True).cyl(x, y, z, r * 0.65, 0.07, seg=20)
+    lamp_ = MB(prefix + '_BeaconLamp', mat('MC_STATUS_LIGHT'), status_coll, bevel=0.0, smooth_=True)
+    lamp_.sphere(x, y, z + r + 0.07, r, r, r, seg=32, rings=18)
+    lamp_.done()['status_role'] = 'beacon'
+    cage = B.get('MC_METAL', 0.0, tag='Cage', sm=True)
+    cage.cyl(x, y, z + 0.07, r * 1.18, 0.035, seg=32)
+    cage.cyl(x, y, z + 2 * r + 0.1, r * 1.18, 0.035, seg=32)
+    for i in range(4):
+        a = math.pi / 4 + i * math.pi / 2
+        cage.box(x + r * 1.18 * math.cos(a), y + r * 1.18 * math.sin(a), z + 0.07, 0.03, 0.03, 2 * r + 0.06)

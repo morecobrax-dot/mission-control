@@ -24,7 +24,7 @@ Deck top is z = 1.0, deck is 15.4 across; the camera sits at +x, -y.
 import math
 import bpy
 from mc_lib import MB, slab, frame, cut, mat, link, DECK_Z
-from mc_kit import Builders, rect, tree, planter, lamp, window_dressing, cone, cart, totem, paver_joints
+from mc_kit import Builders, rect, tree, planter, lamp, window_dressing, cone, cart, totem, paver_joints, push_life, key, life_object
 
 ACCENT = 'MC_DP_ROSE'
 Z = DECK_Z
@@ -44,37 +44,8 @@ WORKERS = [
 
 
 # ---------------------------------------------------------------- life
-def _push_life(o):
-    """The object's keys become its part of the MC_LIFE clip, linear."""
-    ad = o.animation_data
-    act = ad.action
-    for layer in act.layers:
-        for strip in layer.strips:
-            for cb in strip.channelbags:
-                for fc in cb.fcurves:
-                    for k in fc.keyframe_points:
-                        k.interpolation = 'LINEAR'
-    tr = ad.nla_tracks.new()
-    tr.name = 'MC_LIFE'
-    st = tr.strips.new('MC_LIFE', 1, act)
-    st.name = 'MC_LIFE'
-    ad.action = None
-    o['mc_life'] = True
-    return o
-
-
-def _key(o, prop, frames):
-    for f, v in frames:
-        setattr(o, prop, v)
-        o.keyframe_insert(prop, frame=f)
-
-
-def _life_object(name, material, coll, build, at, bevel=0.0):
-    b = MB(name, mat(material), coll, bevel=bevel, smooth_=bevel == 0.0 and None)
-    build(b)
-    o = b.done()
-    o.location = at
-    return o
+# the shared helpers (mc_kit), under the names this module has always used
+_push_life, _key, _life_object = push_life, key, life_object
 
 
 # ---------------------------------------------------------------- parts

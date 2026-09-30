@@ -36,7 +36,7 @@ import {
   lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS, SCENERY,
   placeHeight, cityParts, streetLamps, TRUCK_PARTS, RESIDENT_PARTS, streetPose, trafficBounds,
   assetFor, assetHeight, assetCrew, ASSET_STATUS_MATERIAL, ASSET_LIFE_CLIP, CREW_JOIN, LIGHT, lightDirection
-} from './world.06d1a3f9a533.js';
+} from './world.4f89ecac17ff.js';
 
 export const REVISION = THREE.REVISION;
 

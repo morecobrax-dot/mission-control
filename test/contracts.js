@@ -3205,8 +3205,15 @@ async function testWorld(){
   T('a file that arrives after the world is shown still takes its place, and the layout follows its height',
     /showAsset\(t, false, 'late'\)/.test(r3) &&
     /if\(!t\.settled\)\{ t\.settled = true; S\.pending = Math\.max\(0, S\.pending - 1\); \}\s*if\(S\.order\.length && S\.w\)\{ S\.reroom = 0; relayout\(\); reframe\(\); \}/.test(r3));
-  T('two authored districts stand in the city together, each its own file and its own look',
+  T('the authored districts stand in the city together, each its own file and its own look',
     Object.keys(W.ASSETS).length >= 2 && new Set(Object.values(W.ASSETS).map(a => a.url)).size === Object.keys(W.ASSETS).length);
+  /* 0.8.0 completed the city: one of the six required projects without an
+     authored place would quietly fall back to its recipe, a different kind of
+     building. A later record needs no place of its own (rule 42): it falls
+     back to its recipe or to generic, as ever. */
+  const looks = [...new Set(c.PROJECT_REGISTRY.slice(0, 6).map(p => p.visualTheme))];
+  T('each of the six required projects has its authored place, so none is drawn in a different language',
+    looks.length >= 6 && looks.every(t => !!W.assetFor(t)), looks.filter(t => !W.assetFor(t)).join() || looks.join());
   T('no project is special in the renderer: it names no look, no project and no file',
     !/'track'|'calendar'|golden|dayplan|\.glb/i.test(code(r3)));
   T('each authored place is precached for offline, as its release copy', Object.values(W.ASSETS).every(a => {
