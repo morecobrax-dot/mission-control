@@ -500,22 +500,34 @@ brisk start so a tap answers at once), over a time that grows with the way
 in views, with a small rise on a long hop, to rest exactly on its frame. A
 flight interrupted by another, a swipe caught mid-flight or a flick released
 into one never stops the camera dead. The camera looks only at the island:
-its target stays within a pad of the outer districts. One arbiter decides
+its target rests within a pad of the outer districts. The world owns every
+touch that starts in its box: the view is `touch-action: none` to its
+square corners (only what is drawn is rounded: the ground, the canvas and
+the label layer), so no drag there is ever the page's. One arbiter decides
 every touch and its axis as it starts: under 8 px it is a tap. In focus a
 clearly sideways drag swipes: the camera follows the finger along the very
 path the flight will take (`swipeFrame`), and `swipeVerdict` goes to the
 next place (finger left) or the previous only when the drag went far enough
 or was flicked, never on a twitch or a flick back; the next place is
 reading order, and at either end the city gives a little and comes back.
-Up and down always belong to the page: the view is `touch-action: pan-y`,
-and takes every drag (`none`, to pan) only while the whole city is not in
-view at the overview. Arrow keys move between places in focus and Escape
-goes to the overview, as the Overview button does. A tap on the island is
-hit-tested against each district's drawn outline (its pad and its roof);
-where two overlap the nearer wins, and open streets select nothing. The
-click that a drag or an island tap also makes is swallowed for a moment, so
-a label the camera has just moved under the finger never takes it; a
-keyboard's click always goes through. Pointer cancel and the view's own lost
+Every other drag pans (`panStart`, `panMove`, `panEnd`): the ground point
+under the finger stays under it (`groundAt`, `project`'s inverse), within
+where the camera may rest (`panRest`): the place in focus, the canonical
+overview while the whole city is in view, or otherwise anywhere a pad
+beyond the outer districts. Past that the city gives on each of the
+screen's axes, half the finger's way at first and at most `WORLD.pan.reach`
+of the view's shorter side. A drag that catches a flight starts where the
+camera is; let go, the pan settles by the one flight, carried by a flick
+only where it can move, at once under Reduce Motion. Anything else that
+sends the camera (Overview, Escape, the app's focus, a new shape) ends a
+drag under way where the city is drawn, reporting nothing. Arrow keys move
+between places in focus and Escape goes to the overview, as the Overview
+button does. A tap on the island is hit-tested against each district's
+drawn outline (its pad and its roof); where two overlap the nearer wins,
+and open streets select nothing. The click that a drag or an island tap
+also makes is swallowed for a moment, so a label the camera has just moved
+under the finger never takes it; a keyboard's click always goes through.
+Pointer cancel and the view's own lost
 capture end a gesture with no tap and no navigation (a touch is first
 captured by what it touched; handing that to the view is not a cancel —
 0.8.0 treated it as one and every touch drag ended at its first move). Under
@@ -590,11 +602,17 @@ tight counts, and one row of attention buttons that say only what each needs
 phone) and the unknown count — so the world starts in the first screen.
 
 The world's box takes the height the screen has left: `fitField()` measures
-where the box starts, the tab bar and the dock, after every hub render and on
-resize, and sets `--world-h`; the camera frames whatever it gets. Under the
-world sits the dock: the selected project's name, its one dominant status and
-a Brief action, always the same height (a hint until something is selected),
-so choosing a project never resizes the world, and always above the tab bar.
+where the box starts, the tab bar and the dock, after every hub render, on
+resize and as the hub's tab comes back, and sets `--world-h`; the camera
+frames whatever it gets. The hub is then one screen (`html.hub-screen`):
+below the dock the document keeps only the tab bar's room, never more than
+the box leaves, and the root does not overscroll, so there is no page to
+drag or bounce behind the world (0.9.0's hub was 51 px taller than every
+screen). Settings is a page as before, and a phone on its side scrolls.
+Under the world sits the dock: the selected project's name, its one
+dominant status and a Brief action, always the same height (a hint until
+something is selected), so choosing a project never resizes the world, and
+always above the tab bar.
 The details are in the brief. On a phone the hub is one column and the Quick
 Brief is a page. On a phone on its side the hub takes the full width and the
 world the screen's whole height under the tab bar; the page scrolls to it,

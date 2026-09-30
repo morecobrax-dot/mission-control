@@ -175,13 +175,30 @@ The product's own rules, on top of everything above.
   infrastructure, not claims about dependencies or data flowing between
   projects. Tap focuses; in focus a sideways swipe goes to the next or
   previous place, in the city's reading order (back to front, left to
-  right), never round the end; Overview shows everything. Up and down
-  always scroll the page, a drag pans only while the whole city is not in
-  view, and a drag never opens anything. Only a clear swipe moves: one that
-  goes neither far enough nor fast enough settles back. Every move is one
-  flight: it leaves at the speed the camera already has, can be interrupted
-  or chained, and lands exactly on its frame; with Reduce Motion it is
-  instant, and a swipe still moves the focus.
+  right), never round the end; Overview shows everything. Only a clear
+  swipe moves: one that goes neither far enough nor fast enough settles
+  back. Every move is one flight: it leaves at the speed the camera already
+  has, can be interrupted or chained, and lands exactly on its frame; with
+  Reduce Motion it is instant, and a swipe still moves the focus.
+- **The world owns every touch that starts in it.** Its whole box, to the
+  corners, empty ground and all, is one surface: a drag there moves the
+  world and never the page, which neither scrolls nor bounces under it. The
+  chrome around it (header, counts, attention, the dock, the tab bar and
+  Overview) stays ordinary controls. Any drag that is not a swipe pans: the
+  city follows the finger exactly where there is more of it to see, and
+  where there is not (the whole city at the overview, the place in focus)
+  it only gives a little under the finger and settles back, so no drag is
+  empty-space travel. It is never lost off screen, never turns and never
+  zooms; a flick carries it a little only where it can go, and let go it
+  settles smoothly rather than snapping. A drag never becomes a tap and
+  never opens anything. Overview always returns to the canonical whole
+  city, from a pan, a flight or a drag under way. With Reduce Motion a drag
+  still follows the finger, and it is back at once when let go.
+  *(enforced)*
+- **The hub is one screen, not a page.** With the world, the hub fits the
+  screen above the tab bar: nothing is under the fold, so there is nothing
+  to scroll. A phone on its side has no such screen: there the world takes
+  the screen's whole height and the page scrolls to it by its chrome.
 - **Smooth before rich.** A frame only moves things; it never measures the
   page. Detail and life never cost a tap its response: on a device that
   cannot keep up, the world draws at a lower resolution rather than slower.

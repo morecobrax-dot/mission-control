@@ -33,7 +33,7 @@
 import * as THREE from '../vendor/three/three.min.js';
 import {
   WORLD, TILE, CITY, BEACON, eyeOf, project, chooseLayout, islandOf, islandOutline, shoreHalfWidth, focusFrame,
-  clampFrame, panFrame, revealFrame, hitDistrict, labelAnchor, labelSpot, sameFrame, planFlight, flightFrame, flightSpeed,
+  clampFrame, panRest, panStart, panMove, panEnd, revealFrame, hitDistrict, labelAnchor, labelSpot, sameFrame, planFlight, flightFrame, flightSpeed,
   pixelRatioFor, nextPixelRatio, shouldStepDown, districtPx, resolveLabels, createArbiter, swipeVerdict, swipeFrame, neighbourOf,
   CREW, CREW_FACING, poseFor, crewLoops,
   lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS,
@@ -937,10 +937,11 @@ export function createWorld(host, hooks){
      at the speed it already has, to the frame it is sent to; at once under
      Reduce Motion, before the first frame and while nothing is drawn. The
      labels that will be readable there are decided as it leaves, so none
-     flickers on the way. */
-  function goTo(frame, mode, instant){
+     flickers on the way. Sent anywhere, it takes the camera from a drag
+     under way. A settling pan leaves at `lead` at least. */
+  function goTo(frame, mode, instant, lead){
+    abortGesture();
     S.mode = mode;
-    view.classList.toggle('is-pannable', mode !== 'focus' && !S.fits);
     if(!S.frame || instant || rm() || !awake()){
       S.frame = frame; S.fl = null; S.to = null; S.vel = null; S.hold = null;
     } else if(sameFrame(S.frame, frame)){
@@ -949,7 +950,7 @@ export function createWorld(host, hooks){
       S.fl = null; S.to = null; S.vel = null; S.hold = null;
     } else {
       const fl = planFlight(S.frame, frame, S.w, S.h, 0);
-      fl.v0 = flightSpeed(fl, S.vel);
+      fl.v0 = Math.max(flightSpeed(fl, S.vel), lead || 0);
       S.fl = fl; S.to = frame; S.t0 = performance.now();
       S.hold = labelsAt(frame, mode);
     }
@@ -1271,21 +1272,61 @@ export function createWorld(host, hooks){
   }
 
   /* ---------- gestures ----------
-     A touch is a tap, a swipe, a pan or nothing, decided once as it starts
-     (world.js createArbiter): in focus, a clearly sideways drag swipes to
-     the next or previous place; where the whole city is not in view at the
-     overview, a drag pans it; anything else is the page's (the view lets the
-     browser scroll up and down, touch-action pan-y, except while it pans)
-     or nothing at all. A drag never becomes a tap. */
+     The world owns every drag that starts in its view (touch-action: none):
+     the page under it never moves. A touch is a tap, a swipe or a pan,
+     decided once as it starts (world.js createArbiter): in focus a clearly
+     sideways drag swipes to the next or previous place; any other drag pans
+     (world.js panStart). At an overview that shows the whole city, and in
+     focus, the camera rests on one frame, so a pan only gives under the
+     finger and settles back; where the city is larger than the view it
+     follows the finger across it. A drag never becomes a tap, and whatever
+     else moves the camera (Overview, the app's focus, a new shape) takes
+     it from the drag where it is drawn. */
   const arb = createArbiter();
-  const G = { kind: null, from: null, prev: null, next: null, tx: 0 };
-  function panBy(dx, dy){
-    if(!S.frame) return;
-    S.fl = S.to = null; S.vel = null; S.hold = null;
-    S.mode = 'free';
-    S.frame = panFrame(S.frame, dx, dy, S.w, S.h, S.island);
+  const G = { kind: null, from: null, prev: null, next: null, tx: 0, pan: null, mode: null, box: null, x: 0, y: 0 };
+  /* Where a pan may rest: the place in focus, the whole city while it is all
+     in view, or anywhere over it. */
+  function restFor(mode){
+    if(mode === 'focus') return panRest(targetFor('focus'));
+    return mode === 'overview' && S.fits ? panRest(S.over) : panRest(null, S.island);
+  }
+  /* A pan takes the camera where it is, even mid-flight, and catches up
+     with the finger's first movement. Where it can only give, the labels
+     stay as they are, so none flickers at the view's edge. */
+  function startPan(x, y, dx, dy){
+    G.mode = S.mode;
+    G.pan = panStart(S.frame, restFor(S.mode), S.w, S.h);
+    S.fl = S.to = null; S.vel = null;
+    S.hold = G.pan.rest.frame ? S.shown : null;
+    G.x = x - dx; G.y = y - dy;
+    dragPan(x, y);
+  }
+  function dragPan(x, y){
+    S.frame = panMove(G.pan, G.x, G.y, x, y);
+    G.x = x; G.y = y;
     S.dirty = true;
     wake();
+  }
+  /* Let go, the camera settles where it may rest, carried on a little by a
+     flick where the city is larger than the view; at once, and never
+     carried, under Reduce Motion or when the touch was cancelled. */
+  function endPan(vx, vy, cancelled){
+    const p = G.pan, still = cancelled || rm(), end = panEnd(p, vx, vy, still);
+    G.pan = null;
+    S.vel = still ? null : end.vel;
+    S.hold = null;
+    const mode = p.rest.frame ? G.mode : G.mode === 'overview' && sameFrame(end.frame, S.over) ? 'overview' : 'free';
+    goTo(end.frame, mode, false, WORLD.pan.settle);
+  }
+  /* Something else moved the camera: the drag under way ends where the city
+     is drawn and reports nothing, and the finger's next moves do nothing. */
+  function abortGesture(){
+    if(!G.kind) return;
+    arb.cancel();
+    G.kind = null; G.pan = null;
+    S.hold = null;
+    view.classList.remove('is-panning');
+    swallowNextClick();
   }
   /* A swipe takes the camera where it is, even mid-flight, and moves it
      toward the place it would go to as far as the finger goes; under
@@ -1327,35 +1368,39 @@ export function createWorld(host, hooks){
   function listen(el, type, fn, opts){ el.addEventListener(type, fn, opts); on.push([el, type, fn, opts]); }
   const onIsland = e => e.target === canvas || e.target === view || e.target === layer;
 
+  /* The view is measured as a touch goes down, never in a move. */
   listen(view, 'pointerdown', e => {
     S.swallowUntil = 0;
     if(e.pointerType === 'mouse' && e.button !== 0) return;
     if(e.target.closest && e.target.closest('.world-overview')) return;
-    arb.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
+    if(!arb.down(e.pointerId, e.clientX, e.clientY, e.timeStamp)) return;
+    G.box = view.getBoundingClientRect();
     S.downOnIsland = onIsland(e);
     wake();
   });
   listen(view, 'pointermove', e => {
     const r = arb.move(e.pointerId, e.clientX, e.clientY, e.timeStamp);
     if(!r) return;
+    const x = e.clientX - G.box.left, y = e.clientY - G.box.top;
     if(r.type === 'pan-start'){
-      G.kind = S.mode === 'focus' && S.focusId && r.axis === 'x' ? 'swipe' : S.mode !== 'focus' && !S.fits ? 'pan' : 'none';
-      if(G.kind === 'none') return;
+      if(!S.frame) return;
+      G.kind = S.mode === 'focus' && S.focusId && r.axis === 'x' ? 'swipe' : 'pan';
       try{ view.setPointerCapture(e.pointerId); }catch(err){}
       view.classList.add('is-panning');
-      if(G.kind === 'swipe'){ startSwipe(); dragSwipe(r.dx); } else panBy(r.dx, r.dy);
+      if(G.kind === 'swipe'){ startSwipe(); dragSwipe(r.dx); } else startPan(x, y, r.dx, r.dy);
       return;
     }
     if(G.kind === 'swipe') dragSwipe(r.tx);
-    else if(G.kind === 'pan') panBy(r.dx, r.dy);
+    else if(G.kind === 'pan') dragPan(x, y);
   });
   const swallowNextClick = () => { S.swallowUntil = performance.now() + CLICK_AFTER_MS; };
-  const endPan = () => { view.classList.remove('is-panning'); swallowNextClick(); };
   function endGesture(r){
     const kind = G.kind;
     G.kind = null;
+    view.classList.remove('is-panning');
+    swallowNextClick();
     if(kind === 'swipe') endSwipe(r.tx || G.tx, r.vx || 0, !!r.cancelled);
-    endPan();
+    else if(kind === 'pan') endPan(r.vx || 0, r.vy || 0, !!r.cancelled);
   }
   listen(view, 'pointerup', e => {
     const r = arb.up(e.pointerId, e.timeStamp);
@@ -1370,11 +1415,12 @@ export function createWorld(host, hooks){
       if(i !== -1 && H.onTap) H.onTap(S.order[i]);
     }
   });
-  /* A cancelled touch (the browser took it to scroll the page) or a lost
-     capture ends a swipe where it started, never on the next place. Only
-     the view's own capture counts: a touch is captured to whatever it first
-     touched, and taking it for the view makes that element report the loss
-     (0.8.0 heard it as a cancel, so a touch pan ended on its first move). */
+  /* A cancelled touch (the system took it) or a lost capture ends a swipe
+     where it started, never on the next place, and a pan where it may rest,
+     carried nowhere. Only the view's own capture counts: a touch is
+     captured to whatever it first touched, and taking it for the view makes
+     that element report the loss (0.8.0 heard it as a cancel, so a touch
+     pan ended on its first move). */
   const cancel = e => {
     if(e.type === 'lostpointercapture' && e.target !== view) return;
     const r = arb.cancel(e.pointerId);
@@ -1567,7 +1613,7 @@ export function createWorld(host, hooks){
       geometries: info.memory.geometries, textures: info.memory.textures,
       programs: info.programs ? info.programs.length : null, frames: S.frames, frameMs: Math.round(S.cost * 100) / 100,
       width: S.w, height: S.h, pixelRatio: S.dpr, columns: S.cols, mode: S.mode, fits: S.fits, focus: S.focusId, selected: S.selected,
-      frame: S.frame ? { x: S.frame.x, z: S.frame.z, d: S.frame.d } : null, flying: !!S.fl, swipes: S.swipes,
+      frame: S.frame ? { x: S.frame.x, z: S.frame.z, d: S.frame.d } : null, flying: !!S.fl, swipes: S.swipes, gesture: G.kind,
       target: S.focusId && S.tiles.get(S.focusId) ? targetFor('focus') : S.over,
       running: !!S.raf, awake: awake(), lost: S.lost, failed: S.failed, tiles: S.tiles.size,
       built: placeGeos.size + partGeos.size, traffic: streetTime, residents: streetLife.filter(a => a.resident).length, centres: centres, life: life,

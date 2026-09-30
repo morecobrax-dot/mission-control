@@ -48,6 +48,14 @@ export const WORLD = {
      a finger that rested restMs before lifting has none. With nowhere to go
      the world gives at most `edge` of the view and comes back. */
   swipe: { axis: 1.3, minPx: 48, share: 0.2, flickPxMs: 0.35, flickMinPx: 24, trailMs: 100, restMs: 60, edge: 0.12 },
+  /* Any other drag pans (panStart): the ground under the finger stays under
+     it while the camera is where it may rest, and past that the city gives,
+     `give` of the finger at first and less and less, at most `reach` of the
+     view's shorter side (minPx..maxPx). Where the whole city is in view, and
+     in focus, the camera rests on one frame, so a drag only gives. A flick
+     carries a pan on for glideMs of its speed, never past where it may
+     rest; let go, it settles there, leaving at `settle` at least. */
+  pan: { give: 0.5, reach: 0.14, minPx: 28, maxPx: 96, glideMs: 160, settle: 1.6 },
   labelEase: 0.12,               // seconds: a label easing between on its place and in front of it
   slopPx: 8,                     // movement that turns a touch into a pan
   frameMinMs: 15,                // at most about 60 frames a second, even on a 120 Hz screen
@@ -333,8 +341,73 @@ export function clampFrame(f, island){
            d: Math.min(Math.max(f.d, WORLD.minDist), WORLD.maxDist) };
 }
 
-/* A drag of dx, dy px: the island follows the finger, within its bounds. */
-export function panFrame(f, dx, dy, W, H, island){ return clampFrame(shiftPx(f, -dx, -dy, H), island); }
+/* ---------- panning ----------
+   A drag moves the camera over the ground, never turning it and never
+   changing its distance. The ground point a finger went down on stays under
+   the finger (groundAt, the inverse of project), so the city follows it
+   exactly wherever it is held, not only at the middle of the view. Where
+   the camera may rest (panRest) is one frame, or, where the city is larger
+   than the view, a range over it; beyond that the city gives under the
+   finger, less and less, and never far (WORLD.pan). A drag that starts
+   beyond it (a flight caught on its way) starts where the camera is:
+   nothing jumps, the finger moves it freely between there and where it may
+   rest, and only a drag further out is resisted. Let go, a pan settles
+   where it may rest (panEnd). Where it may rest is in the city's own axes,
+   as clampFrame keeps the camera on the island; how far it gives is
+   measured on the screen's (u across, v toward the viewer), so it gives
+   the same up and down as across. */
+const clampTo = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
+
+/* The ground point (the road's level) a px in the view looks at. */
+export function groundAt(f, W, H, px, py){
+  const e = eyeOf(f), s = 2 * TAN / H, a = (px - W / 2) * s, b = (H / 2 - py) * s;
+  const dir = [FWD[0] + RIGHT[0] * a + UP[0] * b, FWD[1] + UP[1] * b, FWD[2] + RIGHT[2] * a + UP[2] * b];
+  const t = -e[1] / Math.min(dir[1], -1e-6);
+  return [e[0] + dir[0] * t, 0, e[2] + dir[2] * t];
+}
+/* Where a pan may rest: exactly `frame`, or, given the island instead,
+   anywhere a pad beyond the outer districts, as clampFrame keeps it. */
+export function panRest(frame, island){
+  if(frame) return { frame: frame, lo: { x: frame.x, z: frame.z }, hi: { x: frame.x, z: frame.z } };
+  const r = island.reach, m = EXTENT;
+  return { frame: null, lo: { x: r.minX - m, z: r.minZ - m }, hi: { x: r.maxX + m, z: r.maxZ + m } };
+}
+/* The most the city gives beyond where it may rest, in px. */
+export function panGive(W, H){ const P = WORLD.pan; return Math.min(P.maxPx, Math.max(P.minPx, P.reach * Math.min(W, H))); }
+const beyond = (over, most) => Math.sign(over) * most * Math.tanh(WORLD.pan.give * Math.abs(over) / most);
+
+/* A pan from frame f toward `rest` (panRest) in a W x H view. */
+export function panStart(f, rest, W, H){
+  const k = pxPerUnit(f, H), most = panGive(W, H);
+  return { d: f.d, W: W, H: H, k: k, mu: most / k, mv: most / (k * SP), rest: rest, x: f.x, z: f.z,
+           lo: { x: Math.min(rest.lo.x, f.x), z: Math.min(rest.lo.z, f.z) }, hi: { x: Math.max(rest.hi.x, f.x), z: Math.max(rest.hi.z, f.z) } };
+}
+/* The finger went from x0, y0 to x1, y1 (px in the view): the frame to
+   draw. A finger far outside the view is held half a view beyond it, where
+   the ground is still in sight. */
+export function panMove(s, x0, y0, x1, y1){
+  const f = { x: s.x, z: s.z, d: s.d }, cx = v => clampTo(v, -s.W / 2, s.W * 1.5), cy = v => clampTo(v, -s.H / 2, s.H * 1.5);
+  const a = groundAt(f, s.W, s.H, cx(x0), cy(y0)), b = groundAt(f, s.W, s.H, cx(x1), cy(y1));
+  s.x += a[0] - b[0]; s.z += a[2] - b[2];
+  return panShown(s);
+}
+/* Where the pan is drawn: its nearest point where it may go, and past that
+   what the city gives, on each of the screen's axes. */
+export function panShown(s){
+  const qx = clampTo(s.x, s.lo.x, s.hi.x), qz = clampTo(s.z, s.lo.z, s.hi.z), ex = s.x - qx, ez = s.z - qz;
+  const u = beyond(ex * RIGHT[0] + ez * RIGHT[2], s.mu), v = beyond(ex * TOWARD[0] + ez * TOWARD[2], s.mv);
+  return { x: qx + u * RIGHT[0] + v * TOWARD[0], z: qz + u * RIGHT[2] + v * TOWARD[2], d: s.d };
+}
+/* Let go with the finger moving at vx, vy (px per ms): where the camera
+   comes to rest, carried on by a flick unless `still`, and how fast it was
+   going ({ x, z, l } per ms, for the flight that takes it there). */
+export function panEnd(s, vx, vy, still){
+  const r = s.rest, gu = -(vx || 0) / s.k, gv = -(vy || 0) / (s.k * SP);
+  const vel = { x: gu * RIGHT[0] + gv * TOWARD[0], z: gu * RIGHT[2] + gv * TOWARD[2], l: 0 };
+  if(r.frame) return { frame: r.frame, vel: vel };
+  const t = still ? 0 : WORLD.pan.glideMs, at = panShown(s);
+  return { frame: { x: clampTo(at.x + vel.x * t, r.lo.x, r.hi.x), z: clampTo(at.z + vel.z * t, r.lo.z, r.hi.z), d: s.d }, vel: vel };
+}
 
 /* Bring a district and its label on screen, moving as little as possible;
    one already in view leaves the camera where it is. */

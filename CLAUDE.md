@@ -359,15 +359,30 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     brief" over a project nobody was looking at). A swipe never opens a
     brief. Contracts 23, 24 and 30.
 57. **One way the camera moves, and a drag is decided once.** Every move —
-    overview, focus, the next place, back — is a `planFlight` flight from
-    where the camera is, at the speed it already has, landing exactly on its
-    frame; instant under Reduce Motion. A drag's axis is decided as it
-    starts: in focus a clearly sideways one swipes (`swipeVerdict`: far
-    enough or flicked, never a twitch or a flick back), up and down belong
-    to the page (`touch-action: pan-y`), and a drag pans only while the city
-    does not fit at the overview. The next place is reading order, never
+    overview, focus, the next place, back, a pan settling — is a
+    `planFlight` flight from where the camera is, at the speed it already
+    has, landing exactly on its frame; instant under Reduce Motion. A drag's
+    axis is decided as it starts: in focus a clearly sideways one swipes
+    (`swipeVerdict`: far enough or flicked, never a twitch or a flick back);
+    every other drag pans (rule 58). The next place is reading order, never
     round the end; a swipe is reported once. Only the view's own lost
     capture ends a drag (a touch's implicit capture moving to the view is
     not a cancel). Labels readable where the camera goes are decided as it
     leaves, and a label whose words change glides; none jumps or flickers.
     Contract 30.
+58. **The world owns every touch that starts in it, and the hub is one
+    screen.** The view is `touch-action: none` to its square corners (only
+    what is drawn is rounded), so no drag there is ever the page's: 0.9.0
+    left up and down (`pan-y`) and its rounded corners to the page, and on
+    an iPhone a drag from the world's edge or empty ground moved the page.
+    Fix touch ownership where it lives, never with a global
+    `preventDefault`. A pan keeps the ground under the finger (`groundAt`)
+    wherever the camera may rest (`panRest`) and past that only gives,
+    bounded (`WORLD.pan`); at the overview while the whole city is in view,
+    and in focus, the camera rests on one frame, so a drag gives and
+    settles back instead of travelling empty space. No orbit, zoom or pinch.
+    Whatever else sends the camera (`goTo`) ends a drag under way where it
+    is drawn. With the world, `fitField` makes the hub one screen
+    (`html.hub-screen`): nothing to scroll on an upright phone, an iPad or
+    a desktop window; a phone on its side is the exception and scrolls by
+    its chrome. Contract 30.

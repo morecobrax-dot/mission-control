@@ -3408,11 +3408,74 @@ async function testWorld(){
 
   sub('the camera stays on the island and goes where it is sent');
   const ds6 = phone.districts, isl6 = W.islandOf(ds6), over = phone.frame, hts = themes6.map(W.placeHeight);
-  const far = W.panFrame(over, 1e6, -1e6, 358, 521, isl6);
-  T('a pan cannot lose the island: the camera looks at most a pad beyond the outer districts', W.onIsland(isl6, far.x, far.z, 0) &&
-    far.x <= isl6.reach.maxX + extent + 1e-9 && far.z >= isl6.reach.minZ - extent - 1e-9, JSON.stringify(far));
-  const nudge = W.panFrame(over, 30, 0, 358, 521, isl6), under = W.project([over.x, 0, over.z], nudge, 358, 521);
-  T('the island follows the finger', Math.abs(under.x - (179 + 30)) < 0.5 && Math.abs(under.y - 260.5) < 0.5, JSON.stringify(under));
+  /* Phase 3G.1: every drag in the world is the world's. The city must follow
+     the finger where it may go, give only a little where it may not, and
+     never be lost, jump or be left out of place. */
+  const pk = W.pxPerUnit(over, 521), SPt = Math.sin(W.WORLD.pitch), most = W.panGive(358, 521);
+  /* How far the city has moved on screen, in px at the camera's target, from
+     where frame `o` draws it to where `f` does: u to the right, v down. */
+  const offPx = (f, o) => { const dx = f.x - o.x, dz = f.z - o.z, cy = Math.cos(W.WORLD.yaw), sy = Math.sin(W.WORLD.yaw);
+    return { u: -(dx * cy - dz * sy) * pk, v: -(dx * sy + dz * cy) * pk * SPt }; };
+  const grid = W.groundAt(over, 358, 521, 40, 470);
+  T('groundAt is project\'s inverse: the ground a px looks at is drawn at that px, anywhere in the view',
+    [[40, 470], [179, 260.5], [350, 8], [2, 2]].every(([x, y]) => { const s = W.project(W.groundAt(over, 358, 521, x, y), over, 358, 521);
+      return Math.abs(s.x - x) < 1e-6 && Math.abs(s.y - y) < 1e-6; }) && grid[1] === 0);
+  const boxRest = W.panRest(null, isl6), rim = W.TILE.pad;
+  const inRest = f => f.x >= isl6.reach.minX - rim - 1e-6 && f.x <= isl6.reach.maxX + rim + 1e-6 &&
+    f.z >= isl6.reach.minZ - rim - 1e-6 && f.z <= isl6.reach.maxZ + rim + 1e-6 && W.onIsland(isl6, f.x, f.z, 0);
+  let pan = W.panStart(over, boxRest, 358, 521);
+  const held = W.panMove(pan, 40, 470, 110, 420), heldAt = W.project(grid, held, 358, 521);
+  T('where the camera may go, the ground a finger went down on stays under it, even at the view\'s edge',
+    Math.abs(heldAt.x - 110) < 0.01 && Math.abs(heldAt.y - 420) < 0.01, JSON.stringify(heldAt));
+  T('a pan never turns the camera and never changes its distance', held.d === over.d);
+  /* The finger flung off the view, up and to the right: the city gives
+     beyond the nearest place the camera may be, on each of the screen's
+     axes, never more than its share of the view. */
+  const thrown = W.panMove(pan, 110, 420, 1e5, -1e5);
+  const thrownOff = offPx(thrown, { x: Math.min(Math.max(pan.x, pan.lo.x), pan.hi.x), z: Math.min(Math.max(pan.z, pan.lo.z), pan.hi.z) });
+  T('past where it may rest the city gives, never more than its share of the view, however far the finger goes',
+    Math.abs(thrownOff.u) <= most + 0.01 && Math.abs(thrownOff.v) <= most + 0.01 && Math.abs(thrownOff.u) > most * 0.9 && Number.isFinite(thrown.x),
+    JSON.stringify(thrownOff));
+  /* Over a city with no end in sight, so nothing gives and only the finger decides. */
+  const openRest = W.panRest(null, W.islandOf([{ x: -1e6, z: -1e6 }, { x: 1e6, z: 1e6 }]));
+  const skyA = W.panMove(W.panStart(over, openRest, 358, 521), 179, 260, 179, -1e5), skyB = W.panMove(W.panStart(over, openRest, 358, 521), 179, 260, 179, -260.5);
+  T('a finger dragged far off the view is held half a view beyond it, where the ground is still in sight: no jump into the sky',
+    W.sameFrame(skyA, skyB) && Number.isFinite(skyA.x) && Number.isFinite(skyA.z), JSON.stringify(skyA));
+  const settled = W.panEnd(pan, 0, 0, true).frame;
+  T('let go, it settles where it may rest: over the island, a pad beyond the outer districts at most', inRest(settled) && settled.d === over.d,
+    JSON.stringify(settled));
+  pan = W.panStart(over, boxRest, 358, 521);
+  W.panMove(pan, 179, 260, 199, 260);
+  const glide = W.panEnd(pan, 0.2, 0, false), still = W.panEnd(pan, 0.2, 0, true), carried = offPx(glide.frame, still.frame);
+  T('a flick carries a pan on a little, the way the finger went, for its speed', Math.abs(carried.u - 0.2 * W.WORLD.pan.glideMs) < 0.01 &&
+    Math.abs(carried.v) < 0.01 && glide.vel.x !== 0, JSON.stringify(carried));
+  T('never past where it may rest, however hard', ['x', 'y'].every(ax => [-1, 1].every(sg => { const p = W.panStart(over, boxRest, 358, 521);
+    W.panMove(p, 179, 260, ax === 'x' ? 179 + sg * 5000 : 179, ax === 'y' ? 260 + sg * 5000 : 260);
+    return inRest(W.panEnd(p, ax === 'x' ? sg * 50 : 0, ax === 'y' ? sg * 50 : 0, false).frame); })));
+  /* Where the whole city is in view (every phone, at the overview) there is
+     nowhere to go: a drag only gives, and the overview is where it settles. */
+  const restO = W.panRest(over);
+  pan = W.panStart(over, restO, 358, 521);
+  const small = offPx(W.panMove(pan, 179, 260, 189, 260), over);
+  T('where the whole city is in view the camera rests on the overview: a drag gives, at first half the finger\'s way',
+    Math.abs(small.u - 10 * W.WORLD.pan.give) < 0.3 && Math.abs(small.v) < 1e-6, JSON.stringify(small));
+  const both = offPx(W.panMove(pan, 189, 260, 5189, 5260), over);
+  T('up, down and across alike, never more than its share of the view however far the finger goes',
+    Math.abs(both.u) <= most + 0.01 && Math.abs(both.v) <= most + 0.01 && both.u > most * 0.9 && both.v > most * 0.9, JSON.stringify(both));
+  T('and let go, however it was flicked, it settles exactly on the overview', W.panEnd(pan, 3, -3, false).frame === over && W.panEnd(pan, 0, 0, true).frame === over);
+  T('the most it gives is a share of the view\'s shorter side, within bounds', W.panGive(358, 521) === 358 * W.WORLD.pan.reach &&
+    W.panGive(100, 100) === W.WORLD.pan.minPx && W.panGive(2000, 2000) === W.WORLD.pan.maxPx);
+  /* A drag that catches the camera beyond where it may rest (a flight on its
+     way somewhere else, here 120 px to the right of the overview) must not
+     snap it back under the finger. */
+  const away = { x: over.x + Math.cos(W.WORLD.yaw) * 120 / pk, z: over.z - Math.sin(W.WORLD.yaw) * 120 / pk, d: over.d };
+  pan = W.panStart(away, restO, 358, 521);
+  T('a drag that catches the camera away from where it may rest starts where it is: nothing jumps', W.sameFrame(W.panShown(pan), away));
+  const back = offPx(W.panMove(pan, 179, 260, 239, 260), away);
+  T('the finger moves it freely back toward where it may rest', Math.abs(back.u - 60) < 0.5 && Math.abs(back.v) < 0.5, JSON.stringify(back));
+  const out = offPx(W.panMove(pan, 239, 260, 139, 260), away);
+  T('and only a drag further out than it was is resisted', out.u < -40 * W.WORLD.pan.give * 0.9 && out.u > -40 * W.WORLD.pan.give * 1.01, JSON.stringify(out));
+  T('let go, it settles on the overview', W.panEnd(pan, -1, 0, false).frame === over);
   const focus = W.focusFrame(ds6[5], hts[5], null, over, 358, 521);
   T('focus comes closer than the overview', focus.d < over.d && focus.d >= W.WORLD.minDist);
   T('and draws the place larger', W.districtPx(ds6[5], focus, 358, 521) > W.districtPx(ds6[5], over, 358, 521) * 1.2);
@@ -3460,8 +3523,9 @@ async function testWorld(){
      flight, and left the old one flying to the place. */
   T('a camera sent where it already is stops there: no earlier flight carries on',
     /\} else if\(sameFrame\(S\.frame, frame\)\)\{[\s\S]{0,160}S\.fl = null; S\.to = null; S\.vel = null; S\.hold = null;\s*\} else \{/.test(r3));
-  T('the renderer moves the camera only by these flights, leaving at its own velocity',
-    /const fl = planFlight\(S\.frame, frame, S\.w, S\.h, 0\);\s*fl\.v0 = flightSpeed\(fl, S\.vel\);/.test(r3) &&
+  T('the renderer moves the camera only by these flights, leaving at its own velocity (a settling pan at least briskly)',
+    /const fl = planFlight\(S\.frame, frame, S\.w, S\.h, 0\);\s*fl\.v0 = Math\.max\(flightSpeed\(fl, S\.vel\), lead \|\| 0\);/.test(r3) &&
+    W.WORLD.pan.settle > W.WORLD.flight.start && W.WORLD.pan.settle <= 3 &&
     /S\.frame = flightFrame\(S\.fl, u\);\s*S\.vel = velocityOf\(S\.fl, u\);/.test(r3) && !/mixFrame|transitionMs/.test(r3 + wj));
   T('the drawing buffer never exceeds two device pixels per CSS pixel', W.pixelRatioFor(3, 390, 520) === 2);
   T('nor a size a tablet pays for', W.pixelRatioFor(2, 1400, 1000) ** 2 * 1400 * 1000 <= W.WORLD.maxCanvasPixels + 1);
@@ -3606,9 +3670,18 @@ async function testWorld(){
   g.down(3, 0, 0); g.move(3, 30, 0);
   T('a lost capture ends a pan as a pan', g.cancel(3).type === 'pan-end');
   T('a stray event after the end does nothing', g.up(3) === null && g.move(3, 1, 1) === null);
-  T('the viewport takes sideways drags and leaves up and down to the page; it takes every drag only while it must pan',
-    /\.world-view\{[^}]*touch-action: pan-y;/.test(style) && /\.world-view\.is-pannable\{ touch-action: none;/.test(style) &&
-    (style.match(/touch-action: none/g) || []).length === 1 && /view\.classList\.toggle\('is-pannable', mode !== 'focus' && !S\.fits\);/.test(r3));
+  /* Phase 3G.1: 0.9.0 left up and down to the page (touch-action: pan-y),
+     and its box's rounded corners to the page's own touch-action: a drag
+     that began at the world's edge or in its empty ground moved the page. */
+  T('the world owns every drag that starts in its box: the page under it never takes one, up, down or sideways',
+    /\.world-view\{[^}]*touch-action: none;/.test(style) && !/pan-y|pan-x|is-pannable/.test(style + r3) &&
+    (style.match(/touch-action: none/g) || []).length === 1);
+  T('to its square corners: only what is drawn is rounded, so a touch in a corner is not handed to the page',
+    /\.world-host\{ position: absolute; inset: 0; pointer-events: none; \}/.test(style) &&
+    /\.world-view\{[^}]*position: absolute; inset: 0; overflow: hidden; pointer-events: auto;/.test(style) && !/\.world-view\{[^}]*border-radius/.test(style) &&
+    ['\\.world-view::before', '\\.world-canvas', '\\.world-layer'].every(s => new RegExp(s + '\\{[^}]*border-radius: var\\(--radius-xl\\)').test(style)));
+  T('and a drag there selects nothing, calls up no callout and flashes nothing',
+    /\.world-view\{[^}]*user-select: none;[^}]*-webkit-touch-callout: none;[^}]*-webkit-tap-highlight-color: transparent;/.test(style));
 
   /* Phase 3G: in focus a swipe goes to the next or previous place. The
      page must still scroll, a tap must still be a tap, and a slip of the
@@ -3644,8 +3717,20 @@ async function testWorld(){
   const give = W.swipeFrame(fromF, null, 2000, 358, 521, isl6), atEdge = W.project([fromF.x, 0, fromF.z], give, 358, 521);
   T('with nowhere to go the city gives a little, never more than its share of the view, and nothing moves on', Math.abs(atEdge.x - 179) > 1 &&
     Math.abs(atEdge.x - 179) <= W.WORLD.swipe.edge * 358 + 0.5);
-  T('in the renderer, only a clearly sideways drag in focus is a swipe; a drag that must pan pans; any other is the page\'s or nothing',
-    /G\.kind = S\.mode === 'focus' && S\.focusId && r\.axis === 'x' \? 'swipe' : S\.mode !== 'focus' && !S\.fits \? 'pan' : 'none';/.test(r3));
+  T('in the renderer, only a clearly sideways drag in focus is a swipe; every other drag pans: none is left to the page',
+    /G\.kind = S\.mode === 'focus' && S\.focusId && r\.axis === 'x' \? 'swipe' : 'pan';/.test(r3) && !/'none'/.test(code(r3)));
+  T('a pan rests on the place in focus, on the overview while the whole city is in view, and otherwise anywhere over it',
+    /function restFor\(mode\)\{\s*if\(mode === 'focus'\) return panRest\(targetFor\('focus'\)\);\s*return mode === 'overview' && S\.fits \? panRest\(S\.over\) : panRest\(null, S\.island\);/.test(r3));
+  T('a pan takes the camera where it is, even mid-flight, and holds the labels where it can only give',
+    /function startPan\(x, y, dx, dy\)\{\s*G\.mode = S\.mode;\s*G\.pan = panStart\(S\.frame, restFor\(S\.mode\), S\.w, S\.h\);\s*S\.fl = S\.to = null; S\.vel = null;\s*S\.hold = G\.pan\.rest\.frame \? S\.shown : null;/.test(r3));
+  T('let go, a pan settles by the one flight, carried by a flick only where it may move, never under Reduce Motion or after a cancel',
+    /const p = G\.pan, still = cancelled \|\| rm\(\), end = panEnd\(p, vx, vy, still\);/.test(r3) &&
+    /goTo\(end\.frame, mode, false, WORLD\.pan\.settle\);/.test(r3) && /fl\.v0 = Math\.max\(flightSpeed\(fl, S\.vel\), lead \|\| 0\);/.test(r3));
+  /* Overview pressed, the app's focus changing or the view reshaped while a
+     finger is down: two owners of the camera would fight, frame by frame. */
+  T('whatever else moves the camera ends a drag where the city is drawn: the finger\'s next moves do nothing and nothing is reported',
+    /function goTo\(frame, mode, instant, lead\)\{\s*abortGesture\(\);/.test(r3) &&
+    /function abortGesture\(\)\{\s*if\(!G\.kind\) return;\s*arb\.cancel\(\);\s*G\.kind = null; G\.pan = null;/.test(r3));
   T('a swipe moves the focus once, by telling the app; the next draw flies there', /S\.swipes\+\+;\s*H\.onNavigate\(id\);\s*if\(S\.focusId === id\) return;/.test(r3) &&
     (r3.match(/H\.onNavigate\(/g) || []).length === 2);
   T('a swipe the browser takes to scroll, or a lost capture, never navigates: it settles back', /const step = cancelled \? 0 : swipeVerdict\(tx, vx, S\.w\)/.test(r3) &&
@@ -3663,7 +3748,8 @@ async function testWorld(){
   const clickGuard = r3.slice(r3.indexOf("listen(view, 'click'"), r3.indexOf("listen(view, 'click'") + 260);
   T('the click a drag or an island tap would also make never reaches a button, however the camera has moved',
     /listen\(view, 'click', e => \{\s*if\(e\.detail === 0 \|\| performance\.now\(\) > S\.swallowUntil\) return;/.test(r3) && /, true\);/.test(clickGuard) &&
-    /const endPan = \(\) => \{ view\.classList\.remove\('is-panning'\); swallowNextClick\(\); \};/.test(r3) &&
+    /function endGesture\(r\)\{\s*const kind = G\.kind;\s*G\.kind = null;\s*view\.classList\.remove\('is-panning'\);\s*swallowNextClick\(\);/.test(r3) &&
+    /function abortGesture\(\)\{[^}]*swallowNextClick\(\);\s*\}/.test(r3) &&
     /if\(r\.type === 'tap' && S\.downOnIsland && S\.frame\)\{\s*swallowNextClick\(\);/.test(r3));
   T('and a keyboard\'s click is never swallowed', /e\.detail === 0/.test(clickGuard));
 
@@ -3691,8 +3777,35 @@ async function testWorld(){
     /if\(view\.style\.visibility && !S\.pending\)\{\s*view\.style\.visibility = '';[\s\S]{0,120}if\(H\.onReady\) H\.onReady\(\);/.test(r3) &&
     !/world-pending|visibility: hidden; \}/.test((css().match(/\.project-field\.world-loading[^}]*\}/g) || []).join('')));
   T('the world\'s box is what the screen has left, measured: above the tab bar, with the dock\'s room kept',
-    /vh - top - bar - dockH - gap/.test(js()) && /fitField\(\);\r?\n\}/.test(js()) && /addEventListener\('resize', fitField\)/.test(js()) &&
-    /if\(worldStage === 'off' \|\|/.test(js()));
+    /vh - top - dockH - below/.test(js()) && /const below = short \? bar \+ gap : Math\.max\(bar \+ gap, kept\);/.test(js()) &&
+    /fitField\(\);\r?\n\}/.test(js()) && /addEventListener\('resize', fitField\)/.test(js()) && /if\(worldStage === 'off' \|\| currentTab !== 'home' \|\|/.test(js()));
+  /* Phase 3G.1: 0.9.0's hub was always 51 px taller than the screen (the
+     page's bottom padding under the dock), so there was always a page to
+     drag, and on iOS one to bounce. */
+  T('with the world, the hub is one screen: below the dock the page keeps only the tab bar\'s room, and nothing bounces',
+    /html\.hub-screen\{ overscroll-behavior: none; \}/.test(css()) &&
+    /html\.hub-screen body\{ min-height: 0; padding-bottom: calc\(var\(--tabbar-h\) \+ var\(--inset-bottom\)\); \}/.test(css()) &&
+    /html\.hub-screen #view-home\{ padding-bottom: 0; \}/.test(css()));
+  T('only while the hub is shown with the world, and never on a phone on its side, where the hub scrolls to a world as tall as the screen',
+    /document\.documentElement\.classList\.toggle\('hub-screen', \(worldStage === 'loading' \|\| worldStage === 'on'\) && currentTab === 'home' && !short\);/.test(js()) &&
+    /const tabbar = document\.querySelector\('\.tabbar'\);\s*if\(tabbar\) tabbar\.addEventListener\('click', fitField\);/.test(js()) &&
+    !/fitField/.test(fnSrc('switchTab')));
+  {
+    const hs = () => app.dom.document.documentElement.classList.contains('hub-screen');
+    const was = [c.worldStage, c.currentTab];
+    c.window.innerWidth = 390; c.window.innerHeight = 844;
+    c.worldStage = 'on'; c.currentTab = 'home'; c.fitField();
+    const onHub = hs();
+    c.currentTab = 'settings'; c.fitField();
+    const onSettings = hs();
+    c.currentTab = 'home'; c.window.innerWidth = 844; c.window.innerHeight = 390; c.fitField();
+    const sideways = hs();
+    c.window.innerWidth = 390; c.window.innerHeight = 844; c.worldStage = 'off'; c.fitField();
+    const flat = hs();
+    c.worldStage = was[0]; c.currentTab = was[1]; delete c.window.innerWidth; delete c.window.innerHeight; c.fitField();
+    T('and the page says so: on for the hub with the world; off on Settings, on its side and with the flat field', onHub && !onSettings && !sideways && !flat,
+      JSON.stringify([onHub, onSettings, sideways, flat]));
+  }
   T('each renderer has its own host in one box', /<div class="field-box">\s*<div class="project-field" id="projectField"[^>]*><\/div>\s*<div class="world-host" id="worldHost"/.test(H.readApp()));
   T('no errors', app.errors.length === 0, app.errors.join(' | '));
 }

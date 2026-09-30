@@ -1078,24 +1078,25 @@ body.scroll-locked{
 .project-field.is-world{ padding: 0; background: var(--world-sky-bottom); }
 /* Loading: the flat field, whole and usable, in the world's box. */
 .project-field.world-loading{ display: flex; flex-direction: column; justify-content: center; overflow-y: auto; }
-.world-host{
-  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
-  border-radius: var(--radius-xl);
-}
-/* The world's own ground: warm ivory, lightest where the city stands. A
-   drag sideways is the world's (in focus, to the next place); a drag up or
-   down still scrolls the page. Only while the whole city is not in view at
-   the overview does the world take every drag, to pan it. */
+.world-host{ position: absolute; inset: 0; pointer-events: none; }
+/* The whole box is the world's, to its square corners: every drag that
+   starts in it moves the world (a swipe or a pan), never the page, and
+   selects nothing. Only what is drawn is rounded, the ground, the city and
+   its labels, so a touch in a corner is not handed to the page. The ground
+   is warm ivory, lightest where the city stands. */
 .world-view{
-  position: absolute; inset: 0; overflow: hidden; pointer-events: auto;
+  position: absolute; inset: 0; overflow: hidden; pointer-events: auto; cursor: grab;
+  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.world-view::before{
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: var(--radius-xl);
   background: radial-gradient(ellipse at 50% 45%, var(--world-glow), transparent 70%),
     linear-gradient(180deg, var(--world-sky-top), var(--world-sky-bottom));
-  touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
-.world-view.is-pannable{ touch-action: none; cursor: grab; }
 .world-view.is-panning{ cursor: grabbing; }
-.world-canvas{ position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
-.world-layer{ position: absolute; inset: 0; pointer-events: none; }
+.world-canvas{ position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: var(--radius-xl); }
+.world-layer{ position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: var(--radius-xl); }
 /* One real button per project: its keyboard stop and accessible name,
    holding its label. render3d.js moves it by transform alone, every frame,
    and measures it only when its words change. A tap on the island is
@@ -1180,6 +1181,17 @@ body.scroll-locked{
 /* Away at the overview, where it would do nothing, but still laid out, so
    it is measured with the view and never in a frame. */
 .world-overview.is-away{ visibility: hidden; }
+
+/* ---- The hub with the world is one screen, not a page ----
+   fitField() gives the world's box the height the screen has left and marks
+   the hub .hub-screen: the document then ends at the dock's room above the
+   tab bar, with nothing under the fold, so there is nothing to scroll or to
+   bounce and a drag anywhere is the world's or the chrome's own. A phone on
+   its side has no such screen (the world takes its whole height), so there
+   this is off and the hub scrolls as a page. */
+html.hub-screen{ overscroll-behavior: none; }
+html.hub-screen body{ min-height: 0; padding-bottom: calc(var(--tabbar-h) + var(--inset-bottom)); }
+html.hub-screen #view-home{ padding-bottom: 0; }
 
 /* ---- The dock: the selected project, one tap from its brief ----
    Directly under the world and always the same height — a hint until
@@ -1702,6 +1714,23 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-9-1',
+    version: '0.9.1',
+    title: 'Hands on the city',
+    date: '2026-09-30',
+    summary: 'A drag that starts in the city now moves the city, never the page, and the hub sits still as one screen.',
+    newFeatures: [
+      'At the overview the city moves with your finger in any direction and settles back when you let go; a city larger than the screen pans to show the rest'
+    ],
+    improvements: [
+      'A drag that starts anywhere in the world, at an edge, in a corner or on the empty ground around the city, moves the city and never the page',
+      'The hub fits the screen above the tab bar, so there is nothing behind the world to scroll or bounce',
+      'In focus a drag up or down gives a little and settles back; a sideways swipe still goes to the next project',
+      'Overview always brings back the whole city, even in the middle of a drag',
+      'With Reduce Motion a drag still follows your finger and is back at once when you let go'
+    ]
+  },
   {
     id: 'v0-9-0',
     version: '0.9.0',
@@ -3543,17 +3572,17 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = '7b4dbadc9f8a';
-const WORLD_MODULE = './release/render3d.bc44354e8ca1.js';
+const APP_RELEASE = 'db5e993b14e8';
+const WORLD_MODULE = './release/render3d.aa03502f2244.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
   './release/dayplan-diorama.c60794997357.glb',
   './release/golden-diorama.e0b21a1c4dcc.glb',
-  './release/render3d.bc44354e8ca1.js',
+  './release/render3d.aa03502f2244.js',
   './release/savings-diorama.9099b2690506.glb',
   './release/spacek-diorama.7b9d1f6a6052.glb',
   './release/three.min.0c9283a1079c.js',
-  './release/world.1b0aab428b87.js'];
+  './release/world.dd67ed4a1f5d.js'];
 /* APP-RELEASE-END */
 
 function fieldScene(views){
@@ -3727,23 +3756,30 @@ function setWorldLayout(on){
 /* The world's box takes the height the screen has left: from where the box
    starts to the tab bar, less the dock and its gap. Measured, so a second
    row of attention, a safe area or a docked brief changes it, and nothing
-   is guessed per device. On a phone on its side the box takes the screen's
-   whole height under the tab bar and the page scrolls to it, so the places
-   stay large enough to read and to tap. The camera frames whatever it gets. */
+   is guessed per device. The hub is then one screen (.hub-screen): below
+   the dock the document keeps no more than the tab bar and the gap cover,
+   so nothing is under the fold. On a phone on its side the box takes the
+   screen's whole height under the tab bar and the page scrolls to it, so
+   the places stay large enough to read and to tap. The camera frames
+   whatever it gets. Measured only while the hub is shown: a hidden hub
+   has no size, and it is measured again as it comes back. */
 const FIELD_MIN = 280, FIELD_MIN_SHORT = 180, FIELD_MAX = 1000;
 function fitField(){
-  const field = document.getElementById('projectField');
-  if(worldStage === 'off' || !field || typeof field.getBoundingClientRect !== 'function') return;
+  const field = document.getElementById('projectField'), home = document.getElementById('view-home');
+  const vh = window.innerHeight, vw = window.innerWidth;
+  const short = vh <= 500 && vw > vh;
+  document.documentElement.classList.toggle('hub-screen', (worldStage === 'loading' || worldStage === 'on') && currentTab === 'home' && !short);
+  if(worldStage === 'off' || currentTab !== 'home' || !field || !home || typeof field.getBoundingClientRect !== 'function') return;
   try{
-    const vh = window.innerHeight, vw = window.innerWidth;
     if(!vh) return;
     const tab = document.querySelector('.tabbar'), dock = document.getElementById('focusBar');
     const bar = tab ? tab.getBoundingClientRect().height : 0;
     const dockH = dock && getComputedStyle(dock).display !== 'none' ? dock.getBoundingClientRect().height + 4 : 0;
     const gap = 8;
-    const short = vh <= 500 && vw > vh;
+    const kept = (parseFloat(getComputedStyle(document.body).paddingBottom) || 0) + (parseFloat(getComputedStyle(home).paddingBottom) || 0);
+    const below = short ? bar + gap : Math.max(bar + gap, kept);
     const top = short ? gap : field.getBoundingClientRect().top + (window.scrollY || 0);
-    const h = Math.round(Math.min(FIELD_MAX, Math.max(short ? FIELD_MIN_SHORT : FIELD_MIN, vh - top - bar - dockH - gap)));
+    const h = Math.round(Math.min(FIELD_MAX, Math.max(short ? FIELD_MIN_SHORT : FIELD_MIN, vh - top - dockH - below)));
     const now = parseFloat(field.style.getPropertyValue('--world-h')) || 0;
     if(Math.abs(now - h) >= 1) field.style.setProperty('--world-h', h + 'px');
   }catch(e){}
@@ -4798,6 +4834,11 @@ Domain.wire    = () => {
   /* A rotation, a resized window or a docked brief gives the world a new
      box; the world reframes itself inside it. */
   window.addEventListener('resize', fitField);
+  /* The hub is one screen only while it is shown: a tab's click, heard
+     after the foundation has switched the tab, says which, and measures
+     the hub again as it comes back. */
+  const tabbar = document.querySelector('.tabbar');
+  if(tabbar) tabbar.addEventListener('click', fitField);
   /* The first screen is already drawn from what is stored; the world and
      the repositories come after it, so neither holds up the app. */
   startWorld();
