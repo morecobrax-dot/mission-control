@@ -31,8 +31,8 @@ and works offline.
   set into its own paved block among streets, planted lanes, a canal with
   footbridges, trees and parked cars. Each app has its own architecture: a
   rooftop track, a clock tower, a reading house, a vault entrance, an
-  observatory or a sushi storefront. Box trucks and residents are ambient
-  scenery; they do not represent live AI activity. Project-specific activity
+  observatory or a sushi storefront. A small service truck and two
+  passers-by are ambient scenery; they do not represent live AI activity. Project-specific activity
   still follows recorded work state. Each has its name and one status on its
   label (what needs you comes first), a status light lit only by a known
   state, and a worker whose station and pose follow that state; a project

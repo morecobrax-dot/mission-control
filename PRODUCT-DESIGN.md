@@ -238,8 +238,8 @@ The product's own rules, on top of everything above.
   — runners on the track, plates on the belt, pages turning — only while its
   project is known to be under way. Where nothing is recorded, where work is
   blocked or paused, and under Reduce Motion, it holds still. Life never
-  speeds up, grows or counts with anything. Separate residents and box trucks
-  travel the streets as decorative city life. They are not Claude agents,
+  speeds up, grows or counts with anything. A small service truck and two
+  passers-by travel the streets as decorative city life. They are not Claude agents,
   proof of project activity or a progress metric. Their appearance never
   changes the actual worker state.
 - **Chosen and in focus are two things.** One tap focuses a project, a
@@ -280,7 +280,8 @@ The product's own rules, on top of everything above.
 - **Actions appear only when they work.** A tool that is not set up is not
   shown; the brief says where to set it up instead.
 - **Two honest motion layers.** Status workers and beacons represent the
-  declared project state; residents and trucks provide bounded city ambience.
+  declared project state; one service truck and two passers-by provide
+  bounded city ambience.
   Blocked workers stand still and paused workers sit. All motion settles five
   minutes after you last touch the world, stops when hidden, and respects
   Reduced Motion. Nothing claims live agent execution.

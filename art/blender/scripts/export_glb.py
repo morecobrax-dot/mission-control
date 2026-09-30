@@ -42,6 +42,12 @@ import mc_worker
 # every exported file against it; keep the two equal.
 DISTRICT_BUDGET = {'triangles': 80000, 'drawCalls': 24, 'materials': 16, 'workers': 8,
                    'bytes': 2000000, 'textures': 0}
+# City life's passers-by (models/street_life.py, a scene marked mc_asset =
+# 'street'): two people, packed like a district's crew. STREET_BUDGET in
+# field/world.js; keep the two equal.
+STREET_BUDGET = {'triangles': 8000, 'drawCalls': 4, 'materials': 4, 'workers': 2,
+                 'bytes': 250000, 'textures': 0}
+BUDGETS = {'district': DISTRICT_BUDGET, 'street': STREET_BUDGET}
 CONTENT = {'PROJECT_CONTENT', 'PLATFORM_BASE', 'STATUS_LIGHTS'}
 STATUS = 'MC_STATUS_LIGHT'
 
@@ -173,8 +179,11 @@ def copy_fcurve(src, cb, path):
 
 
 def merge_crew(rigs, families):
-    """Every worker into one skinned mesh on one skeleton. Returns the rig."""
-    crew, meshes, clips, axes = [], [], {c: [] for c in mc_worker.CLIPS}, {}
+    """Every worker into one skinned mesh on one skeleton. Returns the rig.
+    The clips are the ones the rigs carry: a district's crew its five, the
+    passers-by their walk and pause."""
+    crew, meshes, clips, axes = [], [], {}, {}
+    stride = next((r['mc_stride'] for r in rigs if 'mc_stride' in r.keys()), None)
     for rig in rigs:
         role = role_of(rig)
         pre = role + '__'
@@ -194,15 +203,17 @@ def merge_crew(rigs, families):
         for name in rig.get('mc_clips', '').split(','):
             act = bpy.data.actions.get(name)
             if act:
-                clips[name.split('.')[0]].append((pre, channelbag(act)))
+                clips.setdefault(name.split('.')[0], []).append((pre, channelbag(act)))
         if rig.animation_data:
             rig.animation_data.action = None
     merged = join(list(rigs))
     merged.name = merged.data.name = rigs[0].name.split('_Worker_')[0] + '_Crew_Rig'
-    for k in ('worker_pose', 'mc_clips', 'mc_role', 'worker_outfit'):
+    for k in ('worker_pose', 'mc_clips', 'mc_role', 'worker_outfit', 'mc_stride'):
         if k in merged.keys():
             del merged[k]
     merged['mc_crew'] = ','.join(crew)
+    if stride is not None:
+        merged['mc_stride'] = stride        # metres one walk clip covers, measured on the rig (mc_walker)
     to_local = merged.matrix_world.to_3x3().inverted()
     select_only([merged], merged)
     bpy.ops.object.mode_set(mode='EDIT')
@@ -376,12 +387,15 @@ def audit(objs, out, crew_rig):
         'workers': workers,
         'crew': crew_rig['mc_crew'] if crew_rig else '',
         'status_meshes': sorted(o.name for o in objs if o.type == 'MESH' and is_status(o)),
-        'clips': list(mc_worker.CLIPS),
+        'clips': list(getattr(merge_crew, 'parts', {}).keys()) if crew_rig else [],
     }
+    kind = bpy.context.scene.get('mc_asset', 'district')
+    budget = BUDGETS[kind]
+    rep['asset'] = kind
     measured = {'triangles': tris, 'drawCalls': prims, 'materials': len(mats), 'workers': workers,
                 'bytes': rep['bytes'], 'textures': 0}
-    rep['budget'] = {k: {'limit': DISTRICT_BUDGET[k], 'actual': measured[k], 'ok': measured[k] <= DISTRICT_BUDGET[k]}
-                     for k in DISTRICT_BUDGET}
+    rep['budget'] = {k: {'limit': budget[k], 'actual': measured[k], 'ok': measured[k] <= budget[k]}
+                     for k in budget}
     rep['within_budget'] = all(v['ok'] for v in rep['budget'].values())
     return rep
 

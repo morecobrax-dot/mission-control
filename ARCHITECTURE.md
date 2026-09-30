@@ -577,15 +577,31 @@ no status worker or lit status beacon. Worker stations and poses follow
 Project-specific life such as a rooftop runner, clock hand or chef's knife
 uses the existing state rules and never invents activity.
 
-Separate city ambience has no project inputs. `streetPose(bounds, time,
-offset)` describes a continuous rounded rectangular route. Three shared box
-truck models keep to the ring road's outer lane, clear of every block and of
-the cars parked at its inner curb, and up to ten resident models walk the
-sidewalks round the places, never across one. They use the single render clock, sleep when hidden or
-settled, and remain still under Reduced Motion. They never represent an AI
-agent, work rate, transfer, progress or an integration. Geometries and
-materials are shared across vehicles and residents; rebuilding the layout
-replaces scene nodes without allocating new copies of their shared assets.
+Separate city ambience has no project inputs: one small service truck and
+two passers-by (Living City 1, 0.9.2), each placed by a pure function of the
+world's one clock, `streetTime`, over a route `cityPlan` computes from the
+places' positions. The truck (`driveAt`, `DRIVE`) is the city's box truck
+recipe at 0.85 scale on one circuit of the ring road's outer lane: it keeps
+right (anticlockwise as seen), eases from its pace to a slower one through
+each quarter turn over a speed table integrated once per plan, and its
+whole body clears the promenade, blocks, parked cars, tree crowns and canal
+by at least 0.1, its wheels on the road (contract 30 sweeps it every 5 cm
+in eleven cities). Each passer-by (`walkWays`, `walkerAt`) walks one
+stretch of paving — a planted lane, else a street's sidewalk, else a
+place's side — in a different row from the other: stop, walk, stand and
+turn round, walk back, turn, walk on, eased at every stop, at its own pace
+and period so the two are never in step, and continuous over the day's
+join. The passers-by are one authored file (`STREET`, `street-life.glb`),
+loaded and waited for like a place's (`startStreet`), one skinned mesh on
+one skeleton whose `<role>__root` bones the app stands where `walkerAt`
+says after the clips, which carry no root motion; the walk clip's phase
+follows the distance walked (`WALK.cycle` is the measured stride), so no
+foot slides. The clock runs only while the world's life does, never under
+Reduce Motion: a still world holds the truck where it is and stands each
+passer-by at ease. Neither casts into the cached shadow map (each has a
+soft shadow of its own) nor takes a tap, and neither ever represents an AI
+agent, work rate, transfer, progress or an integration. Both are made once;
+a new layout only gives them new ways.
 
 **`IsoField` is the fallback**: one `<button>` per project containing an
 inline isometric SVG platform, landmarks as data (`LANDMARKS`), CSS motion

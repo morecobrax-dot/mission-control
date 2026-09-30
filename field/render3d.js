@@ -37,7 +37,7 @@ import {
   pixelRatioFor, nextPixelRatio, shouldStepDown, districtPx, resolveLabels, createArbiter, swipeVerdict, swipeFrame, neighbourOf,
   CREW, CREW_FACING, poseFor, crewLoops,
   lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS,
-  placeHeight, cityPlan, cityParts, TRUCK_PARTS, RESIDENT_PARTS, streetPose, sidewalkLoop,
+  placeHeight, cityPlan, cityParts, TRUCK_PARTS, DRIVE, WALK, STREET, driveAt, walkerAt,
   assetFor, assetFloor, assetHeight, assetCrew, ASSET_STATUS_MATERIAL, ASSET_LIFE_CLIP, CREW_JOIN, LIGHT, lightDirection
 } from './world.js';
 
@@ -461,7 +461,7 @@ export function createWorld(host, hooks){
     Object.assign(key.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: .5, far: radius*4.5 });
     key.shadow.camera.updateProjectionMatrix();
     renderer.shadowMap.needsUpdate = true;
-    buildStreetLife(plan, districts);
+    buildStreetLife(plan);
     return island;
   }
 
@@ -515,32 +515,62 @@ export function createWorld(host, hooks){
     r.legR.rotation.x = p.legR || 0;
   }
 
-  /* Street residents and trucks are decorative city life. They never read a
-     status or stand in for a worker, and share the world's one clock. */
-  let streetLife = [], streetTime = 0;
+  /* ---------- city life ----------
+     One small service truck and two passers-by: scenery, like the trees
+     (world.js DRIVE, WALKERS). Where each is comes from world.js alone, a
+     pure function of streetTime, the world's one clock, which runs only
+     while the world's life does (seen, uncovered, not settled) and never
+     under Reduce Motion: a still world holds the truck where it is and
+     stands everyone at ease. They never read a status, never take a tap
+     (taps are hit-tested against the places, and labels and controls are
+     the page's), and never cast into the cached shadow map: each carries a
+     soft shadow of its own. Made once; a new layout only gives them new
+     ways, so rotating never piles up copies. */
+  let streetTime = 0, streetPlan = null;
   const streetGroup = new THREE.Group(); scene.add(streetGroup);
-  function buildStreetLife(plan, districts){
-    streetGroup.clear(); streetLife = [];
-    /* Trucks keep to the ring road's outer lane; a resident walks the sidewalk round a place. */
-    for(let i=0;i<3;i++){
-      const g = new THREE.Group();
-      meshesFor(partsGeo('city-truck',TRUCK_PARTS),g,false).forEach(m=>{m.castShadow=false;});
-      const shade = new THREE.Mesh(geos.shadow,mats.shadow); shade.scale.set(1.7,1,3); shade.position.y=.03;g.add(shade);
-      streetGroup.add(g); streetLife.push({g:g,bounds:plan.loop,offset:i*21,resident:false});
-    }
-    districts.slice(0,10).forEach((d,i)=>{
-      const g = new THREE.Group(); meshesFor(partsGeo('city-resident',RESIDENT_PARTS),g,false).forEach(m=>{m.castShadow=false;});
-      streetGroup.add(g);
-      streetLife.push({g:g,bounds:sidewalkLoop(d),offset:i*8,resident:true});
-    });
-    stepStreetLife(0,false);
+  const truck = new THREE.Group();
+  meshesFor(partsGeo('city-truck', TRUCK_PARTS), truck, false).forEach(m => { m.castShadow = false; });
+  const truckShade = new THREE.Mesh(geos.shadow, mats.shadow); truckShade.scale.set(1.7, 1, 3); truckShade.position.y = .03; truck.add(truckShade);
+  truck.scale.setScalar(DRIVE.scale);
+  truck.visible = false;
+  streetGroup.add(truck);
+  const walkers = { list: [], mixer: null, stride: WALK.cycle, state: 'loading' };
+  function buildStreetLife(plan){
+    streetPlan = plan;
+    truck.visible = !!plan.drive;
+    walkers.list.forEach((w, i) => { w.way = plan.walks[i] || null; });
+    stepStreetLife(0, false);
   }
-  function stepStreetLife(dt,ambient){
-    if(rm()) streetTime=0; else if(ambient) streetTime+=dt;
-    streetLife.forEach(a=>{
-      const p=streetPose(a.bounds,streetTime*(a.resident?.28:1),a.offset);
-      a.g.position.set(p.x,a.resident?CITY.walk:0,p.z);a.g.rotation.y=p.turn;
-      if(a.resident && ambient) a.g.position.y+=Math.abs(Math.sin(streetTime*4+a.offset))*.025;
+  const streetM = new THREE.Matrix4(), streetR = new THREE.Matrix4();
+  function stepStreetLife(dt, ambient){
+    const alive = ambient && !rm();
+    if(alive) streetTime += dt;
+    if(streetPlan && streetPlan.drive){
+      const p = driveAt(streetPlan.drive, streetTime);
+      truck.position.set(p.x, 0, p.z); truck.rotation.y = p.turn;
+    }
+    walkers.list.forEach(w => {
+      const on = !!(w.way && streetPlan);
+      w.shade.visible = on;
+      /* A city too small for two ways (one place) has one passer-by: the
+         other shares the one mesh, so it is folded to nothing, not left
+         standing where the file put it. */
+      if(!on){ w.walk.setEffectiveWeight(0); w.pause.setEffectiveWeight(1); w.at = null; w.root.scale.setScalar(0); return; }
+      const p = walkerAt(w.way, streetTime), pace = alive ? p.walking : 0;
+      w.walk.time = (p.stride / walkers.stride % 1) * w.walk.getClip().duration;
+      w.walk.setEffectiveWeight(pace);
+      w.pause.time = alive ? (streetTime + w.offset) % w.pause.getClip().duration : 0;
+      w.pause.setEffectiveWeight(1 - pace);
+      w.at = p;
+      w.shade.position.set(p.x, CITY.walk + 0.012, p.z);
+    });
+    if(walkers.mixer) walkers.mixer.update(0);
+    /* Each passer-by stands on the paving where world.js says, facing its way:
+       its root is set after the clips, which never move it. */
+    walkers.list.forEach(w => {
+      if(!w.at) return;
+      streetM.copy(w.rest).premultiply(streetR.makeRotationY(w.at.turn - w.face0)).setPosition(w.at.x, CITY.walk, w.at.z).premultiply(w.parentInverse);
+      streetM.decompose(w.root.position, w.root.quaternion, w.root.scale);
     });
   }
 
@@ -565,6 +595,28 @@ export function createWorld(host, hooks){
     return p;
   }
   const trackTarget = name => name.slice(0, name.lastIndexOf('.'));
+  /* An authored crew is one skinned mesh on one skeleton (the export joins
+     every worker, export_glb.py): its rig says each role and the clip it was
+     posed with ("coach:WORKING,..."), and each role's bones are named
+     "<role>__<bone>", so each worker gets its own slice of every clip, less
+     any bone the app moves itself (`drop`). */
+  function crewRigOf(inst){
+    let rig = null;
+    inst.traverse(o => { if(!rig && o.userData && o.userData.mc_crew) rig = o; });
+    return rig;
+  }
+  function crewOf(file, crewRig, drop){
+    const bones = {};
+    crewRig.traverse(o => { const i = o.name.indexOf(CREW_JOIN); if(i > 0) (bones[o.name.slice(0, i)] = bones[o.name.slice(0, i)] || new Set()).add(o.name); });
+    return String(crewRig.userData.mc_crew).split(',').map(entry => {
+      const [role, pose] = entry.split(':'), names = bones[role] || new Set(), clips = {};
+      file.gltf.animations.forEach(c => {
+        const tracks = c.tracks.filter(tr => names.has(trackTarget(tr.name)) && !(drop && drop(trackTarget(tr.name))));
+        if(tracks.length) clips[c.name] = new THREE.AnimationClip(c.name, c.duration, tracks);
+      });
+      return { role: role, authored: 'MC_' + pose, clips: clips };
+    });
+  }
   function buildAsset(t, spec, file){
     const box = file.box, k = spec.span / (box.max.x - box.min.x), floor = assetFloor(spec.span);
     const inst = THREE.cloneSkinned(file.gltf.scene);
@@ -590,26 +642,10 @@ export function createWorld(host, hooks){
       /* A skinned worker moves outside its bind-pose bounds. */
       if(o.isSkinnedMesh) o.frustumCulled = false;
     });
-    /* The crew is one skinned mesh on one skeleton (the export joins every
-       worker, export_glb.py): its rig says each role and the clip it was
-       posed with ("coach:WORKING,..."), and each role's bones are named
-       "<role>__<bone>", so each worker gets its own slice of every clip. */
+    /* Each worker its own slice of every clip (crewOf). */
     const mixer = new THREE.AnimationMixer(inst);
-    const crew = [];
-    let crewRig = null;
-    inst.traverse(o => { if(!crewRig && o.userData && o.userData.mc_crew) crewRig = o; });
-    if(crewRig){
-      const bones = {};
-      crewRig.traverse(o => { const i = o.name.indexOf(CREW_JOIN); if(i > 0) (bones[o.name.slice(0, i)] = bones[o.name.slice(0, i)] || new Set()).add(o.name); });
-      String(crewRig.userData.mc_crew).split(',').forEach(entry => {
-        const [role, pose] = entry.split(':'), names = bones[role] || new Set(), clips = {};
-        file.gltf.animations.forEach(c => {
-          const tracks = c.tracks.filter(tr => names.has(trackTarget(tr.name)));
-          if(tracks.length) clips[c.name] = new THREE.AnimationClip(c.name, c.duration, tracks);
-        });
-        crew.push({ role: role, authored: 'MC_' + pose, clips: clips, action: null, pace: 0 });
-      });
-    }
+    const crewRig = crewRigOf(inst);
+    const crew = crewRig ? crewOf(file, crewRig).map(c => Object.assign(c, { action: null, pace: 0 })) : [];
     /* A place's own authored life (a clock, a light moving down a lane): one
        clip, MC_LIFE, on its own nodes, played under the same rules as every
        place's life (world.js lifeActive). */
@@ -653,6 +689,53 @@ export function createWorld(host, hooks){
       if(!S.destroyed && !t.dropped) showAsset(t, false);
     }).then(() => { clearTimeout(late); if(!S.destroyed && !t.dropped) settleAsset(t); });
   }
+
+  /* The passers-by: one file (world.js STREET) loaded like a place's and
+     waited for like one, so the first frame shown has them, their programs
+     compiled; a file that fails or is late leaves the city without them and
+     never holds it up. Each walker's root is its own: the clips never move
+     it (its tracks are dropped), stepStreetLife stands it where world.js
+     says, turned from the way it faced in the file. */
+  function startStreet(){
+    S.pending++;
+    let done = false;
+    const settle = () => { if(done) return; done = true; S.pending = Math.max(0, S.pending - 1); S.dirty = true; wake(); };
+    const late = setTimeout(settle, ASSET_WAIT_MS);
+    loadAsset(STREET).then(file => {
+      if(S.destroyed) return;
+      buildWalkers(file);
+      return (renderer.compileAsync ? renderer.compileAsync(scene, camera) : Promise.resolve()).catch(() => {});
+    }).catch(() => { walkers.state = 'failed'; }).then(() => { clearTimeout(late); if(!S.destroyed) settle(); });
+  }
+  function buildWalkers(file){
+    const inst = THREE.cloneSkinned(file.gltf.scene), rig = crewRigOf(inst);
+    if(!rig) throw new Error('street: no crew');
+    inst.scale.setScalar(STREET.metre);
+    inst.traverse(o => { if(o.isMesh){ o.castShadow = false; o.receiveShadow = true; o.frustumCulled = false; } });
+    streetGroup.add(inst);
+    inst.updateMatrixWorld(true);
+    const stride = Number(rig.userData.mc_stride);
+    if(stride > 0) walkers.stride = stride * STREET.metre;
+    walkers.mixer = new THREE.AnimationMixer(inst);
+    const f = new THREE.Vector3();
+    walkers.list = crewOf(file, rig, name => name.endsWith(CREW_JOIN + 'root')).map((c, i) => {
+      const root = rig.getObjectByName(c.role + CREW_JOIN + 'root');
+      /* How it stood in the file, less where: turned from there, it faces its way. */
+      const rest = root.matrixWorld.clone().setPosition(0, 0, 0);
+      f.set(0, 1, 0).transformDirection(rest);
+      const walk = walkers.mixer.clipAction(c.clips.MC_WALK), pause = walkers.mixer.clipAction(c.clips.MC_PAUSE);
+      [walk, pause].forEach(a => { a.play(); a.setEffectiveWeight(0); });
+      const shade = new THREE.Mesh(geos.shadow, mats.shadow);
+      shade.scale.set(0.75, 1, 0.75);
+      streetGroup.add(shade);
+      return { role: c.role, root: root, rest: rest, face0: Math.atan2(f.x, f.z),
+               parentInverse: root.parent.matrixWorld.clone().invert(), walk: walk, pause: pause, shade: shade,
+               offset: i * 1.7, way: streetPlan ? streetPlan.walks[i] || null : null, at: null };
+    });
+    walkers.state = 'on';
+    stepStreetLife(0, false);
+  }
+  startStreet();
 
   /* Status lights the rim, the beacon and every helmet, only when known;
      a paused place is the same place in lower light; each worker does what
@@ -1086,7 +1169,7 @@ export function createWorld(host, hooks){
   /* ---------- crews, life and beacons ---------- */
   function ambientWanted(now){
     if(rm() || now - S.lastWake > WORLD.ambientSeconds * 1000) return false;
-    if(streetLife.length) return true;
+    if(truck.visible || walkers.list.length) return true;
     for(const t of S.tiles.values()){
       if(t.asset && t.asset.root.visible && ((t.asset.crewNode && t.asset.crewNode.visible && t.asset.crew.some(w => w.pace > 0)) ||
          (t.asset.life && t.asset.life.timeScale > 0))) return true;
@@ -1616,7 +1699,9 @@ export function createWorld(host, hooks){
       frame: S.frame ? { x: S.frame.x, z: S.frame.z, d: S.frame.d } : null, flying: !!S.fl, swipes: S.swipes, gesture: G.kind,
       target: S.focusId && S.tiles.get(S.focusId) ? targetFor('focus') : S.over,
       running: !!S.raf, awake: awake(), lost: S.lost, failed: S.failed, tiles: S.tiles.size,
-      built: placeGeos.size + partGeos.size, traffic: streetTime, residents: streetLife.filter(a => a.resident).length, centres: centres, life: life,
+      built: placeGeos.size + partGeos.size, centres: centres, life: life,
+      street: { time: streetTime, state: walkers.state, truck: truck.visible ? { x: truck.position.x, z: truck.position.z, turn: truck.rotation.y } : null,
+        walkers: walkers.list.map(w => ({ role: w.role, kind: w.way ? w.way.kind : null, at: w.at, pace: w.walk.getEffectiveWeight() })) },
       labels: S.order.map(id => { const t = S.tiles.get(id); return { id: id, x: t.px, y: t.py, w: t.labelW, h: t.labelH, under: Math.round(t.under * 1000) / 1000,
         shown: !t.hiddenLabel && !t.off, card: !!t.cardEl.innerHTML }; }),
       keep: S.keep, overview: !overviewBtn.classList.contains('is-away'),
@@ -1650,7 +1735,10 @@ export function createWorld(host, hooks){
     const frameMs = frameCost(false, n), calls = renderer.info.render.calls, triangles = renderer.info.render.triangles;
     const withShadow = frameCost(true, n), shadowCalls = renderer.info.render.calls - calls;
     const k = Math.max(1, n | 0), t0 = performance.now();
-    for(let i = 0; i < k; i++) S.tiles.forEach(t => { if(t.asset) t.asset.mixer.update(0); });
+    for(let i = 0; i < k; i++){
+      S.tiles.forEach(t => { if(t.asset) t.asset.mixer.update(0); });
+      if(walkers.mixer) walkers.mixer.update(0);
+    }
     const animMs = Math.round((performance.now() - t0) / k * 1000) / 1000;
     const materials = new Set();
     scene.traverse(o => { if(o.isMesh && o.visible) materials.add(o.material); });

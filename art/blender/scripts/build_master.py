@@ -5,9 +5,11 @@
 Writes:
   art/blender/mission-control-master.blend     rig + platform + library + worker, no project
   art/blender/models/<name>.blend              the master with one diorama in PROJECT_CONTENT
+  art/blender/models/street-life.blend         (--only street) city life's two passers-by, no platform
 
 A diorama is a module in art/blender/models with build(coll, status_coll),
 its WORKERS and its ACCENT (the platform band's material): DIORAMAS below.
+The passers-by are not a diorama: build_street builds them alone.
 """
 import os
 import sys
@@ -78,9 +80,35 @@ def build_diorama(name):
     print('SAVED', out)
 
 
+def build_street():
+    """City life's passers-by on the master rig: no platform, no project, so
+    the export takes the people alone (models/street_life.py)."""
+    import street_life
+    reset_scene()
+    C = ensure_collections()
+    mc_materials.build_library()
+    mc_materials.build_backdrop_material()
+    mc_materials.set_status('STABLE')
+    mc_rig.build_cameras(C['CAMERA_RIG'])
+    mc_rig.build_lights(C['LIGHT_RIG'])
+    mc_rig.build_world()
+    mc_rig.build_floor(C['WORLD'])
+    mc_rig.colour_management()
+    street_life.build(C['PROJECT_CONTENT'])
+    mc_render.apply('DRAFT')
+    bpy.context.scene['mc_asset'] = 'street'
+    bpy.context.scene['mc_note'] = 'City life: two passers-by on the shared master rig. No platform, no project.'
+    out = os.path.join(BLENDER_DIR, 'models', 'street-life.blend')
+    save_blend(out)
+    print('SAVED', out)
+
+
 def main():
     args = script_args()
     only = args[args.index('--only') + 1] if '--only' in args else None
+    if only == 'street':
+        build_street()
+        return
     if not only:
         build_common()
         mc_render.apply('DRAFT')

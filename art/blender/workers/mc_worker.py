@@ -79,7 +79,7 @@ class Parts:
         return [b[0] for b in BONES].index(bone)
 
 
-def _armature(name, coll, s=1.0):
+def _armature(name, coll, s=1.0, bones=None):
     arm = bpy.data.armatures.new(name)
     obj = bpy.data.objects.new(name, arm)
     coll.objects.link(obj)
@@ -87,7 +87,7 @@ def _armature(name, coll, s=1.0):
     obj.select_set(True)
     bpy.ops.object.mode_set(mode='EDIT')
     eb = {}
-    for n, parent, h, t in BONES:
+    for n, parent, h, t in (bones or BONES):
         b = arm.edit_bones.new(n)
         b.head, b.tail = Vector(h) * s, Vector(t) * s
         if parent:
@@ -120,9 +120,11 @@ OUTFITS = {
 }
 
 
-def _body(name, coll, vest, pants, shirt, prop=None, stripe=False):
+def _body(name, coll, vest, pants, shirt, prop=None, stripe=False, head='helmet', sleeves='short', hair='MC_PLINTH_DK'):
+    """A worker, or with head='hair' and sleeves='long' a passer-by (mc_walker):
+    the same figure without the hard hat, in a jacket."""
     order = ['MC_SKIN', vest, pants, shirt, 'MC_PAINT_WHITE', 'MC_METAL_DARK', 'MC_WOOD', 'MC_METAL',
-             'MC_GLASS_LIT']
+             'MC_GLASS_LIT'] + ([hair] if head == 'hair' else []) + (['MC_CS_CHARCOAL'] if prop == 'bag' else [])
     mats = list(dict.fromkeys(order))
     P = Parts(mats)
     S, V, PA, SH, HELM, DK, WD = 'MC_SKIN', vest, pants, shirt, 'MC_PAINT_WHITE', 'MC_METAL_DARK', 'MC_WOOD'
@@ -137,22 +139,29 @@ def _body(name, coll, vest, pants, shirt, prop=None, stripe=False):
     P.add('sphere', 'spine', SH, (0, 0, 0.87), (0.17, 0.105, 0.045), seg=12, rings=7)
     if stripe:
         P.add('cyl', 'spine', HELM, (0, 0, 0.64), (0.172, 0.118, 0.028), seg=16)
-    # arms: short sleeves, bare forearms, round hands
+    # arms: short sleeves and bare forearms (a jacket's long sleeves), round hands
     for side, sx in (('L', 0.205), ('R', -0.205)):
         P.add('sphere', 'upperarm.' + side, SH, (sx, 0, 0.82), (0.065, 0.065, 0.065))
         P.add('cyl', 'upperarm.' + side, SH, (sx, 0, 0.73), (0.05, 0.05, 0.15), seg=10)
-        P.add('cyl', 'forearm.' + side, S, (sx, 0, 0.56), (0.042, 0.042, 0.17), seg=10)
+        P.add('cyl', 'forearm.' + side, SH if sleeves == 'long' else S, (sx, 0, 0.56), (0.042, 0.042, 0.17), seg=10)
         P.add('sphere', 'forearm.' + side, S, (sx, 0, 0.46), (0.048, 0.048, 0.048), seg=10, rings=7)
-    # head, face and hard hat
+    # head and face; the crew's hard hat, or a passer-by's hair
     P.add('sphere', 'head', S, (0, 0, 0.98), (0.135, 0.125, 0.14), seg=16, rings=10)
     for ex in (0.048, -0.048):
         P.add('sphere', 'head', DK, (ex, 0.115, 0.985), (0.017, 0.012, 0.024), seg=6, rings=4)
     P.add('sphere', 'head', S, (0, 0.13, 0.955), (0.02, 0.018, 0.016), seg=8, rings=6)
-    dome = P.add('sphere', 'head', HELM, (0, 0, 1.03), (0.152, 0.145, 0.13), seg=16, rings=10)
-    for v in dome:                                # keep the upper dome only
-        if v.co.z < 1.03 - 0.005:
-            v.co.z = 1.03 - 0.005
-    P.add('box', 'head', HELM, (0, 0.135, 1.035), (0.12, 0.07, 0.022))   # short brim
+    if head == 'helmet':
+        dome = P.add('sphere', 'head', HELM, (0, 0, 1.03), (0.152, 0.145, 0.13), seg=16, rings=10)
+        for v in dome:                            # keep the upper dome only
+            if v.co.z < 1.03 - 0.005:
+                v.co.z = 1.03 - 0.005
+        P.add('box', 'head', HELM, (0, 0.135, 1.035), (0.12, 0.07, 0.022))   # short brim
+    else:
+        cap = P.add('sphere', 'head', hair, (0, -0.006, 0.985), (0.142, 0.134, 0.148), seg=16, rings=10)
+        for v in cap:                             # over the crown and the back; the hairline rises to the forehead
+            line = 0.925 + (1.035 - 0.925) * min(1.0, max(0.0, (v.co.y + 0.02) / 0.1))
+            if v.co.z < line:
+                v.co.z = line
     if prop == 'clipboard':
         P.add('box', 'forearm.L', WD, (0.235, 0.075, 0.5), (0.03, 0.17, 0.21))
         P.add('box', 'forearm.L', 'MC_PAINT_WHITE', (0.235, 0.09, 0.505), (0.022, 0.15, 0.19))
@@ -168,6 +177,10 @@ def _body(name, coll, vest, pants, shirt, prop=None, stripe=False):
     elif prop == 'wrench':
         P.add('box', 'forearm.R', 'MC_METAL', (-0.205, 0.0, 0.36), (0.035, 0.035, 0.2))
         P.add('box', 'forearm.R', 'MC_METAL', (-0.205, 0.0, 0.27), (0.07, 0.035, 0.035))
+    elif prop == 'bag':                           # a small backpack, clear of the swinging arms
+        P.add('box', 'spine', 'MC_CS_CHARCOAL', (0, -0.15, 0.72), (0.2, 0.075, 0.21))
+        for sx in (0.085, -0.085):                # its straps over the shoulders
+            P.add('box', 'spine', 'MC_CS_CHARCOAL', (sx, -0.02, 0.855), (0.03, 0.2, 0.022))
     me = bpy.data.meshes.new(name)
     P.bm.to_mesh(me)
     P.bm.free()

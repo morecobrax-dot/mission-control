@@ -1191,7 +1191,7 @@ export function cityPlan(districts){
   });
   const inner = { minX: island.reach.minX - E, maxX: island.reach.maxX + E, minZ: island.reach.minZ - E, maxZ: island.reach.maxZ + E };
   const plan = { island: island, inner: inner, canal: null, paving: [], dashes: [], zebras: [], trees: [], lamps: [], benches: [],
-                 cars: [], bollards: [], bridges: [], parapets: [], rails: [], bays: [], loop: null };
+                 cars: [], bollards: [], bridges: [], parapets: [], rails: [], bays: [], drive: null, walks: [] };
   if(!rows.length) return plan;
   const water = canalAfter(rows.length);
   if(water >= 0 && rows[water + 1]){
@@ -1262,8 +1262,8 @@ export function cityPlan(districts){
   });
 
   /* More at the ring road's inner curb, beside the outer blocks and behind
-     the back row (the trucks keep to its outer lane); one loading bay, with
-     its truck, in the first street between two places. */
+     the back row (the service truck keeps to the lane outside them); one
+     loading bay, with its truck, in the first street between two places. */
   rows.forEach(row => [-1, 1].forEach(s => {
     const off = ((hash(row.r + 11, s + 7) % 3) - 1) * 2.4;
     plan.cars.push({ x: s < 0 ? inner.minX - 0.55 : inner.maxX + 0.55, z: row.z + off, turn: s < 0 ? 0 : Math.PI, n: hash(row.r + 5, s + 3) % 5 });
@@ -1302,8 +1302,9 @@ export function cityPlan(districts){
     s += 2.2 + (h % 5) * 0.28;
   }
 
-  /* The trucks' lane: the ring road's outer lane, round every corner. */
-  plan.loop = insetLoop(island, CITY.shore + 0.72);
+  /* City life's ways: the truck's round the ring road, two people's on quiet sidewalks. */
+  plan.drive = Object.assign(insetLoop(island, DRIVE.inset), { r: DRIVE.corner });
+  plan.walks = walkWays(rows, P, E);
   return plan;
 }
 /* The island's outline pulled in by k, as a loop streetPose can follow. */
@@ -1390,42 +1391,174 @@ export const TRUCK_PARTS=[
   ...[-1,1].flatMap(side=>[cyl(side*.5,0,-.66,.23,.1,'matte','ink',LIE_X),cyl(side*.5,0,.7,.23,.1,'matte','ink',LIE_X),
     box(side*.34,.54,1.045,.19,.12,.035,'glow','window'),box(side*.34,.46,-1.1,.14,.09,.025,'glow','windowDim')])
 ];
-export const RESIDENT_PARTS=[
-  mass(-.09,0,0,.12,.38,.15,'ink'),mass(.09,0,0,.12,.38,.15,'ink'),
-  mass(0,.37,0,.34,.39,.2,'facadeWarm'),ball(0,.76,0,.145,'matte','skin',{n:12}),
-  mass(-.23,.38,0,.1,.33,.11,'facadeWarm'),mass(.23,.38,0,.1,.33,.11,'facadeWarm'),
-  mass(.28,.25,.04,.19,.22,.15,'wood')
-];
-
-/* Constant-speed rounded rectangle: continuous position and heading at all
-   eight joins, its corners as round as `bounds.r` (1.5 when unsaid). This
-   has no project/state inputs and conveys no work progress. */
-const STREET_SPEED = 1.1;
-export function streetPose(bounds,time,offset){
-  const x0=bounds.minX,x1=bounds.maxX,z0=bounds.minZ,z1=bounds.maxZ;
-  const r=loopRadius(bounds),wx=x1-x0-2*r,wz=z1-z0-2*r,arc=Math.PI*r/2;
-  const lengths=[wx,arc,wz,arc,wx,arc,wz,arc],total=lengths.reduce((a,b)=>a+b,0);
-  let s=((time+(offset||0))*STREET_SPEED%total+total)%total,i=0;
-  while(i<7&&s>lengths[i]){s-=lengths[i];i++;}
-  let x,z,dx,dz;
-  if(i===0){x=x0+r+s;z=z0;dx=1;dz=0;}
-  else if(i===2){x=x1;z=z0+r+s;dx=0;dz=1;}
-  else if(i===4){x=x1-r-s;z=z1;dx=-1;dz=0;}
-  else if(i===6){x=x0;z=z1-r-s;dx=0;dz=-1;}
-  else{
-    const turn=(i-1)/2,theta=-Math.PI/2+turn*Math.PI/2+s/r;
-    const cx=turn===0||turn===1?x1-r:x0+r,cz=turn<1||turn===3?z0+r:z1-r;
-    x=cx+r*Math.cos(theta);z=cz+r*Math.sin(theta);dx=-Math.sin(theta);dz=Math.cos(theta);
+/* A rounded rectangle as a way: four sides and four quarter turns,
+   clockwise as seen, its corners as round as `b.r` (1.5 when unsaid), and
+   the point and direction at distance s along it, continuous at every
+   join. The promenade's trees are set out along one; the truck drives one. */
+function roundRect(b){
+  const r = loopRadius(b), wx = b.maxX - b.minX - 2 * r, wz = b.maxZ - b.minZ - 2 * r, arc = Math.PI * r / 2;
+  const lengths = [wx, arc, wz, arc, wx, arc, wz, arc];
+  return { r: r, lengths: lengths, total: lengths.reduce((a, c) => a + c, 0) };
+}
+function roundRectAt(b, rr, at){
+  const x0 = b.minX, x1 = b.maxX, z0 = b.minZ, z1 = b.maxZ, r = rr.r, lengths = rr.lengths;
+  let s = (at % rr.total + rr.total) % rr.total, i = 0;
+  while(i < 7 && s > lengths[i]){ s -= lengths[i]; i++; }
+  let x, z, dx, dz;
+  if(i === 0){ x = x0 + r + s; z = z0; dx = 1; dz = 0; }
+  else if(i === 2){ x = x1; z = z0 + r + s; dx = 0; dz = 1; }
+  else if(i === 4){ x = x1 - r - s; z = z1; dx = -1; dz = 0; }
+  else if(i === 6){ x = x0; z = z1 - r - s; dx = 0; dz = -1; }
+  else {
+    const turn = (i - 1) / 2, theta = -Math.PI / 2 + turn * Math.PI / 2 + s / r;
+    const cx = turn === 0 || turn === 1 ? x1 - r : x0 + r, cz = turn < 1 || turn === 3 ? z0 + r : z1 - r;
+    x = cx + r * Math.cos(theta); z = cz + r * Math.sin(theta); dx = -Math.sin(theta); dz = Math.cos(theta);
   }
-  return {x:x,z:z,turn:Math.atan2(dx,dz)};
+  return { x: x, z: z, dx: dx, dz: dz };
 }
-/* The trucks' way: the ring road's outer lane. */
-export function trafficBounds(districts){ return cityPlan(districts).loop; }
-/* Where a resident walks: the sidewalk round a place. */
-export function sidewalkLoop(d){
-  const k = CITY.plinth + CITY.side / 2;
-  return { minX: d.x - k, maxX: d.x + k, minZ: d.z - k, maxZ: d.z + k, r: 0.3 };
+/* Constant speed round a rounded rectangle; no project or state inputs. */
+const STREET_SPEED = 1.1;
+export function streetPose(bounds, time, offset){
+  const p = roundRectAt(bounds, roundRect(bounds), (time + (offset || 0)) * STREET_SPEED);
+  return { x: p.x, z: p.z, turn: Math.atan2(p.dx, p.dz) };
 }
+
+/* ---------- city life ----------
+   One small service truck and two people: decorative, like the trees. Their
+   ways are laid out from the places' positions alone (cityPlan), and where
+   each is is a pure function of the world's one clock, the same every time,
+   with no project, status or work input: they never stand for a session, a
+   delivery, progress or a job. Nothing about them is stored.
+
+   The truck is the city's box truck at DRIVE.scale, on the ring road's free
+   lane (DRIVE.inset from the shore), keeping to the right, so it goes round
+   the city anticlockwise as seen. Its corners are wider than the island's
+   own (DRIVE.corner), so the whole truck, not only its middle, keeps clear
+   of the promenade, its trees, the parked cars and every block round every
+   turn; it slows for each turn and gathers speed after it, and never
+   jitters. */
+export const DRIVE = { scale: 0.85, inset: 1.8, corner: 3.6, speed: 1.15, turnSpeed: 0.72, ease: 1.8 };
+const driveTables = new WeakMap();
+function driveTable(b){
+  let tb = driveTables.get(b);
+  if(tb) return tb;
+  const rr = roundRect(b), arcs = [], ds = 0.02;
+  let acc = 0;
+  rr.lengths.forEach((len, i) => { if(i % 2) arcs.push([acc, acc + len]); acc += len; });
+  /* It sets off in the middle of the side nearest the viewer. */
+  const start = rr.lengths.slice(0, 4).reduce((a, c) => a + c, 0) + rr.lengths[4] / 2;
+  const toArc = s => arcs.reduce((m, [a0, a1]) => {
+    const d = s >= a0 && s <= a1 ? 0 : Math.min(Math.abs(s - a0), Math.abs(s - a1), rr.total - Math.abs(s - a0), rr.total - Math.abs(s - a1));
+    return Math.min(m, d);
+  }, Infinity);
+  const speedAt = s => { const k = Math.min(1, toArc(s) / DRIVE.ease), e = k * k * (3 - 2 * k); return DRIVE.turnSpeed + (DRIVE.speed - DRIVE.turnSpeed) * e; };
+  const n = Math.ceil(rr.total / ds), time = new Float64Array(n + 1);
+  for(let j = 1; j <= n; j++){
+    const mid = ((start - (j - 0.5) * rr.total / n) % rr.total + rr.total) % rr.total;
+    time[j] = time[j - 1] + rr.total / n / speedAt(mid);
+  }
+  tb = { rr: rr, start: start, time: time, n: n, period: time[n], speedAt: speedAt };
+  driveTables.set(b, tb);
+  return tb;
+}
+/* Where the truck is at time t (seconds): { x, z, turn, speed }, turn
+   about y with 0 facing +z. */
+export function driveAt(b, t){
+  const tb = driveTable(b), T = tb.period, tt = (t % T + T) % T, time = tb.time;
+  let lo = 0, hi = tb.n;
+  while(hi - lo > 1){ const m = (lo + hi) >> 1; if(time[m] <= tt) lo = m; else hi = m; }
+  const along = (lo + (tt - time[lo]) / (time[hi] - time[lo])) * tb.rr.total / tb.n;
+  const s = ((tb.start - along) % tb.rr.total + tb.rr.total) % tb.rr.total, p = roundRectAt(b, tb.rr, s);
+  return { x: p.x, z: p.z, turn: Math.atan2(-p.dx, -p.dz), speed: tb.speedAt(s) };
+}
+export function drivePeriod(b){ return driveTable(b).period; }
+
+/* Two people, each on a straight stretch of quiet sidewalk of their own in
+   a different row, never across a road: down a planted lane beside its
+   trees, or along the camera's side of a street, on the left-hand block's
+   sidewalk; a city of one column walks a place's outer sidewalk, between
+   its lamp and its front corner. Each walks there and back at an easy pace
+   of their own, easing into and out of every stop, stops now and then on
+   the way, and turns round at each end while standing: never in step with
+   the other, never a jump. WALK.cycle is the ground one stride pair covers,
+   so the feet keep to it. */
+export const WALK = { laneSide: 1.15, laneEnd: 0.8, backClear: 0.7, frontClear: 0.4, lampClear: 0.6, cycle: 0.565, ease: 0.45,
+                      turnDelay: 0.35, turnTime: 0.9 };
+/* The passers-by, authored in Blender from the crew's own figure
+   (art/blender/workers/mc_walker.py) and exported like a place: one crew
+   with a walk and a pause, and the metres one walk covers (`mc_stride`).
+   Drawn at the places' scale: metres to world units as a place's platform
+   (16.9 m, mc_platform.py) to its span. Budgeted like a place, smaller
+   (the same numbers in export_glb.py); contract 30 checks the file. */
+export const STREET = { url: './art/exports/street-life.glb', metre: 2 * CITY.plinth / 16.9, roles: ['walker_a', 'walker_b'] };
+export const STREET_BUDGET = { triangles: 8000, drawCalls: 4, materials: 4, workers: 2, bytes: 250000, textures: 0 };
+export const WALKERS = [
+  { role: 'walker_a', speed: 0.46, endPause: 2.6, stop: 0.55, stopPause: 1.9 },
+  { role: 'walker_b', speed: 0.52, endPause: 2.1, stop: 0.38, stopPause: 2.6 }
+];
+function walkWays(rows, P, E){
+  const ways = [];
+  rows.forEach(row => row.gaps.forEach(g => { if(g.lane) ways.push({ row: row.r, kind: 'lane', x: g.cx + WALK.laneSide, z0: row.z - E + WALK.laneEnd, z1: row.z + E - WALK.laneEnd }); }));
+  rows.forEach(row => row.gaps.forEach(g => { if(!g.lane) ways.push({ row: row.r, kind: 'street', x: g.x0 - CITY.side / 2, z0: row.z - P + WALK.backClear, z1: row.z + P - WALK.frontClear }); }));
+  rows.forEach(row => { const d = row.ds[row.ds.length - 1];
+    ways.push({ row: row.r, kind: 'side', x: d.x + P + CITY.side / 2, z0: d.z + WALK.lampClear, z1: d.z + P - WALK.frontClear }); });
+  const a = ways[0], b = ways.find(w => w.row !== a.row) || ways[1];
+  return [a, b].filter(Boolean).map((w, i) => Object.assign({ kind: w.kind, row: w.row, points: [[w.x, w.z0], [w.x, w.z1]] }, WALKERS[i]));
+}
+/* One walker's day, as phases: a stop, a walk from one distance along its
+   way to another, or a turn at an end, over and over. It starts standing at
+   its stop, facing on, so a still world shows everyone standing somewhere
+   sensible. */
+const walkPlans = new WeakMap();
+function walkPlan(w){
+  let pl = walkPlans.get(w);
+  if(pl) return pl;
+  const [[ax, az], [bx, bz]] = w.points, L = Math.hypot(bx - ax, bz - az), v = w.speed, r = WALK.ease;
+  const dur = d => Math.abs(d) / v + r, mid = L * w.stop;
+  const phases = [
+    { kind: 'stop', at: mid, dir: 1, secs: w.stopPause },
+    { kind: 'walk', from: mid, to: L, secs: dur(L - mid) },
+    { kind: 'turn', at: L, from: 1, to: -1, secs: w.endPause },
+    { kind: 'walk', from: L, to: 0, secs: dur(L) },
+    { kind: 'turn', at: 0, from: -1, to: 1, secs: w.endPause },
+    { kind: 'walk', from: 0, to: mid, secs: dur(mid) }
+  ];
+  let t = 0;
+  phases.forEach(p => { p.t0 = t; t += p.secs; });
+  pl = { L: L, ux: (bx - ax) / L, uz: (bz - az) / L, ax: ax, az: az, phases: phases, period: t };
+  walkPlans.set(w, pl);
+  return pl;
+}
+/* Distance covered t seconds into a walk of D metres at speed v: easing
+   from rest over WALK.ease seconds, walking, easing to rest. */
+function eased(t, D, v){
+  const r = WALK.ease, T = D / v + r, ramp = x => v * r * (x * x * x - x * x * x * x / 2);
+  if(t <= 0) return 0;
+  if(t >= T) return D;
+  if(t < r) return ramp(t / r);
+  if(t > T - r) return D - ramp((T - t) / r);
+  return v * r / 2 + v * (t - r);
+}
+/* Where a walker is at time t: { x, z, turn, walking (0 standing .. 1 at
+   pace), stride (metres walked since this walk began, for the feet) }. */
+export function walkerAt(w, t){
+  const pl = walkPlan(w), T = pl.period, tt = (t % T + T) % T;
+  let p = pl.phases[0];
+  for(const q of pl.phases) if(q.t0 <= tt) p = q;
+  const u = tt - p.t0, face = dir => Math.atan2(pl.ux * dir, pl.uz * dir);
+  let d, turn, walking = 0, stride = 0;
+  if(p.kind === 'walk'){
+    const D = Math.abs(p.to - p.from), dir = Math.sign(p.to - p.from) || 1, s = eased(u, D, w.speed);
+    const r = WALK.ease, T0 = D / w.speed + r, k = x => Math.min(1, Math.max(0, x)), sm = x => x * x * (3 - 2 * x);
+    d = p.from + dir * s; turn = face(dir); stride = s;
+    walking = u < r ? sm(k(u / r)) : u > T0 - r ? sm(k((T0 - u) / r)) : 1;
+  } else if(p.kind === 'turn'){
+    const k = Math.min(1, Math.max(0, (u - WALK.turnDelay) / WALK.turnTime)), e = k * k * (3 - 2 * k);
+    d = p.at; turn = face(p.from) + Math.PI * e * (p.from > 0 ? 1 : -1);
+  } else { d = p.at; turn = face(p.dir); }
+  return { x: pl.ax + pl.ux * d, z: pl.az + pl.uz * d, turn: Math.atan2(Math.sin(turn), Math.cos(turn)), walking: walking, stride: stride };
+}
+export function walkPeriod(w){ return walkPlan(w).period; }
 
 /* ---------- each place's real height ----------
    How high a place reaches above its pad, in world units: its tallest part,

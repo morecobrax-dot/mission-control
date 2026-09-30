@@ -290,12 +290,26 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     (`scripts/release.js`), which ships and precaches it.
 
 51. **City ambience is not project activity.** The user authorized connected
-    city blocks, box trucks and residents. These are decorative city life,
-    using pure bounded paths with no project-state inputs. Real crew poses,
+    city blocks and, in Living City 1 (0.9.2), exactly one small service
+    truck and two passers-by; more city life needs its own brief. These are
+    decorative city life, using pure bounded paths with no project-state
+    inputs. Real crew poses,
     stations, beacons and attention remain derived from project records.
     Roads imply no software dependency, throughput or agent execution.
-    Residents and vehicles share the one visibility/reduced-motion-aware
-    scheduler; no separate loop, network source or persisted simulation.
+    Their routes are explicit, in `world.js`, and nothing else: the truck
+    drives one circuit of the ring road (`DRIVE`, `driveAt`), keeping right
+    and slowing for each turn, its whole body clear of the promenade, every
+    block, parked car, tree and the canal and its wheels on the road; each
+    passer-by walks one short stretch of paving in its own part of the city
+    (`walkWays`, `walkerAt`), never onto a road, stopping on the way and
+    turning round standing. No pathfinding, collision, traffic or time of
+    day. The passers-by are authored in Blender (`street_life.py`,
+    `street-life.glb`, `STREET_BUDGET`) from the crew's figure and are never
+    crew: no helmet, no status material, never a tap.
+    They share the world's one clock and its visibility/reduced-motion-aware
+    scheduler; no separate loop, timer, network source or persisted
+    simulation. Under Reduce Motion and once life settles they hold where
+    they are, standing.
     The city itself (`cityPlan` in `world.js`: blocks, streets and lanes,
     the one canal, bridges, trees, lamps, parked cars) is computed from the
     places' positions alone, the same every time, for any number of places,

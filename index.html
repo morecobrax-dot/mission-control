@@ -1715,6 +1715,21 @@ function validateAppId(id){
    ========================================================= */
 const APP_UPDATES = [
   {
+    id: 'v0-9-2',
+    version: '0.9.2',
+    title: 'Street life',
+    date: '2026-09-30',
+    summary: 'A small service truck and two passers-by now bring the streets to life, as scenery only.',
+    newFeatures: [
+      'A small service truck drives round the city on the ring road, keeping right and slowing for each turn',
+      'Two people stroll their own stretches of sidewalk, stopping now and then and turning round at the end'
+    ],
+    improvements: [
+      'City life never stands for a project, a session or work: project crews and status lights still follow only what is recorded',
+      'It rests with the rest of the city when the app is hidden, covered or left alone, and stands still with Reduce Motion'
+    ]
+  },
+  {
     id: 'v0-9-1',
     version: '0.9.1',
     title: 'Hands on the city',
@@ -3572,17 +3587,18 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = 'db5e993b14e8';
-const WORLD_MODULE = './release/render3d.aa03502f2244.js';
+const APP_RELEASE = 'f9d151b9863e';
+const WORLD_MODULE = './release/render3d.e821bb45a953.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
   './release/dayplan-diorama.c60794997357.glb',
   './release/golden-diorama.e0b21a1c4dcc.glb',
-  './release/render3d.aa03502f2244.js',
+  './release/render3d.e821bb45a953.js',
   './release/savings-diorama.9099b2690506.glb',
   './release/spacek-diorama.7b9d1f6a6052.glb',
+  './release/street-life.e0a6f770609c.glb',
   './release/three.min.0c9283a1079c.js',
-  './release/world.dd67ed4a1f5d.js'];
+  './release/world.b0fbdf9e2c50.js'];
 /* APP-RELEASE-END */
 
 function fieldScene(views){

@@ -2948,6 +2948,11 @@ async function testWorld(){
   T('it fits the transfer budget, gzipped', gz <= W.BUDGET.threeGzipBytes, gz + ' bytes');
   const THREE = await import(pathToFileURL(at('vendor/three/three.min.js')).href);
   T('it exports exactly what the world imports', Object.keys(THREE).sort().join() === prov.build.exports.slice().sort().join());
+  /* The build is a subset: a name it lacks throws only when the world is
+     made, and the city quietly falls back to the flat field. */
+  const named = Array.from(new Set(read('field/render3d.js').match(/\bTHREE\.[A-Za-z_$][\w$]*/g).map(n => n.slice(6))));
+  T('every name the renderer takes from it is one it exports', named.length > 20 && named.every(n => n in THREE),
+    named.filter(n => !(n in THREE)).join() || named.length + ' names');
   T('and it is release 186', THREE.REVISION === '186');
 
   sub('the app loads only files it ships, and ships them for offline');
@@ -3005,7 +3010,7 @@ async function testWorld(){
   Object.keys(W.HAND_PROPS).forEach(k => W.HAND_PROPS[k].forEach(p => parts.push(['hand ' + k, p])));
   Object.keys(W.SCENERY).forEach(k => W.SCENERY[k].forEach(p => parts.push(['growth ' + k, p])));
   [[6, 2], [6, 3], [7, 3], [1, 1], [12, 4]].forEach(([n, cols]) => W.cityParts(W.layoutDistricts(n, cols).districts).forEach(p => parts.push(['city ' + n + 'x' + cols, p])));
-  W.CAR_PARTS.concat([W.TRUCK_PARTS, W.RESIDENT_PARTS]).forEach(set => set.forEach(p => parts.push(['city traffic', p])));
+  W.CAR_PARTS.concat([W.TRUCK_PARTS]).forEach(set => set.forEach(p => parts.push(['city traffic', p])));
   const bad = parts.filter(([, p]) => !colours.has(p.c) || W.SHAPES.indexOf(p.s) === -1 || W.FINISHES.indexOf(p.m) === -1 ||
     !p.p.every(Number.isFinite) || !p.d.every(v => v === null || v === undefined || (Number.isFinite(v) && v > 0)));
   T('every part is a known shape, finish and colour, with real dimensions, the city\'s included', bad.length === 0,
@@ -3169,17 +3174,57 @@ async function testWorld(){
   const shortPhone = W.chooseLayout(6, 341, 335, themes6.map(W.placeHeight));
   T('a short phone shows all six blocks instead of silently panning past the bank', shortPhone.fits && shortPhone.cols === 2);
 
-  sub('city ambience has bounded continuous paths, separate from project work');
-  const streets = W.trafficBounds(phone.districts);
-  let pathsSafe = true, pathsContinuous = true;
-  for(let t=0; t<400; t+=0.1){
-    const a=W.streetPose(streets,t,0), b=W.streetPose(streets,t+0.001,0);
-    if(!Number.isFinite(a.x+a.z+a.turn) || a.x<streets.minX-0.001 || a.x>streets.maxX+0.001 || a.z<streets.minZ-0.001 || a.z>streets.maxZ+0.001) pathsSafe=false;
-    if(Math.hypot(a.x-b.x,a.z-b.z)>0.002 || Math.abs(Math.atan2(Math.sin(a.turn-b.turn),Math.cos(a.turn-b.turn)))>0.003) pathsContinuous=false;
+  /* Living City 1: one small service truck and two passers-by. What these
+     prevent: a vehicle or a person that jumps, slides, jitters, stands for
+     a project, or looks like one of its workers. */
+  sub('city life moves continuously, from the clock alone, and stands for nothing');
+  const lifePlan = W.cityPlan(phone.districts), drive = lifePlan.drive, turnGap = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+  T('city life has no project inputs: its ways come from positions, where each is from the clock alone',
+    W.driveAt.length === 2 && W.walkerAt.length === 2 && !/workerState|status|recorded|attention|signal|selected|focus/.test(
+      W.driveAt.toString() + W.walkerAt.toString() + W.cityPlan.toString()));
+  const DT = 0.01, P0 = W.drivePeriod(drive);
+  /* How far the way it moves is from the way it faces (0 facing it, 2 going backwards). */
+  const astray = (a, b) => { const d = Math.hypot(b.x - a.x, b.z - a.z); return d < 1e-9 ? 0 : 1 - ((b.x - a.x) * Math.sin(a.turn) + (b.z - a.z) * Math.cos(a.turn)) / d; };
+  let jump = 0, swing = 0, slowest = Infinity, fastest = 0, wrapJump, backwards = 0;
+  for(let t = 0; t < 2 * P0; t += DT){
+    const a = W.driveAt(drive, t), b = W.driveAt(drive, t + DT);
+    jump = Math.max(jump, Math.hypot(a.x - b.x, a.z - b.z) / DT); swing = Math.max(swing, turnGap(a.turn, b.turn) / DT);
+    slowest = Math.min(slowest, a.speed); fastest = Math.max(fastest, a.speed); backwards = Math.max(backwards, astray(a, b));
   }
-  T('trucks remain on their road bounds',pathsSafe);
-  T('rounded street turns keep position and heading continuous',pathsContinuous);
-  T('residents and delivery trucks have no state inputs', W.streetPose.length===3 && !/workerState|status|recorded/.test(W.streetPose.toString()));
+  { const a = W.driveAt(drive, P0 - 1e-6), b = W.driveAt(drive, P0 + 1e-6); wrapJump = Math.hypot(a.x - b.x, a.z - b.z) + turnGap(a.turn, b.turn); }
+  T('the truck never jumps: its position and heading are continuous all the way round, over the circuit\'s join too',
+    jump <= W.DRIVE.speed * 1.01 && swing <= W.DRIVE.turnSpeed / W.DRIVE.corner * 1.05 && wrapJump < 1e-4, [jump, swing, wrapJump].join());
+  T('it slows for each turn and gathers speed after it, never faster than its pace and never jittering',
+    Math.abs(slowest - W.DRIVE.turnSpeed) < 1e-6 && Math.abs(fastest - W.DRIVE.speed) < 1e-6 && W.DRIVE.turnSpeed < W.DRIVE.speed);
+  T('it keeps to the right: anticlockwise as seen, so the promenade is on its right',
+    (() => { const a = W.driveAt(drive, 0); return Math.abs(a.z - drive.maxZ) < 1e-6 && Math.abs(Math.sin(a.turn) - 1) < 1e-6; })());
+  T('and it faces the way it goes, round the turns too: never driven backwards', backwards < 1e-3, backwards);
+  const walks = lifePlan.walks, fresh = W.cityPlan(phone.districts);
+  T('the same moment is the same place every time, from a fresh plan too, for the truck and each passer-by',
+    JSON.stringify(W.driveAt(drive, 123.456)) === JSON.stringify(W.driveAt(fresh.drive, 123.456)) &&
+    walks.every((w, i) => JSON.stringify(W.walkerAt(w, 77.7)) === JSON.stringify(W.walkerAt(fresh.walks[i], 77.7))));
+  let walkJump = 0, walkWrap = 0, badPace = false, badTurn = false, walkAstray = 0;
+  walks.forEach(w => {
+    const Pw = W.walkPeriod(w);
+    for(let t = 0; t < 2 * Pw; t += DT){
+      const a = W.walkerAt(w, t), b = W.walkerAt(w, t + DT);
+      walkJump = Math.max(walkJump, Math.hypot(a.x - b.x, a.z - b.z) / DT / w.speed);
+      walkAstray = Math.max(walkAstray, astray(a, b));
+      if(!(a.walking >= 0 && a.walking <= 1) || Math.abs(a.walking - b.walking) > 0.05) badPace = true;
+      /* It turns only while it stands, and smoothly. */
+      if(turnGap(a.turn, b.turn) > 1e-9 && (a.walking > 0 || turnGap(a.turn, b.turn) / DT > Math.PI / W.WALK.turnTime * 1.6)) badTurn = true;
+    }
+    const a = W.walkerAt(w, Pw - 1e-6), b = W.walkerAt(w, Pw + 1e-6);
+    walkWrap = Math.max(walkWrap, Math.hypot(a.x - b.x, a.z - b.z) + turnGap(a.turn, b.turn));
+  });
+  T('a passer-by never jumps: continuous through every stop, turn and the day\'s join, never faster than its pace',
+    walkJump <= 1.01 && walkWrap < 1e-4, [walkJump, walkWrap].join());
+  T('it eases into and out of every stop, and turns round only standing, smoothly', !badPace && !badTurn);
+  T('and it faces the way it walks: never backwards', walkAstray < 1e-3, walkAstray);
+  T('the two are never in step: a pace and a day of their own',
+    walks.length === 2 && walks[0].speed !== walks[1].speed && Math.abs(W.walkPeriod(walks[0]) - W.walkPeriod(walks[1])) > 1);
+  T('a still world shows everyone somewhere sensible: at its first moment each stands at a stop, the truck on a straight',
+    walks.every(w => W.walkerAt(w, 0).walking === 0) && Math.abs(W.driveAt(drive, 0).turn % (Math.PI / 2)) < 1e-9);
 
   /* 0.9.0 set the places into one city (world.js cityPlan): before it they
      stood on separate plinths on a dark slab with crossings painted
@@ -3221,22 +3266,70 @@ async function testWorld(){
   T('a crossing is painted only on a road, from curb to curb at a block\'s corner, and a street that reaches the water ends in bollards',
     strays.every(n => n === 0) && cities.filter(c => c.plan.canal).every(c => c.plan.bollards.every(b => Math.abs(b.z - c.plan.canal.z) < W.WORLD.stepZ / 2)),
     strays.join());
-  const pathNear = (loop, x, z) => { let m = Infinity; for(let t = 0; t < W.loopLength(loop) / 1.1; t += 0.05){ const p = W.streetPose(loop, t, 0); m = Math.min(m, Math.hypot(p.x - x, p.z - z)); } return m; };
-  T('parked cars keep to the curb, clear of the trucks\' lane', cities.slice(0, 7).every(c => c.plan.cars.every(car => pathNear(c.plan.loop, car.x, car.z) > 0.51 + 0.42)));
-  let truckSafe = true;
-  cities.forEach(c => { for(let t = 0; t < 200; t += 0.37){
-    const p = W.streetPose(c.plan.loop, t, 0), ux = Math.sin(p.turn), uz = Math.cos(p.turn);
-    [[0, 1.14], [0, -1.14], [0.51, 1.14], [-0.51, 1.14], [0.51, -1.14], [-0.51, -1.14]].forEach(([s, f]) => {
-      const x = p.x + uz * s + ux * f, z = p.z - ux * s + uz * f;
-      if(c.plan.paving.some(r => inRect(x, z, r, -0.02)) || !W.onIsland(c.plan.island, x, z, W.CITY.shore - 0.05)) truckSafe = false;
+  /* The whole truck, not only its middle, at every 5 cm of its circuit, in
+     every city: its body and wheels (the city's box truck at DRIVE.scale),
+     against the promenade, every block, every parked car, the canal and
+     every tree's canopy (both of a tree's crowns, a pine's cone). */
+  const rectGap = (r, x, z) => { const dx = Math.max(r.minX - x, 0, x - r.maxX), dz = Math.max(r.minZ - z, 0, z - r.maxZ);
+    return dx > 0 || dz > 0 ? Math.hypot(dx, dz) : -Math.min(x - r.minX, r.maxX - x, z - r.minZ, r.maxZ - z); };
+  const carGap = (car, x, z) => { const cs = Math.cos(car.turn), sn = Math.sin(car.turn);
+    return rectGap({ minX: -0.42, maxX: 0.42, minZ: -0.89, maxZ: 0.89 }, (x - car.x) * cs - (z - car.z) * sn, (x - car.x) * sn + (z - car.z) * cs); };
+  const crowns = t => t.kind === 'pine' ? [[t.x, t.z, 0.7 * t.s]] :
+    [[t.x, t.z, 0.75 * t.s], [t.x + 0.25 * t.s * Math.cos(t.turn) + 0.1 * t.s * Math.sin(t.turn), t.z - 0.25 * t.s * Math.sin(t.turn) + 0.1 * t.s * Math.cos(t.turn), 0.5 * t.s]];
+  const insideShore = (isl, x, z) => { const a = isl.a - W.CITY.shore, b = isl.b - W.CITY.shore, r = Math.max(0, Math.min(isl.r - W.CITY.shore, a, b));
+    const qx = Math.abs(x - isl.cx) - (a - r), qz = Math.abs(z - isl.cz) - (b - r);
+    return qx <= 0 && qz <= 0 ? Math.min(a - Math.abs(x - isl.cx), b - Math.abs(z - isl.cz)) : qx > 0 && qz > 0 ? r - Math.hypot(qx, qz) : qx > 0 ? a - Math.abs(x - isl.cx) : b - Math.abs(z - isl.cz); };
+  const k = W.DRIVE.scale, truckPts = [], wheelPts = [[0.55 * k, -0.66 * k], [-0.55 * k, -0.66 * k], [0.55 * k, 0.7 * k], [-0.55 * k, 0.7 * k]];
+  for(let i = 0; i <= 8; i++){ const f = (-1.14 + 2.28 * i / 8) * k; truckPts.push([0.515 * k, f], [-0.515 * k, f]); }
+  for(let i = 0; i <= 4; i++){ const s = (-0.515 + 1.03 * i / 4) * k; truckPts.push([s, 1.14 * k], [s, -1.14 * k]); }
+  const room = { promenade: 9, block: 9, car: 9, crown: 9, canal: 9, wheels: 9 };
+  cities.forEach(c => {
+    const plan = c.plan, Pc = W.drivePeriod(plan.drive), trees = plan.trees.flatMap(crowns);
+    for(let t = 0; t < Pc; t += 0.05 / W.DRIVE.speed){
+      const p = W.driveAt(plan.drive, t), ux = Math.sin(p.turn), uz = Math.cos(p.turn), at = ([s, f]) => [p.x + uz * s + ux * f, p.z - ux * s + uz * f];
+      truckPts.forEach(q => { const [x, z] = at(q);
+        room.promenade = Math.min(room.promenade, insideShore(plan.island, x, z));
+        plan.paving.forEach(r => { room.block = Math.min(room.block, rectGap(r, x, z)); });
+        plan.cars.forEach(car => { room.car = Math.min(room.car, carGap(car, x, z)); });
+        trees.forEach(([tx, tz, tr]) => { room.crown = Math.min(room.crown, Math.hypot(x - tx, z - tz) - tr); });
+        if(plan.canal) room.canal = Math.min(room.canal, rectGap(plan.canal, x, z));
+      });
+      wheelPts.forEach(q => { const [x, z] = at(q); room.wheels = Math.min(room.wheels, insideShore(plan.island, x, z), ...plan.paving.map(r => rectGap(r, x, z))); });
+    }
+  });
+  T('the service truck\'s whole body clears the promenade, every block, every parked car, the canal and every tree, round every turn of every city',
+    room.promenade >= 0.1 && room.block >= 0.1 && room.car >= 0.1 && room.crown >= 0.1 && room.canal >= 0.1, JSON.stringify(room));
+  T('and its wheels are on the road all the way round', room.wheels >= 0.1, room.wheels);
+  /* Each passer-by, as the room it takes (a disc as wide as its elbows), at
+     every 2 cm of its way: always on paving, never on a road (so never a
+     crossing), off every place, and clear of every tree, lamp, bench,
+     bollard, parked car and loading bay; never on the canal or a bridge. */
+  const body = 0.2, walkRoom = { paving: 9, place: 9, crown: 9, lamp: 9, bench: 9, bollard: 9, car: 9, water: 9 };
+  let sameRow = false;
+  cities.forEach(c => {
+    const plan = c.plan, trees = plan.trees.flatMap(crowns);
+    if(plan.walks.length === 2 && c.rows > 1 && plan.walks[0].row === plan.walks[1].row) sameRow = true;
+    plan.walks.forEach(w => {
+      const [[ax, az], [bx, bz]] = w.points, L = Math.hypot(bx - ax, bz - az);
+      for(let s = 0; s <= L; s += 0.02){
+        const x = ax + (bx - ax) * s / L, z = az + (bz - az) * s / L;
+        walkRoom.paving = Math.min(walkRoom.paving, Math.max(...plan.paving.map(r => -rectGap(r, x, z))) - body);
+        walkRoom.place = Math.min(walkRoom.place, ...c.ds.map(d => rectGap({ minX: d.x - P, maxX: d.x + P, minZ: d.z - P, maxZ: d.z + P }, x, z) - body));
+        trees.forEach(([tx, tz, tr]) => { walkRoom.crown = Math.min(walkRoom.crown, Math.hypot(x - tx, z - tz) - tr - body); });
+        plan.lamps.forEach(l => { walkRoom.lamp = Math.min(walkRoom.lamp, Math.hypot(x - l.x, z - l.z) - 0.12 - body); });
+        plan.benches.forEach(b => { walkRoom.bench = Math.min(walkRoom.bench, rectGap({ minX: b.x - 0.65, maxX: b.x + 0.65, minZ: b.z - 0.25, maxZ: b.z + 0.25 }, x, z) - body); });
+        plan.bollards.forEach(b => { walkRoom.bollard = Math.min(walkRoom.bollard, Math.hypot(x - b.x, z - b.z) - 0.07 - body); });
+        plan.cars.forEach(car => { walkRoom.car = Math.min(walkRoom.car, carGap(car, x, z) - body); });
+        plan.bays.forEach(b => { walkRoom.car = Math.min(walkRoom.car, rectGap({ minX: b.x - b.w / 2, maxX: b.x + b.w / 2, minZ: b.z - b.len / 2, maxZ: b.z + b.len / 2 }, x, z) - body); });
+        if(plan.canal) walkRoom.water = Math.min(walkRoom.water, rectGap(plan.canal, x, z) - body, ...plan.bridges.map(b => rectGap({ minX: b.x - b.w / 2, maxX: b.x + b.w / 2, minZ: b.minZ, maxZ: b.maxZ }, x, z) - body));
+      }
     });
-  } });
-  T('a truck keeps to the ring road: its whole body off every block and inside the promenade, round every corner', truckSafe);
-  T('a resident walks the sidewalk round its place, never across it', cities.every(c => c.ds.slice(0, 10).every(d => {
-    const w = W.sidewalkLoop(d);
-    for(let t = 0; t < 60; t += 0.5){ const p = W.streetPose(w, t, 0); if(onAPlace([d], p.x, p.z, 0.1)) return false; }
-    return true;
-  })));
+  });
+  T('a passer-by keeps to the paving the whole way, never on a road, so it never crosses one', walkRoom.paving >= 0.05, JSON.stringify(walkRoom));
+  T('and clear of every place, tree, lamp, bench, bollard, parked car and loading bay, off the canal and its bridges, in every city',
+    ['place', 'crown', 'lamp', 'bench', 'bollard', 'car', 'water'].every(key => walkRoom[key] >= 0.05), JSON.stringify(walkRoom));
+  T('two passers-by walk two different parts of the city: never the same row where there are two', !sameRow &&
+    cities.filter(c => c.cols >= 2).every(c => c.plan.walks.length === 2));
   T('the same layout is the same city every time', JSON.stringify(W.cityPlan(cities[4].ds)) === JSON.stringify(cities[4].plan) &&
     JSON.stringify(W.cityParts(cities[4].ds)) === JSON.stringify(W.cityParts(cities[4].plan)));
   T('the city is scenery: it knows positions, never a record', !/workerState|status|recorded|attention|signal/.test(W.cityPlan.toString() + W.cityParts.toString()));
@@ -3262,7 +3355,8 @@ async function testWorld(){
     /meshesFor\(placeGeo\(item\.theme, tintOf\), t\.content, true, true\)/.test(r3) &&
     (r3.match(/, true, true\)/g) || []).length === 1 &&
     /const g = toGeometries\(mergeParts\(cityParts\(plan\), col\)\);[\s\S]{0,200}mesh\.castShadow = m === 'matte';/.test(r3) &&
-    /meshesFor\(partsGeo\('city-truck',TRUCK_PARTS\),g,false\)\.forEach\(m=>\{m\.castShadow=false;\}\)/.test(r3));
+    /meshesFor\(partsGeo\('city-truck', TRUCK_PARTS\), truck, false\)\.forEach\(m => \{ m\.castShadow = false; \}\);/.test(r3) &&
+    /inst\.traverse\(o => \{ if\(o\.isMesh\)\{ o\.castShadow = false; o\.receiveShadow = true; o\.frustumCulled = false; \} \}\);/.test(r3));
   T('an authored worker that moves takes its shadow with it: the map follows at a set pace, only while it moves and is drawn large',
     /if\(districtPx\(districtOf\(t\), S\.frame, S\.w, S\.h\) >= LIGHT\.shadowMinPx\) moved = true;/.test(r3) &&
     /if\(moved && now - S\.shadowAt >= LIGHT\.shadowRefreshMs\)\{ S\.shadowAt = now; S\.shadowRefreshes\+\+; renderer\.shadowMap\.needsUpdate = true; \}/.test(r3) &&
@@ -3378,6 +3472,72 @@ async function testWorld(){
     return read('sw.js').indexOf("', '" + h + "', ") !== -1; }));
   T('the export and the app hold the same district budget',
     Object.keys(W.DISTRICT_BUDGET).every(key => new RegExp("'" + key + "': " + W.DISTRICT_BUDGET[key] + '\\b').test(read('art/blender/scripts/export_glb.py'))));
+  /* Living City 1 authored nothing of the six places: city life is added
+     beside them, never by touching them. */
+  const APPROVED = { track: 'e0b21a1c4dcc', calendar: 'c60794997357', book: '97f674076d4d', vault: '9099b2690506', rocket: '7b9d1f6a6052', sushi: '5e636e127ee4' };
+  T('the six approved places are the very bytes that were approved', Object.keys(APPROVED).every(k =>
+    require('crypto').createHash('sha256').update(fsx.readFileSync(at(W.ASSETS[k].url))).digest('hex').slice(0, 12) === APPROVED[k]));
+
+  sub('the passers-by: authored like the crew, never crew');
+  {
+    const bin = fsx.readFileSync(at(W.STREET.url)), gl = JSON.parse(bin.slice(20, 20 + bin.readUInt32LE(12)).toString());
+    const prims = (gl.meshes || []).reduce((s, m) => s + m.primitives.length, 0);
+    const tris = (gl.meshes || []).reduce((s, m) => s + m.primitives.reduce((t, p) =>
+      t + (p.indices !== undefined ? gl.accessors[p.indices].count : gl.accessors[p.attributes.POSITION].count) / 3, 0), 0);
+    const crewNode = (gl.nodes || []).find(n => n.extras && n.extras.mc_crew), roles = crewNode ? String(crewNode.extras.mc_crew).split(',') : [];
+    const measured = { triangles: tris, drawCalls: prims, materials: (gl.materials || []).length, workers: roles.length, bytes: bin.length, textures: (gl.images || []).length };
+    T('the passers-by are one file within their own budget (draws, triangles, materials, people, bytes, no textures)',
+      Object.keys(W.STREET_BUDGET).every(key => measured[key] <= W.STREET_BUDGET[key]) && measured.textures === 0, JSON.stringify(measured));
+    T('the export and the app hold the same street budget, and its audit is the file beside it',
+      Object.keys(W.STREET_BUDGET).every(key => new RegExp("'" + key + "': " + W.STREET_BUDGET[key] + '\\b').test(read('art/blender/scripts/export_glb.py'))) &&
+      (r => r.within_budget === true && r.bytes === bin.length && r.asset === 'street')(JSON.parse(read(W.STREET.url.replace(/\.glb$/, '.audit.json')))));
+    const joints = (gl.skins || []).length === 1 ? gl.skins[0].joints.map(j => gl.nodes[j].name) : [];
+    T('two people on one skeleton, each with its own bones and a root the app moves, walking and pausing',
+      roles.map(r => r.split(':')[0]).join() === W.STREET.roles.join() && W.STREET.roles.every(r =>
+        joints.filter(b => b.indexOf(r + W.CREW_JOIN) === 0).length === 12 && joints.indexOf(r + W.CREW_JOIN + 'root') !== -1) &&
+      ['MC_WALK', 'MC_PAUSE'].every(n => (gl.animations || []).some(a => a.name === n)), roles.join() + ' ' + joints.length);
+    T('a passer-by is never crew: no status light, no helmet band, no status material at all',
+      !(gl.materials || []).some(m => m.name === W.ASSET_STATUS_MATERIAL) && !(gl.nodes || []).some(n => /Helmet|Status/i.test(n.name || '')),
+      (gl.materials || []).map(m => m.name).join());
+    /* Everything it wears (each vertex colour under its material's base), so
+       the city never seems to signal a state. */
+    const body = bin.slice(28 + bin.readUInt32LE(12)), worn = new Set();
+    gl.meshes.forEach(m => m.primitives.forEach(p => {
+      const base = ((gl.materials[p.material] || {}).pbrMetallicRoughness || {}).baseColorFactor || [1, 1, 1, 1];
+      const acc = p.attributes.COLOR_0 === undefined ? null : gl.accessors[p.attributes.COLOR_0], bv = acc && gl.bufferViews[acc.bufferView];
+      const size = acc ? { 5121: 1, 5123: 2, 5126: 4 }[acc.componentType] : 0, step = acc ? bv.byteStride || (acc.type === 'VEC4' ? 4 : 3) * size : 0;
+      for(let i = 0; i < (acc ? acc.count : 1); i++){
+        const c = [0, 1, 2].map(k => { if(!acc) return base[k]; const at = (bv.byteOffset || 0) + (acc.byteOffset || 0) + i * step + k * size;
+          return base[k] * (size === 4 ? body.readFloatLE(at) : size === 1 ? body.readUInt8(at) / 255 : body.readUInt16LE(at) / 65535); });
+        worn.add('#' + c.map(v => Math.round(255 * Math.max(0, Math.min(1, v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055))).toString(16).padStart(2, '0')).join(''));
+      }
+    }));
+    const fromStatus = h => Math.min(...sigHex.map(s => { const a = lab(h), b = lab(s); return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }));
+    T('a passer-by never wears a status colour: everything it wears is at least ΔE 20 from every status hue',
+      sigHex.length === 9 && worn.size >= 5 && [...worn].every(h => fromStatus(h) >= 20), [...worn].map(h => h + ' ' + fromStatus(h).toFixed(1)).join(', '));
+    T('its stride travels with it, and the walk the app plays covers exactly that ground, so no foot slides',
+      crewNode && Math.abs(crewNode.extras.mc_stride * W.STREET.metre - W.WALK.cycle) / W.WALK.cycle < 0.01, crewNode && crewNode.extras.mc_stride);
+    T('drawn at the places\' own scale: a metre is what a place\'s platform makes it', Object.values(W.ASSETS).every(a =>
+      Math.abs(W.STREET.metre - a.span / base) < 1e-12));
+    T('precached for offline, as its release copy', read('sw.js').indexOf("', '" + require('crypto').createHash('sha256').update(bin).digest('hex') + "', ") !== -1);
+  }
+  const lifeBody = r3.slice(r3.indexOf('---------- city life ----------'), r3.indexOf('---------- authored places ----------'));
+  T('city life runs on the world\'s one clock, only while its life does, and never under Reduce Motion: a still world stands everyone at ease',
+    /const alive = ambient && !rm\(\);\s*if\(alive\) streetTime \+= dt;/.test(lifeBody) && /pace = alive \? p\.walking : 0;/.test(lifeBody) &&
+    /w\.pause\.time = alive \? \(streetTime \+ w\.offset\) % w\.pause\.getClip\(\)\.duration : 0;/.test(lifeBody) && !/requestAnimationFrame|setTimeout|setInterval/.test(lifeBody));
+  T('city life is made once: a new layout gives it new ways, so rotating never piles up copies',
+    /function buildStreetLife\(plan\)\{\s*streetPlan = plan;\s*truck\.visible = !!plan\.drive;\s*walkers\.list\.forEach\(\(w, i\) => \{ w\.way = plan\.walks\[i\] \|\| null; \}\);/.test(r3) &&
+    (r3.match(/partsGeo\('city-truck'/g) || []).length === 1 && (r3.match(/cloneSkinned\(/g) || []).length === 2);
+  T('the clips never move a passer-by: its root\'s tracks are dropped, and it is stood where world.js says after them',
+    /crewOf\(file, rig, name => name\.endsWith\(CREW_JOIN \+ 'root'\)\)/.test(r3) &&
+    /if\(walkers\.mixer\) walkers\.mixer\.update\(0\);[\s\S]{0,400}streetM\.decompose\(w\.root\.position, w\.root\.quaternion, w\.root\.scale\);/.test(r3));
+  T('a passer-by with no way to walk (a one-place city has one) is folded away, never left standing where the file put it',
+    W.cityPlan(W.layoutDistricts(1, 1).districts).walks.length === 1 &&
+    /if\(!on\)\{[^}]*w\.at = null; w\.root\.scale\.setScalar\(0\); return; \}/.test(lifeBody));
+  T('the world waits for the passers-by as for a place, never longer, and compiles them before they are seen',
+    /function startStreet\(\)\{\s*S\.pending\+\+;[\s\S]{0,300}setTimeout\(settle, ASSET_WAIT_MS\);[\s\S]{0,300}compileAsync/.test(r3) && /startStreet\(\);/.test(r3));
+  T('city life never takes a tap: taps are hit-tested against the places, and nothing casts a ray at the scene', !/Raycaster/.test(r3) &&
+    /hitDistrict\(/.test(r3));
   T('the world budget holds six districts each at its own budget, so raising one never quietly breaks the other',
     W.BUDGET.triangles >= 6 * W.DISTRICT_BUDGET.triangles && W.BUDGET.drawCalls >= 6 * W.DISTRICT_BUDGET.drawCalls);
   T('a crew is there whole or not at all: one skeleton, so no state hides only some of it',

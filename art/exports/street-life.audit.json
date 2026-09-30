@@ -1,0 +1,57 @@
+{
+  "file": "street-life.glb",
+  "bytes": 168832,
+  "triangles": 5060,
+  "vertices_blender": 2624,
+  "mesh_objects": 1,
+  "draw_calls": 3,
+  "materials": 3,
+  "material_names": [
+    "MC_FAM_COATED",
+    "MC_METAL_DARK",
+    "MC_SKIN"
+  ],
+  "textures": 0,
+  "texture_memory_bytes": 0,
+  "workers": 2,
+  "crew": "walker_a:WALK,walker_b:WALK",
+  "status_meshes": [],
+  "clips": [
+    "MC_WALK",
+    "MC_PAUSE"
+  ],
+  "asset": "street",
+  "budget": {
+    "triangles": {
+      "limit": 8000,
+      "actual": 5060,
+      "ok": true
+    },
+    "drawCalls": {
+      "limit": 4,
+      "actual": 3,
+      "ok": true
+    },
+    "materials": {
+      "limit": 4,
+      "actual": 3,
+      "ok": true
+    },
+    "workers": {
+      "limit": 2,
+      "actual": 2,
+      "ok": true
+    },
+    "bytes": {
+      "limit": 250000,
+      "actual": 168832,
+      "ok": true
+    },
+    "textures": {
+      "limit": 0,
+      "actual": 0,
+      "ok": true
+    }
+  },
+  "within_budget": true
+}

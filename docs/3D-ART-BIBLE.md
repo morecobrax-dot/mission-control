@@ -261,6 +261,39 @@ comes from.
   known to be under way and holds its first frame otherwise. Life never
   counts, fills or finishes anything, and a clock never tells the real time.
 
+## City life
+
+The city between the places has exactly one small service truck and two
+passers-by. They are scenery: they never stand for a session, a delivery,
+progress, a dependency or a job, and they never wear a status.
+
+- The truck is the city's own box truck recipe (`TRUCK_PARTS`), the one
+  parked at the loading bays, drawn at 0.85 so the whole body keeps at
+  least 0.1 from every tree crown and parked car on the ring road: about
+  3.3 m long, 1.5 m wide and 1.5 m tall at the places' scale, a small
+  service truck beside the parked delivery trucks. It keeps right and
+  drives about 1.9 m/s on the straights and 1.2 m/s through each turn,
+  easing between them: an unhurried miniature pace, the same every time.
+- A passer-by is the worker base (`mc_walker.py`) dressed as a person out
+  walking: no helmet, a hair cap, long sleeves, civilian colours from the
+  coated family (camel over dark trousers with a charcoal backpack; brown
+  over stone), and the crew's scale, about 1.6 m. Two clips on one
+  skeleton: `MC_WALK`, 32 frames, whose stride (0.9555 m, measured from
+  the feet) travels with the file so the app's walk covers exactly the
+  ground it crosses, and `MC_PAUSE`, 96 frames of standing at ease. Every
+  frame of both is grounded by the hips, never by a floor offset.
+- They stroll at 0.8 and 0.9 m/s, stop for about two seconds on the way,
+  and turn round standing at each end: restrained, never in step, never
+  hurrying.
+- Scale and colour stay secondary to the places. Everything a passer-by
+  wears is at least ΔE 20 from every status hue (contract 30), so the city
+  never seems to signal a state; the truck keeps the parked trucks'
+  approved paint and lamps.
+- The passers-by are their own export (`street-life.glb`, a scene marked
+  `mc_asset = street`) with their own budget (`STREET_BUDGET`: 8,000
+  triangles, 4 draws, 4 materials, 2 people, 250 KB, no textures; shipped
+  at 5,060 triangles, 3 draws, 3 materials, 169 KB).
+
 ## Composition
 
 - One hero mass, two supporting masses, and open floor. The eye goes hero
@@ -386,3 +419,15 @@ gaps, triangle and draw-call cost), and write the honest verdict down.
   pad is the emptiest ground in the city.
 - Capy Sushi: the plate belt and the chef sit under the awning and are
   seen only in focus; from the overview the roof and terrace carry it.
+
+## Known limits of city life
+
+- The moving truck is smaller than the parked ones: the ring road leaves
+  room for a full-size truck's body only by grazing the promenade trees.
+- At the phone overview a passer-by is a few pixels tall, like the crews;
+  it reads as a person only in focus.
+- The truck's wheels do not turn and it has no driver: at city scale the
+  body, its glass and its lamps carry it.
+- When life settles after five untouched minutes, and when Reduce Motion
+  comes on, a walking passer-by changes to standing in one frame, where it
+  is; the truck stops where it is. Nothing jumps.
