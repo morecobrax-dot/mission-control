@@ -1731,6 +1731,17 @@ function validateAppId(id){
    ========================================================= */
 const APP_UPDATES = [
   {
+    id: 'v0-9-5',
+    version: '0.9.5',
+    title: 'Every name on a small screen',
+    date: '2026-09-30',
+    summary: 'On a shorter phone the city now keeps every project name readable at the overview.',
+    improvements: [
+      'With a few projects needing you and some statuses unknown, a 375×667 phone showed only four of six names; it now arranges the city so all six can be read',
+      'Where a screen is too small for every name at once, the overview starts with the names it shows clear of each other, and the rest are a pan away'
+    ]
+  },
+  {
     id: 'v0-9-4',
     version: '0.9.4',
     title: 'Always in view',
@@ -3681,18 +3692,18 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = '8996d9af0058';
-const WORLD_MODULE = './release/render3d.e821bb45a953.js';
+const APP_RELEASE = '9d9d230477f6';
+const WORLD_MODULE = './release/render3d.1b8b176bff70.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
   './release/dayplan-diorama.c60794997357.glb',
   './release/golden-diorama.e0b21a1c4dcc.glb',
-  './release/render3d.e821bb45a953.js',
+  './release/render3d.1b8b176bff70.js',
   './release/savings-diorama.9099b2690506.glb',
   './release/spacek-diorama.7b9d1f6a6052.glb',
   './release/street-life.e0a6f770609c.glb',
   './release/three.min.0c9283a1079c.js',
-  './release/world.b0fbdf9e2c50.js'];
+  './release/world.b4213b399ebc.js'];
 /* APP-RELEASE-END */
 
 function fieldScene(views){

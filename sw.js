@@ -28,14 +28,14 @@
  */
 
 /* APP-CACHE-BEGIN */
-const CACHE_NAME = 'mission-control-v0.9.4-667475c10f97';
+const CACHE_NAME = 'mission-control-v0.9.5-6ad5fef0da88';
 /* APP-CACHE-END */
 
 /* APP-FILES-BEGIN */
 const RELEASE = {
-  id: '8996d9af0058',
+  id: '9d9d230477f6',
   files: [
-    ['./index.html', '55f9ca06779ee72c438cd76372ac0114ccc50b9cacd6abd33da8e6df7b7fd724', 252279],
+    ['./index.html', 'c0321a1d0f6c4db66db84a380415271dd8606a9440d77fc780c1e210ce7f58d0', 252837],
     ['./manifest.webmanifest', '774e9d6751d74a9ae1e205dcfd4c3ff4e602d58bb2ad7ca749d1b9f4328efe42', 583],
     ['./icon-192.png', '0158e8011a048dd9d51da60afed6ccae8a9d66932e9f424b6e2c15e6e2eb00d1', 20289],
     ['./icon-512.png', '04ec5545111e900e3b2bc584c9d7fd33f126f0d2d4a4464c8e627b467048a31d', 86533],
@@ -43,12 +43,12 @@ const RELEASE = {
     ['./release/dailyverse-diorama.97f674076d4d.glb', '97f674076d4d35d758a3f22e96b4c4048dec29f170891aa78d0ec221c5be358a', 1216940],
     ['./release/dayplan-diorama.c60794997357.glb', 'c60794997357d1ebaf75a7d67d6c2673b83a1f6fdf5b199f3806e10ac957cca9', 1330208],
     ['./release/golden-diorama.e0b21a1c4dcc.glb', 'e0b21a1c4dccae20cab54981955546cdd9f250d4d75a98a02caaa9fb9481d52e', 1581172],
-    ['./release/render3d.e821bb45a953.js', 'e821bb45a9530b7cc5b5ee5da4b139afa27d6b7b2f420bdcd9b628ee778cdad7', 86894],
+    ['./release/render3d.1b8b176bff70.js', '1b8b176bff7089e17e34790f30d634d674c5a217abef959a32593680f7663290', 87024],
     ['./release/savings-diorama.9099b2690506.glb', '9099b2690506df593e611c7aa501363747e53f305f20c02ff6f6c72332a82c4e', 1085452],
     ['./release/spacek-diorama.7b9d1f6a6052.glb', '7b9d1f6a60522e0724ec3611dffd44cdac35ed71973154a5ce170ae8c3f8a80e', 1132352],
     ['./release/street-life.e0a6f770609c.glb', 'e0a6f770609c9c57be7e14f9904d4beb31481cb153c077e66db4311e750c6b76', 168832],
     ['./release/three.min.0c9283a1079c.js', '0c9283a1079c2dcb73462eea6746a8ccfa791eadb65ccfbb753bdd867a59a5f9', 639129],
-    ['./release/world.b0fbdf9e2c50.js', 'b0fbdf9e2c505eff18088013a3802e4f17b39f90c332dfa02c87777fc49fa7de', 95885]
+    ['./release/world.b4213b399ebc.js', 'b4213b399ebc243c4257919e9b4bcac5a69183a7ebadb68e9d658af88030b1db', 98913]
   ]
 };
 /* APP-FILES-END */

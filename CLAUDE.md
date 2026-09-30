@@ -407,3 +407,16 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     (`html.hub-screen`): nothing to scroll on an upright phone, an iPad or
     a desktop window; a phone on its side is the exception and scrolls by
     its chrome. Contract 30.
+59. **Names decide the arrangement.** A project is readable when its name
+    is: `chooseLayout` is given the labels' measured rooms and judges each
+    arrangement by the names readable at its overview, placed and resolved
+    as the renderer does. The whole city with every name readable wins
+    (down to a 44px place); a city that pans starts zoomed only as far out
+    as keeps every name in its view clear, so at the overview a name is
+    readable or off the view, never hidden behind a neighbour (panned, a
+    label clamped at the view's edge can still cover one; focus and the
+    keyboard always show it). Never widen labels, shrink type or overlap
+    them to fit. 0.9.4 chose by geometry and showed four of six names on a
+    375x667 phone. Navigation QA runs on controlled repository-status
+    fixtures, never the live portfolio (that is its own smoke test), and a
+    constrained-world test never assumes the city fits. Contract 30.

@@ -494,6 +494,27 @@ their CSS type size. A 92px geometry floor cropped a three-column city on
 phones; the 68px floor lets the full six-block city fit as two columns,
 including the whole slab, on a short phone too.
 
+**Names decide the arrangement** (0.9.5). The renderer gives `chooseLayout`
+the labels' measured rooms, and each arrangement is judged by the names that
+can actually be read at its overview — placed and resolved exactly as the
+renderer does (`overviewLabelRects`, `resolveLabels`, `labelOff`). The whole
+city with every name readable wins; with every name readable over the whole
+city it fits down to `minPlacePx` (44, a fingertip) rather than the
+geometry-only 68; otherwise the most names readable, then as before. A city
+that pans starts zoomed only as far out as keeps every name in its view
+clear of its neighbours, so at the overview a name is readable or off the
+view, never hidden behind another. Panned, a label whose place is partly
+off the view is clamped into it (`labelSpot`) and can cover a neighbour's:
+on a 320×568 phone (smaller than any verified screen; there the six pan)
+Capy Sushi's name is covered by Space Kindergarten's wherever both are
+partly in view; focus and keyboard reveal still show it. 0.9.4 chose by
+geometry alone: on a 375×667 phone with two
+unknown records and two or three attention buttons (a 343×296 world) two
+columns at 66px lost by 2px to three columns whose 100px labels collided,
+and four of six names showed. Without rooms the choice is the geometry-only
+one, unchanged. Label words changing (a status arriving) do not relayout;
+the hub gaining a row does, through the resize.
+
 **The city between the places** (`cityPlan`, merged by `cityParts` into
 three draws, plus the island and the water). Every place stands in its own
 block, paved one curb above the road with a sidewalk round it. Rows are

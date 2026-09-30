@@ -34,12 +34,12 @@ import * as THREE from './three.min.0c9283a1079c.js';
 import {
   WORLD, TILE, CITY, BEACON, eyeOf, project, chooseLayout, islandOf, islandOutline, shoreHalfWidth, focusFrame,
   clampFrame, panRest, panStart, panMove, panEnd, revealFrame, hitDistrict, labelAnchor, labelSpot, sameFrame, planFlight, flightFrame, flightSpeed,
-  pixelRatioFor, nextPixelRatio, shouldStepDown, districtPx, resolveLabels, createArbiter, swipeVerdict, swipeFrame, neighbourOf,
+  pixelRatioFor, nextPixelRatio, shouldStepDown, districtPx, resolveLabels, labelOff, createArbiter, swipeVerdict, swipeFrame, neighbourOf,
   CREW, CREW_FACING, poseFor, crewLoops,
   lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS,
   placeHeight, cityPlan, cityParts, TRUCK_PARTS, DRIVE, WALK, STREET, driveAt, walkerAt,
   assetFor, assetFloor, assetHeight, assetCrew, ASSET_STATUS_MATERIAL, ASSET_LIFE_CLIP, CREW_JOIN, LIGHT, lightDirection
-} from './world.b0fbdf9e2c50.js';
+} from './world.b4213b399ebc.js';
 
 export const REVISION = THREE.REVISION;
 
@@ -988,7 +988,10 @@ export function createWorld(host, hooks){
   /* ---------- layout and camera ---------- */
   function relayout(depth){
     const heights = S.order.map(id => S.tiles.get(id).height);
-    const pick = chooseLayout(S.order.length, S.w, S.h, heights);
+    /* The labels as last measured (before the first measure, none): the
+       arrangement is chosen for names that can be read, not places alone. */
+    const rooms = S.order.map(id => { const t = S.tiles.get(id); return { w: t.labelW || 0, h: t.labelH || 0 }; });
+    const pick = chooseLayout(S.order.length, S.w, S.h, heights, rooms);
     S.cols = pick.cols;
     S.fits = pick.fits;
     S.order.forEach((id, i) => {
@@ -1098,8 +1101,7 @@ export function createWorld(host, hooks){
       const t = S.tiles.get(id), a = project(labelAnchor(districtOf(t)), f, S.w, S.h);
       const under = focusUnder === undefined ? t.under : id === S.focusId ? focusUnder : 0;
       const spot = labelSpot(a, t.labelW, t.labelH, under, S.w), c = project([t.x, 0, t.z], f, S.w, S.h);
-      /* A label whose place has left the view is not there, however it is pushed into the view. */
-      const off = !(a.depth > 0.5) || c.x < -40 || c.x > S.w + 40 || c.y < -40 || c.y > S.h + 40;
+      const off = labelOff(a, c, S.w, S.h);
       return { id: id, row: t.row, x: spot.x, y: spot.y, w: t.labelW, h: t.labelH, off: off,
                attn: !!(t.state.attention && t.state.attention.length) };
     });

@@ -35,6 +35,7 @@ export const WORLD = {
   minDist: 14, maxDist: 900,     // the closest and farthest the camera goes
   focusFill: 0.9,                // a focused district fills this share of the view
   minDistrictPx: 68,             // geometry only: measured labels keep their CSS type size; a larger island pans
+  minPlacePx: 44,                // with every name readable on the whole city it fits down to this (a fingertip); smaller pans
   labelPx: 36,                   // a label's room in front of its district, in px, until the labels are measured
   edgePx: 12,                    // breathing room at the viewport's edges, in px
   /* Every camera move is one flight (planFlight): longer for a longer way,
@@ -278,19 +279,56 @@ export function districtsInView(districts, f, W, H){
    largest, and among those that pan, whichever shows the most. A near tie
    goes to fewer columns, which keeps reading order simple. `heights` are
    per district (placeHeight). At the overview a label stands on its own
-   place (labelSpot), inside what already frames it. */
-export function chooseLayout(count, W, H, heights){
+   place (labelSpot), inside what already frames it. Given `rooms` (each
+   label's measured px), the names decide first (betterLayout). */
+export function chooseLayout(count, W, H, heights, rooms){
   const n = Math.max(1, count | 0);
   let best = null;
   for(let c = 1; c <= Math.min(n, 8); c++){
-    const lay = layoutDistricts(n, c), o = overview(lay.districts, heights, W, H);
+    const lay = layoutDistricts(n, c), o = overview(lay.districts, heights, W, H, rooms);
     const seen = districtsInView(lay.districts, o.frame, W, H);
     const size = seen.length ? Math.min.apply(null, seen.map(d => districtPx(d, o.frame, W, H))) : 0;
-    const pick = { cols: c, size: size, shown: seen.length, fits: o.fits, districts: lay.districts, frame: o.frame };
-    if(!best || (pick.fits && !best.fits) ||
-       (pick.fits === best.fits && (pick.fits ? size > best.size * 1.04 : pick.shown > best.shown))) best = pick;
+    const read = rooms ? readableAt(lay.districts, o.frame, W, H, rooms) : seen.length;
+    const pick = { cols: c, size: size, shown: seen.length, read: read, fits: o.fits, districts: lay.districts, frame: o.frame };
+    if(!best || betterLayout(pick, best, n)) best = pick;
   }
   return best;
+}
+/* Given the labels' measured rooms, a place counts as seen only when its
+   name can be read there: a geometry-only fit that hid names behind their
+   neighbours lost to one that read them all (a short phone showed four of
+   six: three columns fitted the places but not their 100px labels). So:
+   the whole city with every name readable wins; else the most names
+   readable; then fitting, then as before. With no rooms, readable is in
+   view, and this is the geometry-only choice unchanged. */
+function betterLayout(p, b, n){
+  const whole = x => x.fits && x.read === n;
+  if(whole(p) !== whole(b)) return whole(p);
+  if(!whole(p) && p.read !== b.read) return p.read > b.read;
+  if(p.fits !== b.fits) return p.fits;
+  return p.fits ? p.size > b.size * 1.04 : p.shown > b.shown;
+}
+/* How many labels can be read at the overview from frame f: each on its own
+   place, placed and resolved exactly as the renderer does (labelRects). */
+export function overviewLabelRects(districts, f, W, H, rooms){
+  return districts.map((d, i) => {
+    const r = rooms[i] || { w: 0, h: 0 }, a = project(labelAnchor(d), f, W, H), c = project([d.x, 0, d.z], f, W, H);
+    const s = labelSpot(a, r.w, r.h, 0, W);
+    return { id: i, row: d.row, x: s.x, y: s.y, w: r.w, h: r.h, off: labelOff(a, c, W, H) };
+  });
+}
+function readableAt(districts, f, W, H, rooms){
+  const shown = resolveLabels(overviewLabelRects(districts, f, W, H, rooms), [], W, H, []);
+  return districts.filter((d, i) => shown[i]).length;
+}
+/* Every label wholly in the view is readable: none hidden behind another. */
+function namesClear(districts, f, W, H, rooms){
+  const rects = overviewLabelRects(districts, f, W, H, rooms), shown = resolveLabels(rects, [], W, H, []);
+  return rects.every(r => shown[r.id] || r.off || r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H);
+}
+/* A label whose place has left the view is not there, however it is pushed into the view. */
+export function labelOff(anchor, centre, W, H){
+  return !(anchor.depth > 0.5) || centre.x < -40 || centre.x > W + 40 || centre.y < -40 || centre.y > H + 40;
 }
 
 /* The overview: every district and its label in view, as large as fits.
@@ -298,13 +336,18 @@ export function chooseLayout(count, W, H, heights){
    district, where reading begins, at the size it can be read, and the
    island pans. Row 0 is the farthest back, so every district in front of
    the first is drawn larger than it. */
-function overview(districts, heights, W, H){
+function overview(districts, heights, W, H, rooms){
   const pts = [], island = islandOf(districts);
   districts.forEach((d, i) => pts.push.apply(pts, districtPoints(d, at(heights, i, 3), null)));
   islandOutline(island, 32, 0).forEach(([x,z]) => pts.push({ p:[x,-WORLD.islandDepth,z] }));
   const fit = clampFrame(fitFrame(pts, W, H, 1), island);
   const small = districts.length ? Math.min.apply(null, districts.map(d => districtPx(d, fit, W, H))) : Infinity;
   if(small >= WORLD.minDistrictPx) return { frame: fit, fits: true };
+  /* Its names are what make a place readable: with the labels' rooms known
+     and every name readable over the whole city, it fits, however a little
+     under the geometry-only size its places are drawn (a short phone's
+     two columns at 66px, 2px short, lost to three that hid two names). */
+  if(rooms && small >= WORLD.minPlacePx && readableAt(districts, fit, W, H, rooms) === districts.length) return { frame: fit, fits: true };
   const first = districts[0];
   const place = dist => {
     let g = { x: first.x, z: first.z, d: dist };
@@ -315,8 +358,12 @@ function overview(districts, heights, W, H){
     return g;
   };
   /* The camera's slight turn puts some districts in view farther away than
-     the first: every one in view must be readable, not just the first. */
-  const readable = g => districtsInView(districts, g, W, H).concat([first]).every(d => districtPx(d, g, W, H) >= WORLD.minDistrictPx);
+     the first: every one in view must be readable, not just the first. With
+     the labels' rooms, so must every name in view: a name the view cuts is
+     a pan away, one hidden behind its neighbour is not (a 320px phone's
+     three columns hid two names that no pan could show). */
+  const readable = g => districtsInView(districts, g, W, H).concat([first]).every(d => districtPx(d, g, W, H) >= WORLD.minDistrictPx) &&
+    (!rooms || namesClear(districts, g, W, H, rooms));
   let lo = WORLD.minDist, hi = Math.max(WORLD.minDist, fit.d);
   for(let i = 0; i < 32; i++){
     const mid = Math.sqrt(lo * hi);

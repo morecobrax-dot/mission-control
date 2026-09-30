@@ -3317,6 +3317,48 @@ async function testWorld(){
   T('one world with depth: a nearer row is drawn larger than a farther one', deeper);
   const phone = W.chooseLayout(6, 358, 521, themes6.map(W.placeHeight), null);
   T('on a phone the six city blocks stand two to a row at the readable overview scale', phone.fits && phone.cols === 2 && phone.size >= W.WORLD.minDistrictPx, phone.cols + ' cols, ' + phone.size.toFixed(1) + ' px');
+
+  /* 0.9.4 on a 375x667 phone with two unknown records and two attention
+     buttons (a 343x296 world) showed four of six names: the chooser saw
+     places only, so two columns at 66px lost by 2px to three whose 100px
+     labels collided. The labels' rooms now decide: the whole city with
+     every name readable, else a pan where every name in view is readable
+     and the rest a pan away. Rooms are the page's measured labels. */
+  sub('names decide the arrangement: every project readable, or a pan away');
+  const measured = [[100, 44], [100, 44], [83, 44], [100, 59], [100, 59], [73, 44]];
+  const roomsFor = n => Array.from({ length: n }, (_, i) => ({ w: measured[i % 6][0], h: measured[i % 6][1] }));
+  const heightsFor = n => Array.from({ length: n }, (_, i) => { const t = themes6[i % 6]; return W.assetHeight(t) || W.placeHeight(t); });
+  const namesAt = (p, w, h, rooms) => { const rects = W.overviewLabelRects(p.districts, p.frame, w, h, rooms), shown = W.resolveLabels(rects, [], w, h, []);
+    const whole = r => !r.off && r.x >= 0 && r.y >= 0 && r.x + r.w <= w && r.y + r.h <= h;
+    return { read: rects.filter(r => shown[r.id]).length, hidden: rects.filter(r => whole(r) && !shown[r.id]).length }; };
+  const shortWas = W.chooseLayout(6, 343, 296, heightsFor(6)), shortNow = W.chooseLayout(6, 343, 296, heightsFor(6), roomsFor(6));
+  T('the short phone that showed four of six names now shows all six, the whole city in view',
+    namesAt(shortWas, 343, 296, roomsFor(6)).read === 4 && shortNow.fits && shortNow.cols === 2 && namesAt(shortNow, 343, 296, roomsFor(6)).read === 6 &&
+    W.districtsInView(shortNow.districts, shortNow.frame, 343, 296).length === 6, [shortWas.cols, shortNow.cols, shortNow.size.toFixed(1)].join());
+  const boxes = [[288, 280], [343, 280], [343, 296], [343, 344], [358, 473], [358, 569], [812, 259], [592, 841], [1200, 700]];
+  let same = true, neverWorse6 = true, noneHidden = true, fingertip = true, cases = 0;
+  [1, 2, 3, 6, 7, 8, 12, 20, 50].forEach(n => boxes.forEach(([w, h]) => {
+    const geo = W.chooseLayout(n, w, h, heightsFor(n)), lab = W.chooseLayout(n, w, h, heightsFor(n), roomsFor(n)), names = namesAt(lab, w, h, roomsFor(n));
+    cases++;
+    if(JSON.stringify(W.chooseLayout(n, w, h, heightsFor(n), null)) !== JSON.stringify(geo)) same = false;
+    if(n === 6 && names.read < namesAt(geo, w, h, roomsFor(n)).read) neverWorse6 = false;
+    if(!lab.fits && names.hidden) noneHidden = false;
+    if(lab.fits && lab.size < W.WORLD.minPlacePx) fingertip = false;
+  }));
+  T('without rooms the choice is the geometry-only one, unchanged', same, cases + ' cases');
+  T('the six projects never read fewer names than before, on any screen', neverWorse6);
+  T('a city that pans never hides a name in view behind another: what is not readable is a pan away (one to fifty places)', noneHidden, cases + ' cases');
+  const tinyRooms = [[60, 30], [60, 30]].map(([w, h]) => ({ w, h })), two = heightsFor(2);
+  const fitsAt49 = W.chooseLayout(2, 200, 150, two, tinyRooms), pansAt36 = W.chooseLayout(2, 150, 120, two, tinyRooms);
+  T('names let a city fit only down to a fingertip-wide place; smaller, it pans', fingertip && W.WORLD.minPlacePx === 44 &&
+    fitsAt49.fits && fitsAt49.size >= 44 && fitsAt49.size < W.WORLD.minDistrictPx && !pansAt36.fits, [fitsAt49.size.toFixed(0), pansAt36.fits].join());
+  const bigGeo = W.chooseLayout(20, 592, 889, heightsFor(20)), bigLab = W.chooseLayout(20, 592, 889, heightsFor(20), roomsFor(20));
+  T('where no arrangement reads every name, the one reading most wins: twenty places on an iPad read more than by places alone',
+    namesAt(bigLab, 592, 889, roomsFor(20)).read > namesAt(bigGeo, 592, 889, roomsFor(20)).read,
+    [namesAt(bigGeo, 592, 889, roomsFor(20)).read, namesAt(bigLab, 592, 889, roomsFor(20)).read].join('->'));
+  T('the renderer chooses with the labels it measured, and places them by the same rule the chooser read',
+    /const rooms = S\.order\.map\(id => \{ const t = S\.tiles\.get\(id\); return \{ w: t\.labelW \|\| 0, h: t\.labelH \|\| 0 \}; \}\);\s*const pick = chooseLayout\(S\.order\.length, S\.w, S\.h, heights, rooms\);/.test(r3) &&
+    /const spot = labelSpot\(a, t\.labelW, t\.labelH, under, S\.w\)/.test(r3) && /const s = labelSpot\(a, r\.w, r\.h, 0, W\);/.test(wj));
   /* Labels at the overview stand on their own places (labelSpot, under 0):
      each is whole in the view and names no other place. */
   const phoneRooms = themes6.map((_, i) => ({ w: 100, h: i === 4 ? 56 : 44 }));
@@ -3928,7 +3970,9 @@ async function testWorld(){
   const offPlace = W.resolveLabels([{ id: 'gone', row: 0, x: 10, y: 10, w: 80, h: 40, off: true }, { id: 'here', row: 0, x: 200, y: 10, w: 80, h: 40 }], [], 400, 300);
   T('a label whose place has left the view is not there, however it is pushed into the view, whether predicted or drawn',
     offPlace.gone === false && offPlace.here === true && /t\.off = r\.off;/.test(r3) &&
-    /const off = !\(a\.depth > 0\.5\) \|\| c\.x < -40 \|\| c\.x > S\.w \+ 40 \|\| c\.y < -40 \|\| c\.y > S\.h \+ 40;/.test(r3));
+    /const off = labelOff\(a, c, S\.w, S\.h\);/.test(r3) &&
+    W.labelOff({ depth: 1 }, { x: -41, y: 10 }, 400, 300) && !W.labelOff({ depth: 1 }, { x: -39, y: 10 }, 400, 300) &&
+    W.labelOff({ depth: 0.4 }, { x: 10, y: 10 }, 400, 300) && W.labelOff({ depth: 1 }, { x: 10, y: 341 }, 400, 300));
   const kept = W.resolveLabels([{ id: 'under', row: 1, x: 300, y: 10, w: 80, h: 40 }, { id: 'free', row: 1, x: 10, y: 10, w: 80, h: 40 }], [], 400, 300,
     [{ x: 290, y: 0, w: 110, h: 60 }]);
   T('no label stands under the Overview button', kept.under === false && kept.free === true &&
