@@ -213,7 +213,9 @@ index.html              the whole app: tokens, shell, engine, Mission Control
 field/world.js          the 3D world's layout, camera, gestures, crews and places, as data
 field/render3d.js       the 3D world, drawn with Three.js behind the field seam
 vendor/three/           Three.js 0.186.1, a pinned subset, with its licence and provenance
-sw.js                   offline shell and APP_FILES; cache name derived from APP_CONFIG
+sw.js                   installs one verified release at a time; its release manifest is generated
+release/                generated: every runtime file under its content hash (never edit)
+scripts/release.js      builds release/ from the import graph (run by config:sync)
 manifest.webmanifest    install metadata, derived from APP_CONFIG
 icon-192/512.png        app icons
 scripts/config.js       sync / verify static files against APP_CONFIG

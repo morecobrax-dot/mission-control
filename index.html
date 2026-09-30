@@ -831,6 +831,7 @@ body.scroll-locked{
 @keyframes refresh-turn{ to{ transform: rotate(360deg); } }
 /* The button is a flex box, which would otherwise outrank [hidden]. */
 #refreshBtn[hidden]{ display: none; }
+#updateRow[hidden]{ display: none; }
 
 /* ---- HUD: quiet counts, not a dashboard ---- */
 .hud{
@@ -1416,6 +1417,13 @@ body.scroll-locked{
     </div>
     <div class="section-label">About</div>
     <div class="list">
+      <button class="list-row" id="updateRow" onclick="Updates.apply()" hidden>
+        <span class="list-row-main">
+          <span class="list-row-title">Update ready</span>
+          <span class="list-row-desc">Downloaded and checked. Restart Mission Control to use it</span>
+        </span>
+        <span class="list-row-arrow" aria-hidden="true"></span>
+      </button>
       <button class="list-row" onclick="openUpdates()">
         <span class="list-row-main">
           <span class="list-row-title">What's new</span>
@@ -1678,6 +1686,21 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-7-1',
+    version: '0.7.1',
+    title: 'Updates that arrive whole',
+    date: '2026-09-29',
+    summary: 'An update now arrives complete and checked, or not at all, and waits until you choose it.',
+    newFeatures: [
+      'When a new version is ready, Settings offers it; Mission Control restarts into it only when you tap it'
+    ],
+    improvements: [
+      'Every file of a version is checked before that version can start, so a page never mixes parts of two versions',
+      'If an update cannot finish, the version you have keeps working, online and offline',
+      'An update never reloads the page by itself, so an open edit is never interrupted'
+    ]
+  },
   {
     id: 'v0-7-0',
     version: '0.7.0',
@@ -3432,13 +3455,22 @@ function watchLayout(){
    cannot run. Each renderer has its own host in one box.
    ========================================================= */
 
-/* The files the app loads besides itself: the world's modules and the
-   Three.js subset they import. `npm run config:sync` copies this list into
-   sw.js, so a fresh install precaches the world and it opens offline. A
-   contract checks every file exists. */
-const APP_FILES = ['./field/world.js', './field/render3d.js', './vendor/three/three.min.js', './art/exports/golden-diorama.glb',
-  './art/exports/dayplan-diorama.glb'];
-const WORLD_MODULE = './field/render3d.js';
+/* The release the page loads besides itself: the world's modules, the
+   Three.js subset and every model, each under a name carrying its own
+   content hash (release/). Derived by `npm run config:sync` from the import
+   graph of field/render3d.js (scripts/release.js); sw.js gets the same
+   files with each one's sha256. Never hand-edit: edit field/ or art/, then
+   sync. APP_RELEASE names this set; a worker reports its own, so the page
+   knows when a newer release is ready. */
+/* APP-RELEASE-BEGIN */
+const APP_RELEASE = '6ad0ca39f8af';
+const WORLD_MODULE = './release/render3d.2005a1094718.js';
+const APP_FILES = ['./release/dayplan-diorama.c60794997357.glb',
+  './release/golden-diorama.e0b21a1c4dcc.glb',
+  './release/render3d.2005a1094718.js',
+  './release/three.min.0c9283a1079c.js',
+  './release/world.06d1a3f9a533.js'];
+/* APP-RELEASE-END */
 
 function fieldScene(views){
   return views.map(v => ({
@@ -4921,6 +4953,7 @@ function renderIdentity(){
   const rows = [
     ['App id', APP_CONFIG.id],
     ['Version', APP_VERSION],
+    ['Release', APP_RELEASE],
     ['Storage', Store.prefix() + '…'],
     ['Cache', CACHE_NAMESPACE],
     ['Storage backend', Store.backend()]
@@ -5065,12 +5098,86 @@ catch(err){
     '</span></div>');
 }
 
+/* =========================================================
+   UPDATES — a verified release, when you choose it
+   ---------------------------------------------------------
+   sw.js installs a newer release only once every file is the
+   exact bytes it was built with, and then waits: it never
+   reloads a page. This page offers it (Settings > Update
+   ready) and reloads only when asked; leaving the page saves
+   any open editor's draft, as it always has. A waiting
+   release also starts by itself the next time the app opens
+   with no tab still running the old one.
+   ========================================================= */
+const Updates = {
+  reg: null, ready: false, asked: false, told: false, reloading: false, checkedAt: 0,
+  CHECK_MS: 15 * 60 * 1000,                    // back in the foreground: ask for a newer release at most this often
+  /* A worker's own release, asked directly. Only a different release is an
+     update: a worker that took over from a pre-release one may be this one. */
+  releaseOf(worker){
+    return new Promise(resolve => {
+      if(!worker || typeof MessageChannel === 'undefined') return resolve(null);
+      const ch = new MessageChannel(), t = setTimeout(() => resolve(null), 3000);
+      ch.port1.onmessage = e => { clearTimeout(t); resolve(e.data && e.data.id || null); };
+      try{ worker.postMessage({ type: 'MC_RELEASE' }, [ch.port2]); }
+      catch(e){ clearTimeout(t); resolve(null); }
+    });
+  },
+  consider(worker){
+    return Updates.releaseOf(worker).then(id => {
+      if(!id || id === APP_RELEASE || Updates.ready) return;
+      Updates.ready = true;
+      renderUpdate();
+      if(!Updates.told){ Updates.told = true; toast('An update is ready. Settings has it when you are.', 'neutral'); }
+    });
+  },
+  /* Only a tap does this. The page reloads once, when the new release has
+     taken control, and never on its own. */
+  apply(){
+    if(!Updates.ready || Updates.asked) return;
+    Updates.asked = true;
+    const waiting = Updates.reg && Updates.reg.waiting;
+    if(waiting) waiting.postMessage({ type: 'MC_ACTIVATE' });
+    else Updates.reload();                     // another tab already switched to it
+  },
+  reload(){
+    if(Updates.reloading) return;
+    Updates.reloading = true;
+    location.reload();
+  },
+  check(){
+    if(!Updates.reg || Date.now() - Updates.checkedAt < Updates.CHECK_MS) return;
+    Updates.checkedAt = Date.now();
+    Updates.reg.update().catch(() => {});
+  }
+};
+function renderUpdate(){
+  const row = document.getElementById('updateRow');
+  if(row) row.hidden = !Updates.ready;
+}
+
 /* Offline support registers only over http(s) — a no-op when the file is
    opened directly from disk. */
 if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0){
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      Updates.reg = reg;
+      Updates.checkedAt = Date.now();          // registering has just asked
+      if(reg.waiting) Updates.consider(reg.waiting);
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing;
+        if(w) w.addEventListener('statechange', () => { if(w.state === 'installed') Updates.consider(w); });
+      });
+      /* This page may be running another release than its worker: one that
+         took over after it loaded, or a page the network answered. */
+      if(navigator.serviceWorker.controller) Updates.consider(navigator.serviceWorker.controller);
+    }).catch(() => {});
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if(Updates.asked) Updates.reload();
+      else Updates.consider(navigator.serviceWorker.controller);
+    });
   });
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') Updates.check(); });
 }
 </script>
 </body>

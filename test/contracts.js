@@ -122,7 +122,7 @@ function testConfig(){
   T('manifest background_color', man.background_color === cfg.backgroundColor);
 
   const sw = H.readSW();
-  T('service-worker cache name', sw.indexOf("'" + c.CACHE_NAMESPACE + "'") !== -1, c.CACHE_NAMESPACE);
+  T('service-worker cache name: the version, then the release\'s bytes', new RegExp("const CACHE_NAME = '" + c.CACHE_NAMESPACE.replace(/\./g, '\\.') + "-[0-9a-f]{12}';").test(sw), c.CACHE_NAMESPACE);
 
   const pkg = H.readPkg();
   T('package name', pkg.name === cfg.id, pkg.name);
@@ -238,10 +238,11 @@ function testCollision(){
 
   sub('the service worker only ever deletes its own caches');
   const sw = H.readSW();
-  T('cleanup is filtered by this app\'s own prefix',
-    /keys\.filter\(k => k !== CACHE_NAME && k\.indexOf\(cachePrefix\(\)\) === 0\)/.test(sw));
+  T('cleanup is filtered by this app\'s own prefix, and a version after it',
+    /const ours = name => name\.indexOf\(PREFIX\) === 0 && \/\^\\d\/\.test\(name\.slice\(PREFIX\.length\)\);/.test(sw) &&
+    /filter\(n => ours\(n\) && n !== CACHE_NAME/.test(sw));
   T('the prefix is derived from the cache name, not written twice',
-    /function cachePrefix\(\)/.test(sw) && /lastIndexOf\('-v'\)/.test(sw));
+    /const PREFIX = CACHE_NAME\.slice\(0, CACHE_NAME\.lastIndexOf\('-v'\) \+ 2\);/.test(sw));
 
   sub('no legacy namespace survives anywhere');
   const all = H.readApp() + H.readSW() + JSON.stringify(H.readManifest());
@@ -866,14 +867,15 @@ function testPWA(){
   sub('the service worker');
   T('registration is guarded to http(s)',
     /location\.protocol\.indexOf\('http'\) === 0/.test(js()));
-  T('a failed registration cannot break boot', /register\('sw\.js'\)\.catch\(\(\) => \{\}\)/.test(js()));
-  T('the shell is network-first, so a deploy is picked up promptly',
-    /fetch\(req\)[\s\S]{0,400}\.catch\(\(\) => caches\.match\(req\)/.test(sw));
-  T('index.html is the offline fallback', /caches\.match\('\.\/index\.html'\)/.test(sw));
+  T('a failed registration cannot break boot', /register\('sw\.js'\)\.then\([\s\S]*?\}\)\.catch\(\(\) => \{\}\);/.test(js()));
+  T('the page is this release\'s own copy, so everything it loads is this release (contract 31 runs it)',
+    /if\(req\.mode === 'navigate'\)/.test(sw) && /caches\.match\(new URL\('\.\/index\.html', self\.location\)\.href, \{ cacheName: CACHE_NAME \}\)/.test(sw));
+  T('a file that fails is a failure, never the page in its place', !/caches\.match\('\.\/index\.html'\)/.test(sw));
   T('cross-origin requests are left alone',
-    /new URL\(req\.url\)\.origin !== location\.origin/.test(sw));
+    /url\.origin !== self\.location\.origin/.test(sw));
   T('non-GET requests are left alone', /req\.method !== 'GET'/.test(sw));
-  T('a failed precache still activates', /\.catch\(\(\) => self\.skipWaiting\(\)\)/.test(sw));
+  T('a failed or partial install never activates (0.7.0 skipped waiting even when its precache failed)',
+    !/catch\([^)]*\)\s*=>\s*self\.skipWaiting/.test(sw) && !/\.catch\(\(\) => self\.skipWaiting\(\)\)/.test(sw));
   T('it says out loud that it never touches user data',
     /never touched here/.test(sw) || /cannot lose a single record/.test(sw));
 }
@@ -2023,11 +2025,10 @@ function testSecrets(){
   sub('private links never reach the worker, the source, a log or the address bar');
   const sw = H.readSW(), src = js();
   T('the worker ignores other origins, so an opened link is never cached',
-    /new URL\(req\.url\)\.origin !== location\.origin/.test(sw));
-  const assets = (sw.match(/const ASSETS = \[([\s\S]*?)\];/) || ['', ''])[1];
+    /url\.origin !== self\.location\.origin/.test(sw));
+  const listed = [...sw.matchAll(/\['(\.\/[^']+)', '[0-9a-f]{64}', \d+\]/g)].map(m => m[1]);
   T('the worker precaches the shell and the files the app loads, and nothing else',
-    assets.replace(/\s+/g, '') === "'./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'," +
-      H.loadApp().ctx.APP_FILES.map(f => "'" + f + "'").join(','));
+    listed.join() === ['./index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'].concat(H.loadApp().ctx.APP_FILES).join());
   T('no private-link field has a default in source', !/(chatgptUrl|claudeUrl)\s*:\s*['"]/.test(src));
   T('no ChatGPT or Claude address is written into the app script at all',
     !/['"`]https?:\/\/(?:chatgpt\.com|chat\.openai\.com|claude\.ai)/i.test(stripComments(src)));
@@ -2831,7 +2832,7 @@ function testRefresh(){
       sub('the shell cache never holds a status');
       const sw = H.readSW();
       T('the status host is another origin, which the worker leaves alone',
-        c.STATUS_HOST.indexOf('https://raw.githubusercontent.com/') === 0 && /new URL\(req\.url\)\.origin !== location\.origin/.test(sw));
+        c.STATUS_HOST.indexOf('https://raw.githubusercontent.com/') === 0 && /url\.origin !== self\.location\.origin/.test(sw));
       T('the worker names no status file and no GitHub host', !/PROJECT-STATUS|githubusercontent/.test(sw));
       /* The harness does not model generated elements, so the real focus
          behaviour is exercised in a browser; this keeps the wiring. */
@@ -2893,10 +2894,14 @@ async function testWorld(){
   };
   const imports = s =>[...s.matchAll(/\bfrom\s+'([^']+)'/g)].map(m => m[1]);
   T('the renderer imports only the library and the world', imports(r3).sort().join() === '../vendor/three/three.min.js,./world.js');
+  /* The app loads the release copy of each file (scripts/release.js): the same
+     bytes, under a name carrying their hash. */
+  const shipped = src => { const b = fsx.readFileSync(at(src)), h = require('crypto').createHash('sha256').update(b).digest('hex').slice(0, 12);
+    return c.APP_FILES.some(f => f.indexOf('.' + h + '.') !== -1 && fsx.readFileSync(at(f)).equals(b)); };
   T('an authored place it loads is a file the app ships, and precaches',
-    Object.values(W.ASSETS).every(a => c.APP_FILES.indexOf(a.url) !== -1 && fsx.existsSync(at(a.url))), Object.values(W.ASSETS).map(a => a.url).join());
+    Object.values(W.ASSETS).every(a => fsx.existsSync(at(a.url)) && shipped(a.url)), Object.values(W.ASSETS).map(a => a.url).join());
   T('the world imports nothing', imports(wj).length === 0 && !/\bimport\s*\(/.test(wj));
-  T('each module is precached by its path', c.APP_FILES.indexOf('./field/world.js') !== -1 && c.APP_FILES.indexOf('./vendor/three/three.min.js') !== -1);
+  T('each module is precached, as its release copy', c.APP_FILES.some(f => /^\.\/release\/world\.[0-9a-f]{12}\.js$/.test(f)) && shipped('vendor/three/three.min.js'));
 
   sub('the world decides nothing the app owns');
   const code = s => stripComments(s);
@@ -3204,7 +3209,9 @@ async function testWorld(){
     Object.keys(W.ASSETS).length >= 2 && new Set(Object.values(W.ASSETS).map(a => a.url)).size === Object.keys(W.ASSETS).length);
   T('no project is special in the renderer: it names no look, no project and no file',
     !/'track'|'calendar'|golden|dayplan|\.glb/i.test(code(r3)));
-  T('each authored place is precached for offline, by its path', Object.values(W.ASSETS).every(a => read('sw.js').indexOf("'" + a.url + "'") !== -1));
+  T('each authored place is precached for offline, as its release copy', Object.values(W.ASSETS).every(a => {
+    const h = require('crypto').createHash('sha256').update(require('fs').readFileSync(require('path').join(H.ROOT, a.url))).digest('hex');
+    return read('sw.js').indexOf("', '" + h + "', ") !== -1; }));
   T('the export and the app hold the same district budget',
     Object.keys(W.DISTRICT_BUDGET).every(key => new RegExp("'" + key + "': " + W.DISTRICT_BUDGET[key] + '\\b').test(read('art/blender/scripts/export_glb.py'))));
   T('the world budget holds six districts each at its own budget, so raising one never quietly breaks the other',
@@ -3412,6 +3419,253 @@ async function testWorld(){
   T('no errors', app.errors.length === 0, app.errors.join(' | '));
 }
 
+/* =========================================================
+   CONTRACT 31 — ONE RELEASE AT A TIME
+   0.7.0 served the same addresses in every release, network-
+   first through the HTTP cache, and precached whatever came
+   back: an update ran new HTML with an old renderer or layout,
+   and cached the mixture for offline. These run the real
+   sw.js against a controllable network and cache store.
+   ========================================================= */
+function swSandbox(opts){
+  const o = opts || {};
+  const vm = require('vm'), fs = require('fs'), path = require('path');
+  const ORIGIN = 'https://mc.test', BASE = ORIGIN + '/mission-control/';
+  const stores = new Map();
+  const keyOf = r => { const u = new URL(typeof r === 'string' ? r : r.url, BASE); return u.origin + u.pathname + u.search; };
+  /* As in a browser, a Cache object deleted from the store keeps working on
+     its own: writes to it succeed and are simply no longer anyone's cache. */
+  const cacheObj = map => ({
+    async match(r){ const e = map.get(keyOf(r)); return e ? new Response(e.body.slice(0), { status: e.status, headers: e.headers }) : undefined; },
+    async put(r, res){ const body = await res.arrayBuffer(); map.set(keyOf(r), { status: res.status, headers: [...res.headers], body }); },
+    async keys(){ return [...map.keys()]; }
+  });
+  const caches = {
+    async open(n){ if(!stores.has(n)) stores.set(n, new Map()); return cacheObj(stores.get(n)); },
+    async has(n){ return stores.has(n); },
+    async delete(n){ return stores.delete(n); },
+    async keys(){ return [...stores.keys()]; },
+    async match(r, opt){
+      for(const n of (opt && opt.cacheName ? [opt.cacheName] : [...stores.keys()])){
+        if(!stores.has(n)) continue;
+        const hit = await cacheObj(stores.get(n)).match(r);
+        if(hit) return hit;
+      }
+    }
+  };
+  const net = new Map(), log = [], modes = [];
+  const fetch = async (r, init) => {
+    const req = typeof r === 'string' ? new Request(new URL(r, BASE), init) : r;
+    const href = keyOf(req.url);
+    log.push(href);
+    modes.push(req.cache);
+    const e = net.get(href);
+    if(typeof e === 'function') return e(req);
+    if(e === 'fail') throw new TypeError('network down');
+    if(e === 'hang') return new Promise((_, no) => req.signal.addEventListener('abort', () => no(new Error('aborted'))));
+    if(!e) return new Response('not found', { status: 404 });
+    return new Response(e.body, { status: e.status || 200 });
+  };
+  const listeners = {};
+  let skipped = 0;
+  const self = { location: new URL(BASE + 'sw.js'), registration: { active: o.active ? {} : null, scope: BASE },
+    addEventListener(t, fn){ (listeners[t] = listeners[t] || []).push(fn); }, skipWaiting(){ skipped++; return Promise.resolve(); } };
+  const ctx = vm.createContext({ self, caches, fetch, crypto: globalThis.crypto, Request, Response, URL, Headers, AbortController,
+    setTimeout: (fn, ms) => setTimeout(fn, ms >= 60000 ? 20 : ms), clearTimeout, console });
+  vm.runInContext(fs.readFileSync(path.join(H.ROOT, 'sw.js'), 'utf8'), ctx);
+  const RELEASE = vm.runInContext('RELEASE', ctx), CACHE_NAME = vm.runInContext('CACHE_NAME', ctx);
+  const disk = u => fs.readFileSync(path.join(H.ROOT, u));
+  RELEASE.files.forEach(([u]) => net.set(new URL(u, BASE).href, { body: disk(u) }));
+  const fire = async (type, extra) => {
+    let p = null;
+    const ev = Object.assign({ responded: false, waitUntil(x){ p = x; }, respondWith(x){ ev.responded = true; p = x; } }, extra || {});
+    (listeners[type] || []).forEach(fn => fn(ev));
+    const r = p ? await Promise.resolve(p).then(v => ({ ok: true, v }), e => ({ ok: false, e })) : null;
+    return { ev, r };
+  };
+  const hex = async buf => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)), b => b.toString(16).padStart(2, '0')).join('');
+  const mark = (name, at) => stores.set(name, new Map([[BASE + '__release__', { status: 200, headers: [], body: new TextEncoder().encode(JSON.stringify({ id: 'x', activatedAt: at })).buffer }]]));
+  const store = (name, href, bytes, status) => { if(!stores.has(name)) stores.set(name, new Map()); stores.get(name).set(href, { status: status || 200, headers: [], body: Uint8Array.from(bytes).buffer }); };
+  return {
+    BASE, RELEASE, CACHE_NAME, stores, net, log, modes, disk, hex, mark, store, skipped: () => skipped,
+    install: () => fire('install').then(x => x.r),
+    activate: () => fire('activate').then(x => x.r),
+    request: (url, mode, method) => fire('fetch', { request: new Request(new URL(url, BASE), { method: method || 'GET', mode: mode === 'navigate' ? 'same-origin' : 'cors' }) })
+,
+    navigate: url => {
+      const request = new Request(new URL(url, BASE));
+      Object.defineProperty(request, 'mode', { value: 'navigate' });
+      return fire('fetch', { request });
+    },
+    message: (data, port) => fire('message', { data, ports: port ? [port] : [] }),
+    href: u => new URL(u, BASE).href,
+    snapshot: name => JSON.stringify([...(stores.get(name) || new Map())].map(([k, e]) => [k, Buffer.from(e.body).toString('base64')]))
+  };
+}
+
+async function testReleaseConsistency(){
+  section('CONTRACT 31 — one release at a time: verified, complete, never mixed');
+  const fs = require('fs'), path = require('path'), crypto = require('crypto');
+  const R = require('../scripts/release.js');
+  const c = H.loadApp().ctx, sw = H.readSW();
+  const at = p => path.join(H.ROOT, p.replace(/^\.\//, ''));
+  const sha = buf => crypto.createHash('sha256').update(buf).digest('hex');
+  const OLD = { active: true };
+  const PREV = 'mission-control-v0.6.9-aaaaaaaaaaaa';
+
+  sub('the release is one closed set of files, each named for its bytes');
+  const S0 = swSandbox();
+  const listed = S0.RELEASE.files.map(f => f[0]);
+  T('the page and the worker list the same release: the shell and every file the page loads',
+    listed.join() === R.SHELL.map(f => './' + f).concat(c.APP_FILES).join(), listed.length + ' files');
+  T('every file the worker checks has, on disk, exactly the bytes it will check',
+    S0.RELEASE.files.every(([u, h, n]) => { const b = fs.readFileSync(at(u)); return b.length === n && sha(b) === h; }));
+  T('each release file\'s name carries the start of its own sha256, so one address never has two contents',
+    c.APP_FILES.every(u => { const m = /\.([0-9a-f]{12})\.[a-z0-9]+$/.exec(u); return m && sha(fs.readFileSync(at(u))).indexOf(m[1]) === 0; }));
+  const mods = c.APP_FILES.filter(u => /\.js$/.test(u));
+  T('the release is closed: every import and every address a release module names is a release file',
+    mods.every(u => { const t = fs.readFileSync(at(u), 'utf8'), im = R.importsOf(t, u);
+      return im.every(s => c.APP_FILES.indexOf('./release/' + s.replace(/^\.\//, '')) !== -1) &&
+        R.assetsOf(t, im).every(s => c.APP_FILES.indexOf(s) !== -1); }), mods.join());
+  T('the page loads the release\'s renderer, and the renderer the release\'s world and library',
+    c.APP_FILES.indexOf(c.WORLD_MODULE) !== -1 && /^\.\/release\/render3d\.[0-9a-f]{12}\.js$/.test(c.WORLD_MODULE));
+  let built = null, refusedBuild = '';
+  try{ built = R.build(); } catch(e){ refusedBuild = e.message; }
+  T('the release builds: every address the modules name is followed and rewritten', !!built, refusedBuild);
+  T('release/ is generated and in step (a hand edit or a stale copy is drift)', !!built && (() => { const d = R.diskDiff(built); return !d.write.length && !d.remove.length; })());
+  const attrs = fs.readFileSync(path.join(H.ROOT, '.gitattributes'), 'utf8');
+  T('shipped files are committed byte for byte, so the bytes hashed are the bytes served',
+    ['index.html -text', 'sw.js -text', 'manifest.webmanifest -text', 'release/** -text'].every(l => attrs.split(/\r?\n/).indexOf(l) !== -1));
+  let refused = 0;
+  try{ R.importsOf("import(name)", 'x.js'); } catch(e){ refused++; }
+  try{ R.importsOf("import * as X from 'three';", 'x.js'); } catch(e){ refused++; }
+  T('an import the release cannot follow, or from outside it, is refused rather than shipped unversioned', refused === 2);
+
+  sub('install: every file, exactly, or nothing');
+  let S = swSandbox(OLD); S.mark(PREV, 1);
+  let r = await S.install();
+  const own = S.stores.get(S.CACHE_NAME);
+  T('a complete release installs every file with the bytes it was built with',
+    r.ok && !!own && (await Promise.all(S.RELEASE.files.map(async ([u, h]) => { const e = own.get(S.href(u)); return !!e && await S.hex(e.body) === h; }))).every(Boolean));
+  T('and then waits: a verified release never takes over a verified one by itself', S.skipped() === 0);
+  T('it fetches past the browser\'s HTTP cache, where 0.7.0 found another release\'s copy',
+    S.modes.length === S.RELEASE.files.length && S.modes.every(m => m === 'reload'), S.modes.join());
+
+  const faults = {
+    'a stale file answering 200 (the old layout under the new address)': (S, h) => S.net.set(h, { body: fs.readFileSync(path.join(H.ROOT, 'field/world.js')) }),
+    'a missing file (404)': (S, h) => S.net.set(h, { status: 404, body: 'nope' }),
+    'a server error (500)': (S, h) => S.net.set(h, { status: 500, body: 'nope' }),
+    'no network': (S, h) => S.net.set(h, 'fail'),
+    'a file that never answers': (S, h) => S.net.set(h, 'hang'),
+    'a truncated file': (S, h) => S.net.set(h, { body: S.disk(new URL(h).pathname.replace('/mission-control/', '')).subarray(0, 1000) }),
+    'the old page under the new page\'s address': (S, h) => S.net.set(S.href('./index.html'), { body: Buffer.from('<!doctype html><title>0.7.0</title>') })
+  };
+  for(const [name, fault] of Object.entries(faults)){
+    S = swSandbox(OLD); S.mark(PREV, 1); S.store(PREV, S.href('./index.html'), Buffer.from('previous page'));
+    const before = S.snapshot(PREV);
+    fault(S, S.href(c.APP_FILES.find(u => /world\./.test(u))));
+    r = await S.install();
+    T(name + ' fails the install, and the running release is untouched', !r.ok && S.snapshot(PREV) === before && S.skipped() === 0);
+  }
+
+  S = swSandbox(OLD); S.mark(PREV, 1);
+  const worldHref = S.href(c.APP_FILES.find(u => /world\./.test(u)));
+  S.net.set(worldHref, 'fail');
+  await S.install();
+  S.net.set(worldHref, { body: S.disk(new URL(worldHref).pathname.replace('/mission-control/', '')) });
+  S.log.length = 0;
+  r = await S.install();
+  T('a retry keeps what it proved and fetches only what it lacks', r.ok && S.log.join() === worldHref, S.log.join());
+
+  S = swSandbox(OLD); S.mark(PREV, 1);
+  const models = c.APP_FILES.filter(u => /\.glb$/.test(u));
+  models.forEach(u => S.store(PREV, S.href(u), S.disk(u)));
+  S.store(PREV, S.href(c.APP_FILES.find(u => /three/.test(u))), Buffer.from('not the library'));
+  r = await S.install();
+  T('a file unchanged since the release that ran here is copied, checked, not downloaded again; a wrong copy is not used',
+    r.ok && models.every(u => S.log.indexOf(S.href(u)) === -1) && S.log.indexOf(S.href(c.APP_FILES.find(u => /three/.test(u)))) !== -1);
+
+  S = swSandbox(OLD);
+  let removed = false;
+  S.net.set(worldHref, async () => { if(!removed){ removed = true; S.stores.delete(S.CACHE_NAME); } return new Response(S.disk(new URL(worldHref).pathname.replace('/mission-control/', ''))); });
+  S.mark(PREV, 1);
+  r = await S.install();
+  T('a cache removed while it was being written never becomes an empty release', !r.ok);
+
+  sub('the first update from 0.7.0: its mixed cache is never read');
+  S = swSandbox(OLD);
+  S.store('mission-control-v0.7.0', S.href('./field/world.js'), Buffer.from('export const ASSETS = { track: {} };'));
+  S.store('mission-control-v0.7.0', S.href('./index.html'), Buffer.from('<title>0.7.0</title>'));
+  S.store('mission-control-v0.7.0', worldHref, Buffer.from('not found'), 404);
+  r = await S.install();
+  T('a pre-release worker is replaced as soon as the new release is proven complete', r.ok && S.skipped() === 1);
+  T('nothing is taken from its cache, even under a release address', S.log.indexOf(worldHref) !== -1);
+  await S.activate();
+  T('and its cache is removed once the new release is active', !S.stores.has('mission-control-v0.7.0') && S.stores.has(S.CACHE_NAME));
+  S = swSandbox(OLD); S.net.set(worldHref, { status: 404, body: 'x' });
+  S.store('mission-control-v0.7.0', S.href('./index.html'), Buffer.from('<title>0.7.0</title>'));
+  r = await S.install();
+  T('an incomplete release does not replace even a pre-release worker', !r.ok && S.skipped() === 0 && S.stores.has('mission-control-v0.7.0'));
+
+  sub('activation: keep the release before, remove the rest, only ever this app\'s');
+  S = swSandbox(OLD);
+  S.mark('mission-control-v0.6.8-bbbbbbbbbbbb', 1); S.mark(PREV, 2);
+  S.store('mission-control-v0.9.0-cccccccccccc', worldHref, Buffer.from('half'));
+  S.store('mission-control-v0.7.0', S.href('./index.html'), Buffer.from('legacy'));
+  ['other-app-v1', 'mission-control-viewer-v1', 'mission-controller-v2'].forEach(n => S.store(n, 'https://mc.test/x', Buffer.from('theirs')));
+  await S.install(); await S.activate();
+  T('activation keeps exactly this release and the one that ran before it',
+    [...S.stores.keys()].filter(n => /^mission-control-v\d/.test(n)).sort().join() === [S.CACHE_NAME, PREV].sort().join(), [...S.stores.keys()].join());
+  T('other apps\' caches on the shared origin are never touched, even with a similar name',
+    ['other-app-v1', 'mission-control-viewer-v1', 'mission-controller-v2'].every(n => S.stores.has(n)));
+  T('activation marks this release complete, which is what lets the next one keep it',
+    S.stores.get(S.CACHE_NAME).has(S.BASE + '__release__'));
+
+  sub('fetch: a page and everything it loads are one release');
+  S = swSandbox(OLD); S.mark(PREV, 1);
+  S.store(PREV, S.href('./release/golden-diorama.aaaaaaaaaaaa.glb'), Buffer.from('the previous release\'s model'));
+  await S.install(); await S.activate();
+  S.net.set(S.href('./index.html'), { body: Buffer.from('<title>a newer deploy</title>') });
+  let f = await S.navigate('./');
+  T('the page is this release\'s own copy, even when the network already has a newer one',
+    f.ev.responded && await S.hex(await f.r.v.arrayBuffer()) === S.RELEASE.files[0][1]);
+  f = await S.request('./release/golden-diorama.aaaaaaaaaaaa.glb');
+  T('a page still running the release before can load its model late', f.r.ok && Buffer.from(await f.r.v.arrayBuffer()).toString() === 'the previous release\'s model');
+  const stranger = './release/render3d.0123456789ab.js';
+  S.net.set(S.href(stranger), { body: Buffer.from('export const x = 1;') });
+  f = await S.request(stranger);
+  T('a release file the caches lack is taken from the network only if its bytes match its name', f.r.ok && f.r.v.type === 'error');
+  S.net.set(S.href(stranger), { status: 404, body: 'not found' });
+  f = await S.request(stranger);
+  T('a missing file stays a missing file, never the page', f.r.v.status === 404 && (await f.r.v.text()).indexOf('<') === -1);
+  S.net.clear();
+  f = await S.request(c.WORLD_MODULE);
+  const hit = f.r.ok ? await S.hex(await f.r.v.arrayBuffer()) : '';
+  T('offline, every file of this release still loads, the very bytes it was built with',
+    hit === S.RELEASE.files.find(x => x[0] === c.WORLD_MODULE)[1]);
+  const untouched = [await S.request('https://raw.githubusercontent.com/o/r/main/PROJECT-STATUS.json'), await S.request('./art/renders/x.png'),
+    await S.request('./field/world.js'), await S.request(c.WORLD_MODULE, 'cors', 'POST'), await S.request('https://mc.test/other-app/index.html')];
+  T('status files, other apps, other paths, sources and non-GET requests are never answered or kept', untouched.every(x => !x.ev.responded));
+
+  sub('updates wait for the person');
+  S = swSandbox(OLD); S.mark(PREV, 1);
+  await S.install();
+  const ch = new MessageChannel();
+  const said = new Promise(res => { ch.port1.onmessage = e => res(e.data); });
+  await S.message({ type: 'MC_RELEASE' }, ch.port2);
+  const reply = await said; ch.port1.close();
+  T('a worker tells the page which release it is, so only a different release is offered', reply.id === c.APP_RELEASE && reply.cache === S.CACHE_NAME);
+  await S.message({ type: 'MC_ACTIVATE' });
+  T('it takes over when the page asks', S.skipped() === 1);
+  T('the worker never claims pages it did not serve, and skips waiting only for a pre-release worker or when asked',
+    !/clients\.claim/.test(sw) && (sw.match(/skipWaiting\(\)/g) || []).length === 2 && /legacy \? self\.skipWaiting\(\)/.test(sw));
+  const src = js();
+  T('a page reloads only when its person asked for the update, and only once',
+    (src.match(/location\.reload\(\)/g) || []).length === 1 && /reloading = true;\s*location\.reload\(\);/.test(src) &&
+    /if\(Updates\.asked\) Updates\.reload\(\);/.test(src) && /onclick="Updates\.apply\(\)"/.test(H.readApp()));
+  T('an update is offered only for a different release than the page is running', /if\(!id \|\| id === APP_RELEASE \|\| Updates\.ready\) return;/.test(src));
+}
+
 module.exports = {
   T, section, sub, results, reset, testPortability,
   testBoot, testConfig, testStorage, testCollision, testMigration,
@@ -3419,5 +3673,5 @@ module.exports = {
   testMobile, testDesignSystem, testPWA, testRelease, testStress,
   testAccessibility, testContamination, testSourcesOfTruth,
   testRegistry, testStatusModel, testPrivateLinks, testHub, testFieldSeam, testSecrets,
-  testBackupBoundary, testStatusContract, testConnectedState, testRefresh, testWorld
+  testBackupBoundary, testStatusContract, testConnectedState, testRefresh, testWorld, testReleaseConsistency
 };

@@ -95,8 +95,9 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
    bug the engine exists to prevent.
 4. **Never touch `localStorage` outside the storage adapter.** Anything else is
    an unnamespaced key and an origin collision waiting to happen.
-5. **Never edit `sw.js`, `manifest.webmanifest` or the derived `<head>` block by
-   hand.** Edit `APP_CONFIG`, run `npm run config:sync`.
+5. **Never edit `release/`, the generated blocks of `sw.js` and `index.html`,
+   `manifest.webmanifest` or the derived `<head>` block by hand.** Edit
+   `APP_CONFIG`, `field/` or `art/exports/`, run `npm run config:sync`.
 6. **Never reference a path outside the repository** in application or tooling
    code. The starter is self-contained.
 7. **No `alert()`, `confirm()` or `prompt()`.** Use `toast()` and
@@ -282,8 +283,8 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
 50. **Three.js is vendored, pinned and made one way.** Change it only with
     `scripts/vendor-three.js` (version, tarball integrity and esbuild pinned);
     never edit `vendor/three/three.min.js` — contract 30 holds it to its
-    sha256. A file the app loads is listed in `APP_FILES`, and
-    `npm run config:sync` precaches it.
+    sha256. A file the app loads is found by `npm run config:sync`
+    (`scripts/release.js`), which ships and precaches it.
 
 51. **City ambience is not project activity.** The user authorized connected
     city blocks, box trucks and residents. These are decorative city life,
@@ -311,7 +312,7 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     clips are driven from the scene the app gives, through `assetCrew`;
     nothing in the file decides a status. Its rise is measured from the
     file. The look's recipe stays as its fallback. A new authored place is a
-    Blender export, an `ASSETS` entry and an `APP_FILES` line — never code
+    Blender export, an `ASSETS` entry and `npm run config:sync` — never code
     per project. Its crew is one skeleton (`<role>__<bone>`) and its own
     life is the `MC_LIFE` clip on `mc_life` nodes only.
 54. **An authored place fits its budget before it ships.** `DISTRICT_BUDGET`
@@ -323,3 +324,13 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     merging materials that look different. A pass that visibly changes a
     Cycles render is rejected. Raise the budget only with measurements, and
     keep `BUDGET` able to hold six places at it.
+55. **One release at a time, verified.** Every file the page loads ships
+    under a content-hashed name in `release/`, generated with its sha256 by
+    `npm run config:sync`; never add a runtime file by any other path, never
+    load one at an unversioned address, and never let `import()` take a
+    non-literal. The worker installs a release only when every file is the
+    exact bytes (a 200 is not proof), serves a page only its own release,
+    never answers a file with the page, never reloads a page and never
+    claims one; an update activates when the person taps it or the app
+    reopens. Activation keeps exactly one earlier release and removes only
+    this app's caches. The 0.7.0 transition is the one takeover. Contract 31.

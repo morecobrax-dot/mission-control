@@ -1,3 +1,11 @@
 # The vendored library is held to its sha256 (contract 30): its bytes must
 # never change on checkout, so it is never given Windows line endings.
 vendor/three/three.min.js -text
+
+# The service worker checks every shipped file against a sha256 written at
+# release (scripts/release.js). The bytes hashed on disk must be the bytes
+# committed and served, so these are never given Windows line endings.
+index.html -text
+sw.js -text
+manifest.webmanifest -text
+release/** -text

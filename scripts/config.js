@@ -10,15 +10,20 @@
      node scripts/config.js verify   fail if anything has drifted
 
    verify runs as part of `npm run verify`, so identity drift is a
-   failing test rather than a deployment surprise. There is no
-   build step: the app runs straight from source either way.
+   failing test rather than a deployment surprise. Nothing is
+   compiled: sync also writes release/, byte copies of the world's
+   modules and models under content-hashed names, with their
+   references rewritten (scripts/release.js), and the sha256 of
+   every shipped file into sw.js. The page runs those copies.
 
    Adding a new derived value means adding one entry to targets()
    below. Nothing else changes.
    ========================================================= */
 'use strict';
 const fs = require('fs');
+const path = require('path');
 const H = require('../test/harness.js');
+const R = require('./release.js');
 
 const MODE = (process.argv[2] || 'verify').toLowerCase();
 
@@ -53,19 +58,24 @@ function loadConfig(){
   if(err) throw new Error(err);
   return {
     cfg,
-    files: (app.ctx.APP_FILES || []).slice(),
     version: app.ctx.APP_VERSION,
     cacheName: app.ctx.CACHE_NAMESPACE,
     storagePrefix: app.ctx.STORAGE_NAMESPACE
   };
 }
 
-/* The application shell: the page, its manifest and its icons. */
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
-
 /* ---------- what each static file should contain ---------- */
 function targets(c){
   const { cfg, version, cacheName } = c;
+  /* The release is built once per run, and the worker's manifest last of
+     all, from the page and the manifest as they stand after their own
+     targets have run: the page is one of the files it hashes. */
+  let built = null, block = null, worker = null;
+  const release = () => built || (built = R.build());
+  const page = () => block || (block = R.pageBlock(release(), version));
+  const sw = () => worker || (worker = R.workerManifest(release(), page().id, cacheName,
+    f => fs.readFileSync(path.join(H.ROOT, f))));
+  c.release = () => ({ id: page().id, cache: sw().cache, files: release().list });
   return [
     {
       file: H.APP_PATH,
@@ -92,18 +102,20 @@ function targets(c){
       build: () => esc(cfg.name)
     },
     {
-      file: H.SW_PATH,
-      label: 'sw.js cache name',
-      region: ['/* APP-CACHE-BEGIN */', '/* APP-CACHE-END */'],
-      build: () => "const CACHE_NAME = '" + cacheName + "';"
+      /* release/: every file the world loads, under its content hash. */
+      label: 'release/ files',
+      custom: mode => {
+        const d = R.diskDiff(release());
+        if(!d.write.length && !d.remove.length) return 0;
+        if(mode === 'sync'){ R.writeDisk(release()); return 1; }
+        return -1;
+      }
     },
     {
-      /* The precache: the shell, then every file the app loads besides
-         itself, so a fresh install works offline from its first visit. */
-      file: H.SW_PATH,
-      label: 'sw.js precache list',
-      region: ['/* APP-FILES-BEGIN */', '/* APP-FILES-END */'],
-      build: () => 'const ASSETS = [\n' + SHELL.concat(c.files).map(p => "  '" + p + "'").join(',\n') + '\n];'
+      file: H.APP_PATH,
+      label: 'index.html release block',
+      region: ['/* APP-RELEASE-BEGIN */', '/* APP-RELEASE-END */'],
+      build: () => page().text
     },
     {
       file: H.MANIFEST_PATH,
@@ -132,6 +144,21 @@ function targets(c){
         });
         return JSON.stringify(next, null, 2) + '\n';
       }
+    },
+    {
+      /* The cache is named for the version and for exactly these bytes, so
+         a release can never write into the cache a running one reads. */
+      file: H.SW_PATH,
+      label: 'sw.js cache name',
+      region: ['/* APP-CACHE-BEGIN */', '/* APP-CACHE-END */'],
+      build: () => "const CACHE_NAME = '" + sw().cache + "';"
+    },
+    {
+      /* Every file the worker must hold, with the sha256 its bytes must have. */
+      file: H.SW_PATH,
+      label: 'sw.js release manifest',
+      region: ['/* APP-FILES-BEGIN */', '/* APP-FILES-END */'],
+      build: () => sw().text
     }
   ];
 }
@@ -145,6 +172,12 @@ function run(){
   let wrote = 0;
 
   targets(c).forEach(t => {
+    if(t.custom){
+      const r = t.custom(MODE);
+      if(r > 0) wrote++;
+      else if(r < 0) drift.push(t.label);
+      return;
+    }
     const { crlf, text } = readText(t.file);
 
     if(t.json){
@@ -184,7 +217,8 @@ function run(){
   if(MODE === 'sync'){
     console.log('config:sync  id=' + c.cfg.id + '  version=' + c.version);
     console.log('  storage prefix : ' + c.storagePrefix);
-    console.log('  cache name     : ' + c.cacheName);
+    console.log('  cache name     : ' + c.release().cache);
+    console.log('  release        : ' + c.release().id + ' (' + c.release().files.length + ' files)');
     console.log(wrote ? '  updated ' + wrote + ' file(s)' : '  already in sync');
     return 0;
   }
@@ -196,7 +230,7 @@ function run(){
     return 1;
   }
   console.log('config:verify  ok — id=' + c.cfg.id + ' version=' + c.version +
-              ' cache=' + c.cacheName);
+              ' cache=' + c.release().cache);
   return 0;
 }
 

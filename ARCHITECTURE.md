@@ -365,7 +365,7 @@ page script, in two ES modules the page imports after its first paint:
   follows its height.
 - **Adding an authored place** is data, not renderer code: export the file,
   add a line to `ASSETS` (the look, the file, the plinth width, the rise the
-  export audit measured) and the file to `APP_FILES`. The renderer names no
+  export audit measured), then `npm run config:sync`, which ships it. The renderer names no
   look, project or file, and contract 30 checks each file against
   `DISTRICT_BUDGET` — at most 24 draws, 80k triangles, 16 materials, 8
   workers, 2 MB and no textures — which the export (`export_glb.py`) also
@@ -558,14 +558,65 @@ project.
 
 ## PWA
 
-Every path is relative, so the app works from any deployment sub-path. The
-service worker is network-first with a cache fallback, precaches the app
-shell and every file in `APP_FILES` (the world's modules and the Three.js
-subset — `npm run config:sync` writes the list into `sw.js`), ignores other
-origins (so an opened ChatGPT or Claude link, or a
-repository's status file, is never cached), and on activate deletes only its
-own older caches. Offline, the app opens from the shell cache and shows each
-project's last valid status from `cache.repoStatus`.
+Every path is relative, so the app works from any deployment sub-path.
+
+**One release at a time (0.7.1).** 0.7.0 served its modules and models at
+the same address in every release, network-first through the browser's HTTP
+cache, and precached whatever came back. Pages and the browser each keep a
+copy of every file for ten minutes, per address, so an update could run new
+HTML with an old renderer or layout, and cache the mixture for offline. Now:
+
+- **Immutable addresses.** `scripts/release.js` walks the real import graph
+  from `field/render3d.js` and every relative asset address the modules
+  name (the models in `ASSETS`). It copies each file into `release/` as
+  `<name>.<first 12 hex of its sha256>.<ext>` and rewrites every reference,
+  so a file's address changes exactly when its bytes do. Nothing is listed
+  by hand. An import it cannot follow (a non-literal `import()`, a bare
+  specifier, a model with an external file) stops the build.
+- **One generator.** `npm run config:sync` writes `release/`, the page's
+  `APP_RELEASE`, `WORLD_MODULE` and `APP_FILES`, and the worker's `RELEASE`
+  (every file with its sha256 and size) and `CACHE_NAME` (the version plus a
+  hash of that manifest); `config:verify` fails on any drift. Shipped files
+  are `-text` in `.gitattributes`, so the bytes hashed are the bytes
+  committed and served. Edit `field/` or `art/exports/`, then sync: the dev
+  server runs the release copies.
+- **Verified install.** The worker fetches every file past the HTTP cache
+  (`cache: 'reload'`), or copies it from the release that last ran here, and
+  checks its size and sha256; a 200 is not proof. One wrong, missing,
+  partial or late (60 s) file fails the install, and the running release is
+  untouched; verified files are kept for the retry. A file is never answered
+  with the page, and nothing unverified is stored under a release address.
+- **The page is its release.** Navigations are answered with the active
+  release's own `index.html`, and `release/` files from that release (or the
+  one before it), so a page and everything it loads are one release. Other
+  origins (status files, opened links), other paths and non-GET requests are
+  never answered or kept.
+- **Updates wait for you.** A verified release waits. The page asks it which
+  release it is (`MC_RELEASE`) and, if it is a different one, offers it in
+  Settings (Update ready) with one toast. Tapping it activates the release
+  (`MC_ACTIVATE`) and reloads that page once. Nothing else ever reloads a
+  page: other tabs keep running and are offered it, and it also starts on
+  the next launch with no old tab open. Leaving the page saves an open
+  editor's draft, as before.
+- **Retention.** Activation marks its cache complete (`__release__`), keeps
+  the most recent release that ran before it — so a page still on it can
+  import or fetch a model late — and deletes every other cache of this app:
+  older releases, unfinished installs and pre-release caches. Only names
+  `<id>-v<digit>…` are this app's; other apps' caches on the shared origin
+  are never touched. A tab two releases behind loses its late loads (the
+  world falls back to the flat field) and is offered the update.
+- **The first update from 0.7.0.** The new worker installs only after every
+  file is verified from the network, never from 0.7.0's cache. Since 0.7.0
+  pages cannot show an update action, it then takes control at once (only
+  when no verified release has run here), removes 0.7.0's cache and reloads
+  nothing. Pages already open keep whatever 0.7.0 gave them, mixed or not,
+  until they are next opened, and while 0.7.0's worker is still in charge its
+  behaviour cannot change. From the first verified release on, every
+  guarantee above holds.
+
+Offline, the app opens from its release and shows each project's last valid
+status from `cache.repoStatus`. Contract 31 runs the real `sw.js` against a
+controllable network and cache store.
 
 ## Testing
 
@@ -631,11 +682,12 @@ foundation expects them.
 | The link rule | `parseToolLink` — and contract 22 |
 | The field's rendering | `field/render3d.js` (and `IsoField`, the fallback), behind `Field` |
 | Layout, camera, gestures, crews | `field/world.js` — and contract 30 |
-| A project's authored place | Blender (`art/blender`), then `export_glb.py` into `art/exports/`; its look in `ASSETS` (`world.js`) with the rise measured from the file; the file in `APP_FILES`, then `npm run config:sync` |
+| A project's authored place | Blender (`art/blender`), then `export_glb.py` into `art/exports/`; its look in `ASSETS` (`world.js`) with the rise measured from the file, then `npm run config:sync` |
 | What an authored crew does in each state | `assetCrew` (`world.js`) — and contract 30 |
 | What one authored place may cost | `DISTRICT_BUDGET` (`world.js`) and the same numbers in `export_glb.py` — contract 30 holds them equal, and `BUDGET` must still hold six |
 | The world's light | `LIGHT` (`world.js`) and the `--light-*` tokens |
 | The Three.js version | `scripts/vendor-three.js`, then `npm run verify` |
-| A file the app loads | `APP_FILES`, then `npm run config:sync` |
+| A file the app loads | import it from a module, or name it in `ASSETS`, then `npm run config:sync` (`scripts/release.js` finds it) |
+| How updates install, activate and clean up | `sw.js` (outside its generated blocks) and `Updates` in `index.html` — contract 31 |
 | A data shape | bump `DATA_SCHEMA_VERSION` and add a migration |
 | A release | an `APP_UPDATES` entry, then `npm run config:sync` |
