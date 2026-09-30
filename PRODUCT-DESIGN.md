@@ -273,7 +273,9 @@ The product's own rules, on top of everything above.
   one line counts them quietly — "2 last updated 14+ days ago", with a clock
   and no status colour — and the brief gives the date, the age in days and
   a quiet line saying so. It never changes a status, attention, a worker,
-  a light or a count, never warns, and never takes the world's room. An
+  a light or a count, and never warns. It is always visible while any
+  record is older: beside what the line says, or one quiet line below the
+  attention buttons, the world giving up that line's height. An
   unknown or unreadable time claims nothing. After a failed check the brief
   says the saved copy is shown and when it was fetched. *(enforced)*
 - **No state, no light.** A beacon is lit only by a known state; an unknown

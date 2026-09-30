@@ -262,11 +262,14 @@ older: `projectView` carries `age`, the hub summary adds a short count
 the brief says the date, the age in days and that it is older. Nothing else
 reads it — status, attention, the HUD, the world's lights and crews are
 exactly what they were. Derived at every render (and on return to the
-app, which now redraws), never stored, never on a timer. The summary keeps
-the approved hub's room: with older records it may take two lines in its
-one line's height, and where it would stand alone on a row of its own
-beside full attention buttons, `placeOlderNote` (run by `fitField`) folds
-it to a screen reader's line. Contract 32.
+app, which now redraws), never stored, never on a timer. The count is
+always on screen while any record is older, by plain flex wrapping at the
+summary's own type size: beside what the line already says (two lines in
+its one line's height), and when it stands alone (every state known, the
+attention buttons speaking) beside the buttons where two readable lines
+fit, otherwise one line below them — the world gives that line's height
+and nothing else changes. 0.9.3 measured and folded it to a screen
+reader's line instead (`placeOlderNote`, removed in 0.9.4). Contract 32.
 
 **Publishers' gate** (`scripts/project-status.js`). One checker, kept here and
 copied byte for byte into every publishing repository (contract 1, checker

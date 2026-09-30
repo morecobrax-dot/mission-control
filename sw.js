@@ -28,14 +28,14 @@
  */
 
 /* APP-CACHE-BEGIN */
-const CACHE_NAME = 'mission-control-v0.9.3-f8f35d65732f';
+const CACHE_NAME = 'mission-control-v0.9.4-667475c10f97';
 /* APP-CACHE-END */
 
 /* APP-FILES-BEGIN */
 const RELEASE = {
-  id: 'e952f9797b38',
+  id: '8996d9af0058',
   files: [
-    ['./index.html', 'c9bb3dfaef09da7a2f93b068daa4ceea094c9a64ca4623ad5f69dfa5d6844c18', 252272],
+    ['./index.html', '55f9ca06779ee72c438cd76372ac0114ccc50b9cacd6abd33da8e6df7b7fd724', 252279],
     ['./manifest.webmanifest', '774e9d6751d74a9ae1e205dcfd4c3ff4e602d58bb2ad7ca749d1b9f4328efe42', 583],
     ['./icon-192.png', '0158e8011a048dd9d51da60afed6ccae8a9d66932e9f424b6e2c15e6e2eb00d1', 20289],
     ['./icon-512.png', '04ec5545111e900e3b2bc584c9d7fd33f126f0d2d4a4464c8e627b467048a31d', 86533],

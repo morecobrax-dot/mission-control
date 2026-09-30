@@ -2988,16 +2988,23 @@ function testStatusAge(){
     /<span aria-hidden="true">2 last updated 14\+ days ago<\/span><span class="sr-only">2 project statuses were last updated 14\+ days ago\.<\/span>/.test(html('hubSummary')) &&
     d.getElementById('hubSummary').className === 'hub-summary is-aged');
   T('its clock is quiet: no status hue', /\.hub-summary \.hub-aged svg, \.hub-summary\.is-clear \.hub-aged svg\{ flex-shrink: 0; color: currentColor; \}/.test(H.readApp()));
-  /* 0.9.2's approved hub keeps its room: the line takes a second line inside
-     the height one had, and where it would stand alone on a row of its own
-     (every state known, the attention buttons speaking and filling their
-     row) it folds to a screen reader's line instead of taking the world's
-     height. Browser QA measures the boxes; this holds the rules. */
+  /* 0.9.3 folded the count to a screen reader's line wherever it would
+     have stood alone below the attention buttons — on ordinary phones and
+     iPads — so a sighted person never saw it. The count is always on
+     screen: it rides beside the buttons where two readable lines fit and
+     otherwise wraps to one line below them, by plain flex wrapping at the
+     summary's own type size. Browser QA measures the boxes; this holds the
+     rules. */
   const src = H.readApp();
-  T('the older line never takes the world\'s room: two lines in one line\'s height, folded where it would stand alone',
+  const agedCss = (src.match(/[^{}]*(is-aged|hub-aged)[^{]*\{[^}]*\}/g) || []).join('\n');
+  T('the older count is never hidden from sight: nothing measures it, folds it or makes the summary screen-reader-only',
+    agedCss.length > 100 && !/placeOlderNote/.test(src) && !/hubSummary[\s\S]{0,300}classList\.add\('sr-only'\)/.test(src) &&
+    !/display:\s*none|visibility:\s*hidden|clip:|position:\s*absolute|font-size|opacity/.test(agedCss), agedCss.slice(0, 200));
+  T('it wraps as ordinary layout: two lines in the line\'s height, alone beside the buttons only where two lines fit, else one line below',
     /\.hub-summary\.is-aged\{ flex: 1 1 12em; min-width: 0; flex-wrap: wrap; row-gap: 0; line-height: 1\.15; \}/.test(src) &&
-    /function fitField\(\)\{\r?\n  placeOlderNote\(\);/.test(src) &&
-    /note\.classList\.remove\('sr-only'\);\s*if\(!note\.classList\.contains\('is-aged-only'\)\) return;[\s\S]{0,200}if\(s\.bottom > s\.top && n\.top >= s\.bottom - 1\) note\.classList\.add\('sr-only'\);/.test(src));
+    /\.hub-summary\.is-aged-only\{ flex-basis: 9em; min-height: 0; \}/.test(src) && /\.hub-status\{\s*display: flex; flex-wrap: wrap;/.test(src));
+  T('one announcement: the short words are hidden from a screen reader, which hears the whole sentence once',
+    (html('hubSummary').match(/project statuses were last updated/g) || []).length === 1 && /<span aria-hidden="true">2 last updated/.test(html('hubSummary')));
 
   sub('the brief: when the record was written, and that it is older');
   let brief = c.briefHtml(v('loop'), false);
@@ -3063,7 +3070,7 @@ function testStatusAge(){
       btext() === 'Nothing needs you right now 1 last updated 14+ days ago 1 project status was last updated 14+ days ago.' &&
       bd.getElementById('hubSummary').className === 'hub-summary is-clear is-aged');
     bc.openStateForm('dayplan'); bc.toggleSwitch('stateQa'); bc.saveStateForm(); bc.__flush();
-    T('one asking and every state known: the line stays only to say one is older, and may fold',
+    T('one asking and every state known: the line stays, visible, only to say one is older',
       btext() === '1 last updated 14+ days ago 1 project status was last updated 14+ days ago.' &&
       bd.getElementById('hubSummary').getAttribute('hidden') === null && bd.getElementById('hubSummary').className === 'hub-summary is-aged is-aged-only');
     T('and saving a state makes that record young, with no other effect', bc.projectView('dayplan').age.days === 0 && /class="attn-pill sig-needs_qa"/.test(bd.getElementById('attentionList').innerHTML));

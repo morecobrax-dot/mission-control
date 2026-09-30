@@ -254,7 +254,10 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     record's own `updatedAt` (`statusAgeOf`), elapsed, never a check time;
     14 days makes it older, a quiet word in the summary and the brief and
     nothing else — no status, attention, light, count, timer or stored
-    flag, and never the world's room. Contract 32.
+    flag. The count is always on screen while any record is older: beside
+    what the summary already says, or one line below the attention buttons,
+    never folded out of sight to save the world a line (0.9.3 did, and a
+    sighted person with two buttons never saw it). Contract 32.
 46. **Identity never wears a status colour.** Every `--tint-*` stays at least
     ΔE 20 (CIELAB) from every `--sig-*`, and a beacon is lit only by a known
     state. Contract 24 measures both.

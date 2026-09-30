@@ -928,11 +928,16 @@ body.scroll-locked{
 .hub-summary.is-clear svg{ color: var(--sig-stable); }
 .hub-summary .sep{ color: var(--border); }
 /* An older record is a date, not a status: no status hue on its clock.
-   The line may then take two lines, in the height one had (28px), so the
-   world keeps its room: the older part moves down whole, and the line sits
-   beside the attention buttons only where there is room for it there. */
+   It is always on screen. The line may take two lines in the height one
+   had (28px), the older part moving down whole; alone (every state known,
+   the attention buttons speaking) it sits beside the buttons where two
+   readable lines fit there, and otherwise wraps to one line below them —
+   plain flex wrapping, nothing measured and nothing hidden. Below the
+   buttons it is only as tall as its text (the 28px is for a line beside
+   controls), so the world gives 18px: at 32px a short phone's city
+   rearranged to three columns and lost a label. */
 .hub-summary.is-aged{ flex: 1 1 12em; min-width: 0; flex-wrap: wrap; row-gap: 0; line-height: 1.15; }
-.hub-summary.is-aged-only{ flex-basis: 6em; }
+.hub-summary.is-aged-only{ flex-basis: 9em; min-height: 0; }
 .hub-summary .hub-aged{ display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .hub-summary.is-aged-only .hub-aged{ white-space: normal; }
 .hub-summary .hub-aged svg, .hub-summary.is-clear .hub-aged svg{ flex-shrink: 0; color: currentColor; }
@@ -1725,6 +1730,17 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-9-4',
+    version: '0.9.4',
+    title: 'Always in view',
+    date: '2026-09-30',
+    summary: 'How many project statuses were last updated 14+ days ago now always shows on the hub.',
+    improvements: [
+      'With two or three things needing you on a phone, or three on an iPad, the count now shows on a quiet line below them instead of being left out',
+      'The city gives up only a small strip of height for it, and keeps its layout and every project label'
+    ]
+  },
   {
     id: 'v0-9-3',
     version: '0.9.3',
@@ -3518,7 +3534,7 @@ function olderCountText(n){
 /* In the hub's one line it has little room, so it shows the short form
    and says the whole sentence to a screen reader. */
 function olderSummaryHtml(n){
-  return '<span class="hub-aged" title="' + escapeAttr(olderCountText(n) + '.') + '">' + clockIcon(13) +
+  return '<span class="hub-aged">' + clockIcon(13) +
     '<span aria-hidden="true">' + escapeHtml(n + ' last updated ' + STATUS_OLDER_DAYS + '+ days ago') + '</span>' +
     '<span class="sr-only">' + escapeHtml(olderCountText(n) + '.') + '</span></span>';
 }
@@ -3665,7 +3681,7 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = 'e952f9797b38';
+const APP_RELEASE = '8996d9af0058';
 const WORLD_MODULE = './release/render3d.e821bb45a953.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
@@ -3858,21 +3874,7 @@ function setWorldLayout(on){
    whatever it gets. Measured only while the hub is shown: a hidden hub
    has no size, and it is measured again as it comes back. */
 const FIELD_MIN = 280, FIELD_MIN_SHORT = 180, FIELD_MAX = 1000;
-/* The older note alone (every state known, the attention buttons speaking)
-   rides beside the buttons where they leave it room, and otherwise folds
-   to a screen reader's line rather than take a row from the world. Read
-   with the layout, as fitField is, never in a frame. */
-function placeOlderNote(){
-  const note = document.getElementById('hubSummary'), strip = document.getElementById('attentionList');
-  if(!note || !strip || typeof note.getBoundingClientRect !== 'function' || !note.classList) return;
-  note.classList.remove('sr-only');
-  if(!note.classList.contains('is-aged-only')) return;
-  const s = strip.getBoundingClientRect(), n = note.getBoundingClientRect();
-  if(s.bottom > s.top && n.top >= s.bottom - 1) note.classList.add('sr-only');
-}
-
 function fitField(){
-  placeOlderNote();
   const field = document.getElementById('projectField'), home = document.getElementById('view-home');
   const vh = window.innerHeight, vw = window.innerWidth;
   const short = vh <= 500 && vw > vh;
