@@ -188,7 +188,10 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
 35. **The field is drawn only through its seam.** `Field.mount/draw/focus/unmount`,
     fed by `fieldScene()`, one renderer at a time. A renderer never reads
     `Store`, never fetches, never decides a status and never owns the
-    selection: it reports a tap, and the next draw says what is selected.
+    selection or the focus: it reports a tap (`onTap`), a swipe to the next
+    place (`onNavigate`) and Overview (`onOverview`), and the next draw says
+    what is chosen and what is in focus; the camera follows the focus, never
+    the choice alone.
     `WorldField` (`field/render3d.js`) is the field — one city, one
     perspective camera that never turns — and keeps a real button per
     project; a tap on the island is hit-tested in `field/world.js`, never by a
@@ -270,16 +273,16 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     Slow frames lower the resolution only when the frame's own measured cost
     fills the gap (`shouldStepDown`): a screen presenting at 30 Hz is not a
     slow renderer.
-    Labels and the sign move by transform and are measured only when their
+    Labels and the card move by transform and are measured only when their
     words or room change — never read layout in a frame. Reduce Motion makes
     every move instant and stills every crew and every place. Status lights
     only the beacon, the helmet and an authored place's rim, and only when
     known — no record, no light, no worker. A place's life moves only while its project is known to
     be under way (never unrecorded, blocked or paused). A place is a place,
     never a progress bar: no levels, counts or completion, and its life never
-    speeds up or counts with anything. The sign says only what the record
-    holds. A crew's acknowledgment plays on the change itself, never on a
-    reload.
+    speeds up or counts with anything. The card says only what the record
+    holds, and only the place in focus has one. A crew's acknowledgment
+    plays on the change itself, never on a reload.
 50. **Three.js is vendored, pinned and made one way.** Change it only with
     `scripts/vendor-three.js` (version, tarball integrity and esbuild pinned);
     never edit `vendor/three/three.min.js` — contract 30 holds it to its
@@ -293,6 +296,11 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     Roads imply no software dependency, throughput or agent execution.
     Residents and vehicles share the one visibility/reduced-motion-aware
     scheduler; no separate loop, network source or persisted simulation.
+    The city itself (`cityPlan` in `world.js`: blocks, streets and lanes,
+    the one canal, bridges, trees, lamps, parked cars) is computed from the
+    places' positions alone, the same every time, for any number of places,
+    and merged into a few draws; it never reads a record and never says
+    anything about one. Nothing tall stands in front of a place. Contract 30.
 52. **Lighting is art-directed, not a claim of real GI.** One rig for the
     whole world, from the Blender master (`LIGHT` in `world.js`): a warm key
     sun that casts, a weak cool fill and rim, and the Blender world's
@@ -304,14 +312,20 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     and its place is drawn large. Keep colours in tokens and assets local.
     Measure the frame's full cost (`measure()`, QA only) after changing art
     or light, preserve fallback and dispose the shadow target with other
-    resources.
+    resources. Since 0.9.0 it is daylight over a bright city on a warm ivory
+    ground (brighter, warmer, softer; the lit face still gets over three
+    times the shade face's light); the page's chrome stays dark. Every city
+    surface colour stays at least ΔE 20 from every status hue (contract 30).
 53. **Blender owns an authored place; the app drives it.** A look with a GLB
     in `ASSETS` is drawn from it: never rebuild or retouch its geometry or
     materials in Three.js, and fix a material that translates badly where it
     is exported (`export_glb.py`). Its status material, dimming and crew
     clips are driven from the scene the app gives, through `assetCrew`;
     nothing in the file decides a status. Its rise is measured from the
-    file. The look's recipe stays as its fallback. A new authored place is a
+    file. It is set into its city block by placement alone (`assetFloor`:
+    the platform's dark lower plinth just under the paving, its numbers
+    taken from `mc_platform.py` and held there by contract 30); never cut,
+    trim or recolour a file to fit the city. The look's recipe stays as its fallback. A new authored place is a
     Blender export, an `ASSETS` entry and `npm run config:sync` — never code
     per project. Its crew is one skeleton (`<role>__<bone>`) and its own
     life is the `MC_LIFE` clip on `mc_life` nodes only.
@@ -334,3 +348,26 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     claims one; an update activates when the person taps it or the app
     reopens. Activation keeps exactly one earlier release and removes only
     this app's caches. The 0.7.0 transition is the one takeover. Contract 31.
+56. **Chosen and in focus are two states, and the app owns both.**
+    `selectedId` is the choice: stored, shown in the dock. `focusedId` is
+    this visit's focus: never stored, set by `focusProject` (a tap, a swipe
+    through `navigateProject`, a Needs-attention button) and cleared by
+    `leaveFocus` (Overview, Escape). Only the project in focus carries a
+    card, and only a tap on it opens its brief; the overview, a relaunch and
+    the world's first draw have nothing in focus, so nothing there offers
+    the brief (0.8.0 kept one value for both, and said "Tap again for the
+    brief" over a project nobody was looking at). A swipe never opens a
+    brief. Contracts 23, 24 and 30.
+57. **One way the camera moves, and a drag is decided once.** Every move —
+    overview, focus, the next place, back — is a `planFlight` flight from
+    where the camera is, at the speed it already has, landing exactly on its
+    frame; instant under Reduce Motion. A drag's axis is decided as it
+    starts: in focus a clearly sideways one swipes (`swipeVerdict`: far
+    enough or flicked, never a twitch or a flick back), up and down belong
+    to the page (`touch-action: pan-y`), and a drag pans only while the city
+    does not fit at the overview. The next place is reading order, never
+    round the end; a swipe is reported once. Only the view's own lost
+    capture ends a drag (a touch's implicit capture moving to the view is
+    not a cancel). Labels readable where the camera goes are decided as it
+    leaves, and a label whose words change glides; none jumps or flickers.
+    Contract 30.

@@ -197,27 +197,43 @@
   --mat-blueprint: #2C4F7A;
   --glow-window: #FFD092;
   --glow-screen: #CFE2F0;
-  /* The studio rig, from the Blender master: a warm key sun, a cool fill
-     and rim, and a sky that runs from a warm grey ground to a cool blue. */
-  --light-key: #FFEEDA;
-  --light-fill: #D2DDFF;
+  /* The studio rig, from the Blender master, in daylight: a warm key sun,
+     a cool fill and rim, and a pale sky over the warm bounce of a bright
+     city. */
+  --light-key: #FFEBD2;
+  --light-fill: #D8E2F8;
   --light-rim: #F2F5FF;
-  --light-sky: #9DB8E0;
-  --light-ground: #AE9F92;
-  /* City materials are scenery, independent of project state. Warm shop
-     light and cool street fill give the miniature architecture its depth. */
-  --city-asphalt: #303443;
-  --city-sidewalk: #B9AFA9;
-  --city-curb: #D4CBC0;
+  --light-sky: #BFD3EC;
+  --light-ground: #D6C6AF;
+  /* City materials are scenery, independent of project state: warm stone
+     paving, a warm charcoal road, pale curbs, a jade canal. Every surface
+     is at least ΔE 20 from every status hue (contract 30 measures it), so
+     no street or block is ever read as a state. */
+  --city-asphalt: #57534D;
+  --city-sidewalk: #DDD3C4;
+  --city-curb: #ECE5D9;
   --city-facade: #C7C4BB;
   --city-facade-warm: #BD8D7B;
   --city-facade-cool: #849BAC;
   --city-window-cool: #ACCBDE;
   --city-window-dim: #344553;
-  --city-road-paint: #E9D9AD;
-  --city-base: #394052;
-  --city-atmosphere: rgba(135,107,155,0.12);
-  --world-label: rgba(11,15,22,0.72);
+  --city-road-paint: #F4EEDD;
+  --city-base: #CBBBA6;
+  --city-quay: #A89A88;
+  --city-water: #5A968C;
+  --city-drop: #3A2E24;
+  /* The world's page and its words: a warm ivory ground the city sits on,
+     ink for the labels with a halo of the ground, and a light card for the
+     chosen project and the place in focus. */
+  --world-sky-top: #F5F0E7;
+  --world-sky-bottom: #E4D9C9;
+  --world-glow: rgba(255,251,243,0.85);
+  --world-ink: #1E2530;
+  --world-ink-soft: #4B5563;
+  --world-halo: rgba(250,246,238,0.94);
+  --world-card: #FFFCF6;
+  --world-edge: rgba(40,34,26,0.16);
+  --world-lift: 0 2px 10px rgba(60,46,30,0.2);
   /* The island every place stands on and what grows there: muted, earthy
      and at least ΔE 20 from every status hue (contract 30 measures it), so
      the land is never read as a state. */
@@ -225,8 +241,8 @@
   --land-grass-edge: #3B5634;
   --land-soil: #5A4232;
   --land-rock: #5E5147;
-  --mat-leaf: #5B7F3E;
-  --mat-leaf-dark: #2F4F37;
+  --mat-leaf: #668E47;
+  --mat-leaf-dark: #3D6040;
   --mat-bark: #6B4A33;
   --mat-petal: #E7A7B8;
   --mat-petal-light: #F3E3C0;
@@ -1048,113 +1064,111 @@ body.scroll-locked{
 
 /* ---- The 3D world ----
    field/render3d.js draws into #worldHost, laid over the field's own box:
-   one island on a transparent canvas over the field's floor, and above it
-   one real button per project (its label, its name and its keyboard stop),
-   moved under its district each frame, and the selected project's sign.
-   While the world loads, the flat field in
-   the same box stays drawn and stays the one you can touch; the world takes
-   over only once its first frame is on screen. The box's height is what
-   the screen has left (fitField() measures it); this is its fallback. */
+   one bright island on a transparent canvas over the world's warm ground,
+   and above it one real button per project (its label, its name and its
+   keyboard stop), moved by transform each frame. While the world loads,
+   the flat field in the same box stays drawn and stays the one you can
+   touch; the world takes over only once its first frame is on screen. The
+   box's height is what the screen has left (fitField() measures it); this
+   is its fallback. The page's chrome stays dark around it: a control
+   surface with one bright window onto the city. */
 .field-box{ position: relative; }
 .project-field{ --world-h: clamp(300px, calc(100dvh - 330px - var(--inset-top) - var(--inset-bottom)), 780px); }
 .project-field.is-world, .project-field.world-loading{ height: var(--world-h); }
-.project-field.is-world{
-  padding: 0;
-  background: radial-gradient(ellipse at 50% 65%, var(--city-atmosphere), transparent 72%),
-    radial-gradient(ellipse at 50% 30%, var(--field-haze), transparent 80%), var(--field-floor);
-}
+.project-field.is-world{ padding: 0; background: var(--world-sky-bottom); }
 /* Loading: the flat field, whole and usable, in the world's box. */
 .project-field.world-loading{ display: flex; flex-direction: column; justify-content: center; overflow-y: auto; }
 .world-host{
   position: absolute; inset: 0; overflow: hidden; pointer-events: none;
   border-radius: var(--radius-xl);
 }
-/* Inside the world a drag pans it; outside, the page scrolls as ever. */
+/* The world's own ground: warm ivory, lightest where the city stands. A
+   drag sideways is the world's (in focus, to the next place); a drag up or
+   down still scrolls the page. Only while the whole city is not in view at
+   the overview does the world take every drag, to pan it. */
 .world-view{
-  position: absolute; inset: 0; overflow: hidden; cursor: grab; pointer-events: auto;
-  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  position: absolute; inset: 0; overflow: hidden; pointer-events: auto;
+  background: radial-gradient(ellipse at 50% 45%, var(--world-glow), transparent 70%),
+    linear-gradient(180deg, var(--world-sky-top), var(--world-sky-bottom));
+  touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
+.world-view.is-pannable{ touch-action: none; cursor: grab; }
 .world-view.is-panning{ cursor: grabbing; }
 .world-canvas{ position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .world-layer{ position: absolute; inset: 0; pointer-events: none; }
 /* One real button per project: its keyboard stop and accessible name,
-   holding its label. render3d.js moves it under its district by transform
-   alone, every frame, and measures it only when its words change. A tap on
-   the island is hit-tested against the districts drawn there; a label that
-   can be read takes a tap too, and one that cannot takes none. */
+   holding its label. render3d.js moves it by transform alone, every frame,
+   and measures it only when its words change. A tap on the island is
+   hit-tested against the districts drawn there; a label that can be read
+   takes a tap too, and one that cannot takes none. */
 .world-tile{
   position: absolute; left: 0; top: 0; margin: 0; padding: 0;
-  background: none; border: none; color: var(--text); pointer-events: none;
+  background: none; border: none; color: var(--world-ink); pointer-events: none;
   will-change: transform; -webkit-tap-highlight-color: transparent;
 }
 .world-tile:focus-visible{ outline: none; }
-/* A label is part of the scene: no box, just type with a soft edge of the
-   floor's own colour so it reads over streets. The name leads; one status
-   follows — a chip only when it needs you. The selected project alone gets
-   a backing, so it stands out without every label competing. */
+/* A label names its own place and stands on it: type, the name first and
+   one status after it — solid in its hue when it needs you, pale for a
+   recorded state, a dashed outline for Needs update — with a halo of the
+   ground so it reads over the city without hiding it. Its button is at
+   least a finger tall; what shows may be smaller. The chosen project's
+   label stands on a light plate with an ink ring. The place in focus shows
+   its card in front of it instead: every status, a blocker in its own
+   words, and what a tap does. No dark boxes over the bright city. */
 .world-label{
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  display: flex; align-items: center; justify-content: center;
   width: max-content; max-width: var(--label-max, 140px); min-height: var(--touch-min);
-  padding: 2px var(--space-sm); border-radius: var(--radius-md);
-  background: none; text-align: center; pointer-events: auto; cursor: pointer;
+  text-align: center; pointer-events: auto; cursor: pointer;
   transition: opacity var(--dur) var(--ease);
 }
-.world-tile.is-selected .world-label{ background: var(--world-label); }
+.world-plate{
+  display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%;
+  padding: 2px var(--space-xs); border-radius: var(--radius-md); border: 2px solid transparent;
+}
+.world-tile.is-selected .world-plate{ padding: 3px var(--space-sm) 4px; background: var(--world-card); border-color: var(--world-ink); box-shadow: var(--world-lift); }
 .world-name{
-  font-size: var(--fs-meta); font-weight: 700; line-height: var(--lh-tight);
-  color: var(--text); overflow-wrap: break-word;
-  text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor), 0 0 2px var(--field-floor);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  max-width: 100%; font-size: var(--fs-meta); font-weight: 700; line-height: var(--lh-tight);
+  color: var(--world-ink); overflow-wrap: anywhere;
+  text-shadow: 0 0 2px var(--world-halo), 0 0 5px var(--world-halo), 0 1px 1px var(--world-halo);
 }
+.world-badge .chip, .world-card .chip, .world-state, .world-badge .block-unrecorded{
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px;
+  border-radius: var(--radius-pill); color: var(--world-ink); white-space: nowrap;
+}
+.world-badge .chip, .world-card .chip{ background: var(--sig); border: 1px solid var(--world-edge); font-weight: 700; }
 .world-state{
-  display: inline-flex; align-items: center; gap: 4px;
-  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
-  letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; color: var(--sig);
-  text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor), 0 0 3px var(--field-floor), 0 0 3px var(--field-floor);
+  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  background: var(--world-card); border: 1px solid var(--sig);
 }
-.world-badge .block-unrecorded{ text-shadow: 0 1px 2px var(--field-floor), 0 0 6px var(--field-floor), 0 0 3px var(--field-floor), 0 0 3px var(--field-floor); }
-.world-tile.is-selected .world-name::after{
-  content: ''; display: block; height: 2px; margin: 3px auto 0; width: 60%;
-  border-radius: var(--radius-pill); background: var(--field-select);
+@supports (color: color-mix(in srgb, red 50%, blue)){
+  .world-state{ background: color-mix(in srgb, var(--sig) 34%, var(--world-card)); border-color: color-mix(in srgb, var(--sig) 55%, var(--world-ink)); }
 }
-.world-badge .chip{
-  padding: 1px 6px;
-  /* Over a bright facade a see-through chip cannot be read: this one is solid, still tinted by its signal. */
-  background: var(--surface-raised);
-  background: color-mix(in srgb, var(--sig, var(--text-dim)) 16%, var(--surface-raised));
-  border-color: color-mix(in srgb, var(--sig, var(--text-dim)) 55%, transparent);
+.world-badge .block-unrecorded, .world-card .chip.sig-unrecorded{
+  font-size: var(--fs-micro); font-weight: 600;
+  background: var(--world-halo); border: 1px dashed var(--world-ink-soft); color: var(--world-ink);
 }
+.world-tile.is-focused .world-label{ max-width: min(280px, calc(100vw - 48px)); }
+.world-tile.is-focused .world-plate{
+  gap: 5px; padding: var(--space-xs) var(--space-md) var(--space-sm);
+  background: var(--world-card); border: 1px solid var(--world-edge); box-shadow: var(--world-lift);
+}
+.world-tile.is-focused .world-name{ font-size: var(--fs-support); }
+.world-tile.is-focused .world-badge{ display: none; }
+.world-card{ display: none; }
+.world-tile.is-focused .world-card{ display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 100%; }
+.world-card-chips{ display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-xs); }
+.world-card-why{
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-meta); color: var(--world-ink);
+}
+.world-card-hint{ font-size: var(--fs-micro); color: var(--world-ink-soft); }
 /* A label that would cover another, or whose district has left the view,
    is not there: it cannot be read, so it cannot be tapped. */
 .world-tile.is-hidden .world-label{ opacity: 0; pointer-events: none; }
 .world-tile.is-off .world-label{ opacity: 0; pointer-events: none; }
-.world-tile:focus-visible .world-label{ opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
-/* The sign over the selected project: its status and what needs you,
-   rising in once when it is chosen (at once under Reduce Motion, by the
-   global rule). It belongs to the scene: it takes no taps, and the dock and
-   the project's button already say the same to assistive tech. */
-.world-sign{ position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; will-change: transform; }
-.world-sign-card{
-  position: absolute; left: 0; bottom: 8px;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  width: max-content; max-width: 230px;
-  padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md);
-  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-md);
-  opacity: 0; transform: translate(-50%, 10px) scale(0.9); transform-origin: 50% 100%;
-  transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease);
-}
-.world-sign-stem{
-  position: absolute; left: -1px; bottom: 0; width: 2px; height: 9px;
-  background: var(--border); opacity: 0; transition: opacity var(--dur-slow) var(--ease);
-}
-.world-sign.is-in .world-sign-card{ opacity: 1; transform: translate(-50%, 0) scale(1); }
-.world-sign.is-in .world-sign-stem{ opacity: 1; }
-.world-sign.is-away .world-sign-card, .world-sign.is-away .world-sign-stem{ opacity: 0; }
-.world-sign-chips{ display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-xs); }
-.world-sign-why{
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: var(--fs-meta); color: var(--text);
-}
-.world-sign-hint{ font-size: var(--fs-micro); color: var(--text-dim); }
+.world-tile:focus-visible .world-label{ opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-md); }
 .world-overview{
   position: absolute; top: var(--space-sm); right: var(--space-sm);
   display: inline-flex; align-items: center; gap: var(--space-xs);
@@ -1163,7 +1177,9 @@ body.scroll-locked{
   border: 1px solid var(--border); border-radius: var(--radius-pill); box-shadow: var(--shadow-md);
   font-size: var(--fs-support); font-weight: 600;
 }
-.world-overview[hidden]{ display: none; }
+/* Away at the overview, where it would do nothing, but still laid out, so
+   it is measured with the view and never in a frame. */
+.world-overview.is-away{ visibility: hidden; }
 
 /* ---- The dock: the selected project, one tap from its brief ----
    Directly under the world and always the same height — a hint until
@@ -1686,6 +1702,24 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-9-0',
+    version: '0.9.0',
+    title: 'A living city',
+    date: '2026-09-30',
+    summary: 'The city is bright and whole now, and you can swipe from one project to the next.',
+    newFeatures: [
+      'In focus, swipe sideways (or use the arrow keys) to go to the next or previous project; scrolling up and down still moves the page',
+      'Every project stands in its own block of one city: streets and planted lanes, a canal with footbridges, trees, parked cars and daylight'
+    ],
+    improvements: [
+      'The overview never offers a brief: after Overview, or when you come back, one tap focuses a project and the next opens it',
+      'The project in focus shows a card in front of it with its status, what needs you and what a tap does',
+      'Labels stand on their own places and no longer cover each other or another project',
+      'Moving between projects is one smooth flight that can be interrupted at any point, and instant with Reduce Motion',
+      'Touch drags inside the world no longer stop after their first movement'
+    ]
+  },
   {
     id: 'v0-8-0',
     version: '0.8.0',
@@ -2782,7 +2816,13 @@ let privateLinks = {};           // id -> { chatgptUrl, claudeUrl }
    untouched: data is never deleted for being unfamiliar. */
 let projectStatesForeign = [];
 let privateLinksForeign = [];
+/* Two things, never one: the project you chose (remembered, and shown in
+   the dock), and the one in focus in the world right now (this visit
+   only), the only one a tap opens straight into its brief. The overview,
+   a relaunch or the world's first draw has nothing in focus, so nothing
+   there offers "tap for the brief". */
 let selectedId = null;
+let focusedId = null;
 
 function isKnownProject(id){ return typeof id === 'string' && PROJECT_REGISTRY.some(p => p.id === id); }
 function registryEntry(id){ return PROJECT_REGISTRY.find(p => p.id === id) || null; }
@@ -3365,10 +3405,13 @@ function ageText(iso){
 /* =========================================================
    SELECTION AND LAYOUT
    ---------------------------------------------------------
-   One tap focuses a project; a second tap on the same one (or
-   Enter, which a button turns into the same click) opens its
-   brief. On a phone the brief is a page; where the screen is
-   wide enough it is already docked beside the field.
+   One tap focuses a project; a second tap on the one in focus
+   (or Enter, which a button turns into the same click) opens
+   its brief. In focus a swipe, or an arrow key, moves the focus
+   to the next or previous place and never opens a brief;
+   Overview leaves focus and keeps the choice. On a phone the
+   brief is a page; where the screen is wide enough it is
+   already docked beside the field.
    ========================================================= */
 const WIDE_QUERY = '(min-width: 900px) and (min-height: 600px)';
 function isWideLayout(){
@@ -3378,8 +3421,26 @@ function isWideLayout(){
 
 function tapProject(id){
   if(!isKnownProject(id)) return;
-  if(id === selectedId){ openBrief(); return; }
-  selectProject(id);
+  if(id === focusedId && id === selectedId){ openBrief(); return; }
+  focusProject(id);
+}
+
+/* Choose a project and bring it into focus. */
+function focusProject(id, opts){
+  if(!isKnownProject(id)) return false;
+  focusedId = id;
+  return selectProject(id, opts);
+}
+
+/* The world moved the focus to a neighbour: the dock follows, quietly, and
+   the brief stays closed. */
+function navigateProject(id){ return focusProject(id, { quiet: true }); }
+
+/* The world went back to the overview: nothing is in focus, the choice stays. */
+function leaveFocus(){
+  if(focusedId === null) return;
+  focusedId = null;
+  renderHub();
 }
 
 function selectProject(id, opts){
@@ -3408,7 +3469,7 @@ function revealFocusBar(){
    it goes straight to the brief, without scrolling the hub behind it. */
 function openProjectBrief(id){
   if(!isKnownProject(id)) return;
-  if(id !== selectedId) selectProject(id, { quiet: true });
+  if(id !== selectedId || id !== focusedId) focusProject(id, { quiet: true });
   openBrief();
 }
 
@@ -3456,10 +3517,12 @@ function watchLayout(){
    changes, focus(id) to put keyboard focus on one project, and
    unmount() to hand the host to another renderer. The scene is
    a derived, render-only description (ids, names, signals,
-   crews, themes, the words a label says, selection), so a
-   renderer never reads Store, never decides a status and never
-   owns the selection: a tap calls tapProject(), and the next
-   draw says what is selected.
+   crews, themes, the words a label and a card say, which one
+   is chosen and which is in focus), so a renderer never reads
+   Store, never decides a status and never owns the selection or
+   the focus: a tap calls tapProject(), a swipe navigateProject(),
+   Overview leaveFocus(), and the next draw says what is chosen
+   and what is in focus.
 
    WorldField is the field: a miniature 3D world drawn with
    Three.js by field/render3d.js, a module loaded after the
@@ -3480,17 +3543,17 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = 'f351a9039676';
-const WORLD_MODULE = './release/render3d.1dddab0564c7.js';
+const APP_RELEASE = '7b4dbadc9f8a';
+const WORLD_MODULE = './release/render3d.bc44354e8ca1.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
   './release/dayplan-diorama.c60794997357.glb',
   './release/golden-diorama.e0b21a1c4dcc.glb',
-  './release/render3d.1dddab0564c7.js',
+  './release/render3d.bc44354e8ca1.js',
   './release/savings-diorama.9099b2690506.glb',
   './release/spacek-diorama.7b9d1f6a6052.glb',
   './release/three.min.0c9283a1079c.js',
-  './release/world.4f89ecac17ff.js'];
+  './release/world.1b0aab428b87.js'];
 /* APP-RELEASE-END */
 
 function fieldScene(views){
@@ -3499,20 +3562,22 @@ function fieldScene(views){
     status: v.status, signal: v.signal, attention: v.attention.slice(),
     workerState: v.workerState, recorded: v.recorded,
     spoken: fieldSpoken(v), badge: fieldBadgeHtml(v),
-    sign: v.id === selectedId ? fieldSignHtml(v) : '',
-    selected: v.id === selectedId
+    card: v.id === focusedId ? fieldCardHtml(v) : '',
+    selected: v.id === selectedId,
+    focused: v.id === focusedId
   }));
 }
 
-/* The sign over the selected project in the world: its status and
-   everything that needs you, with the words and shapes the brief uses; a
-   blocker in its own words; and what a second tap does. Only what the
-   record holds: no count, score or measure it cannot support. */
-function fieldSignHtml(v){
+/* The card of the project in focus in the world, under its name: its
+   status and everything that needs you, with the words and shapes the
+   brief uses; a blocker in its own words; and what a tap does now. Only
+   what the record holds: no count, score or measure it cannot support.
+   Nothing else carries it, so no place out of focus offers the brief. */
+function fieldCardHtml(v){
   const blocker = v.attention.indexOf('blocked') !== -1 && v.blocker
-    ? '<span class="world-sign-why">' + escapeHtml(v.blocker) + '</span>' : '';
-  return '<span class="world-sign-chips">' + chipsHtml(v, false) + '</span>' + blocker +
-    '<span class="world-sign-hint">Tap again for the brief</span>';
+    ? '<span class="world-card-why">' + escapeHtml(v.blocker) + '</span>' : '';
+  return '<span class="world-card-chips">' + chipsHtml(v, false) + '</span>' + blocker +
+    '<span class="world-card-hint">Tap for the brief</span>';
 }
 
 /* A project's accessible name: its name, then every status it has. */
@@ -3603,6 +3668,8 @@ function startWorld(){
     if(worldStage !== 'loading') return;
     WorldField.world = mod.createWorld(host, {
       onTap: tapProject,
+      onNavigate: navigateProject,
+      onOverview: leaveFocus,
       onFail: stopWorld,
       onReady: adoptWorld,
       reducedMotion: prefersReducedMotion,

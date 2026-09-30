@@ -312,12 +312,18 @@ Field.unmount()      // hand the host to another renderer
 
 `scene` is `fieldScene(views)`: ids, names, themes, statuses, signals,
 attention, worker states, whether a state is recorded, the words a label says
-(`spoken`, and `badge`: one status, attention first), the selected project's
-`sign` (its status and everything that needs you, in the brief's words and
-shapes) and the selection — a render-only description. A renderer never
-reads storage, never fetches, never decides a status and never owns the
-selection: a tap calls `tapProject()`, and the next draw says what is
-selected. Contracts 24 and 30 check all of it.
+(`spoken`, and `badge`: one status, attention first), the `card` of the
+project in focus (its status and everything that needs you, in the brief's
+words and shapes, and that a tap opens the brief), which project is chosen
+(`selected`) and which is in focus (`focused`) — a render-only description.
+The app owns both: `selectedId` is the choice, stored and shown in the dock;
+`focusedId` is this visit's focus, never stored, so the overview and a
+relaunch have nothing in focus and nothing there offers the brief. A
+renderer never reads storage, never fetches, never decides a status and
+never owns either: a tap calls `tapProject()` (focus, then the brief), a
+swipe `navigateProject()` (the next place, quietly, never a brief) and
+Overview `leaveFocus()` (the choice stays), and the next draw says what is
+chosen and what is in focus. Contracts 23, 24 and 30 check all of it.
 
 **The field is `WorldField`: one miniature city.** It lives outside the
 page script, in two ES modules the page imports after its first paint:
@@ -325,17 +331,19 @@ page script, in two ES modules the page imports after its first paint:
 - `field/world.js` — everything decided rather than drawn, with no Three.js
   and no DOM, so the contracts import and test it in Node: where each
   district stands (a grid in registry order, back to front, its columns
-  chosen per view), the island round them and what grows on it, the
-  perspective camera as arithmetic (overview, focus, reveal, bounded panning,
-  projection and hit-testing), the gesture arbiter (tap, pan, cancel), the
-  crew's poses, and every place and its life as data — boxes, cylinders,
-  cones, balls, rocks, rings and tori named by colour token.
+  chosen per view), the city round them (`cityPlan`), the perspective camera
+  as arithmetic (overview, focus, reveal, bounded panning, projection,
+  hit-testing, and one kind of flight), the gesture arbiter (tap, swipe,
+  pan, cancel, the axis and speed of a drag), where each label stands and
+  which can be read, the crew's poses, and every place and its life as data
+  — boxes, cylinders, cones, balls, rocks, rings and tori named by colour
+  token.
 - `field/render3d.js` — turns it into pixels with Three.js: one canvas, one
   scene, one perspective camera at a fixed yaw and pitch. Each place's parts
   merge into one geometry per finish (matte, metal, glow), built once per
   look and shared; stations, hand props and life elements are built once.
-  The rounded city slab and merged streets rebuild only when the layout
-  changes shape. Building masses use small bevels; shared Standard materials
+  The island, the canal's water and the merged city rebuild only when the
+  layout changes shape. Building masses use small bevels; shared Standard materials
   and one cached directional shadow map provide soft, grounded lighting. A status change swaps a material or a visibility; nothing
   is rebuilt.
 - **Authored places.** Since 0.8.0 every one of the six required looks is
@@ -347,8 +355,13 @@ page script, in two ES modules the page imports after its first paint:
   app owns state, light and every touch. The renderer loads each file once,
   clones it per district with its skeletons (`cloneSkinned`), copies its
   materials per district so one project's state recolours only its own
-  place, and draws it on the plain pad in place of the recipe, whose crew,
-  life, beacon and painted light step aside. Its status lights (rim, beacon,
+  place, and sets it into its city block in place of the recipe, whose pad,
+  crew, life, beacon and painted light step aside: `assetFloor` stands the
+  file so the master platform's dark lower plinth (0.42 of its 16.9 width,
+  `mc_platform.py`, held by contract 30) is just under the paving, leaving
+  its identity band as a coloured course at the curb, its ledge, its lit
+  status rim and its deck above it. That is placement only; the file is drawn
+  as Blender made it. Its status lights (rim, beacon,
   helmet bands) share one material, recoloured from the button's `--sig` and
   dark without a record; a paused place is dimmed. A place's crew is one
   skinned mesh on one skeleton, each role's bones named
@@ -391,8 +404,11 @@ gzipped. Nothing is fetched from a CDN.
 
 **One light, from the Blender studio rig** (`LIGHT` in `world.js`): a warm
 key sun that casts, a weak cool fill and a rim that do not, and a hemisphere
-light carrying the Blender world's gradient (warm grey ground, cool sky) at
+light carrying the Blender world's gradient (warm ground, pale sky) at
 π × its strength, which is what image-based light would give a surface.
+Since 0.9.0 it is daylight: a stronger, warmer sun, a brighter sky and softer
+shadows over a bright city on a warm ivory ground (the world's own
+background, `.world-view`), while the page's chrome stays dark.
 What is kept is Blender's split of the faces, not its angles: the face that
 fills the view is lit, the narrow face to its right is in shade, cast
 shadows run to screen-right. Tone mapping is Khronos PBR Neutral, which
@@ -423,12 +439,12 @@ retry loop. `destroy()` disposes every geometry, material and texture,
 releases the context and removes its DOM.
 
 **One loop, on demand, and nothing measured in it.** The module's one
-`requestAnimationFrame` loop runs only while the camera moves, a sign rises
-or something is alive, and only while the world is on screen, uncovered (no
+`requestAnimationFrame` loop runs only while the camera moves, a label
+glides or something is alive, and only while the world is on screen, uncovered (no
 overlay — the page's `scroll-locked`), the page visible and the context
 alive. It draws at up to about 60 frames a second (never faster on a 120 Hz
 screen), and life settles into still poses five minutes after the last touch.
-A frame only moves things: labels and the sign move by `transform`, and are
+A frame only moves things: labels and the card move by `transform`, and are
 measured when their words or their room change, never in a frame (0.3.1 read
 label sizes on every frame of a zoom). When frames keep arriving slowly, the
 drawing resolution steps down (2, 1.75, 1.5, 1.25, 1 device pixels per CSS
@@ -448,57 +464,88 @@ larger than farther ones. Districts stand in registry order, back to front,
 left to right; the number of columns is whichever draws the smallest
 district in view largest in the box the world has (an arrangement that shows
 every district beats one that pans). Framing uses each place's real height
-(`placeHeight`, measured from its recipe, its beacon, its crew and its life)
-and each label's measured size, so a low place or a short name never pays
-for the tallest. The overview shows every district and label as large as
-fits, never drawing a district in view below a readable width; a larger
-city starts at the first district and pans.
-The minimum measures the pad geometry, not typography: labels retain their
-CSS type size. A 92px geometry floor cropped a three-column city on phones;
-the 68px floor lets the full six-block city fit as two columns, including
-the street slab and measured labels.
-Shared asphalt streets, raised sidewalks, crosswalks and curb details
-connect the blocks visually. Roads
-represent city infrastructure only; they encode no project relationships.
-Greenery is placed deliberately as street furniture, not scattered over a
-grassy island.
+(`placeHeight`, measured from its recipe, its beacon, its crew and its life;
+`assetHeight` for an authored place), so a low place never pays for the
+tallest. The overview shows every district as large as fits, never drawing a
+district in view below a readable width; a larger city starts at the first
+district and pans. Its labels stand on their own places, so they ask no room
+of it. The minimum measures the pad geometry, not typography: labels retain
+their CSS type size. A 92px geometry floor cropped a three-column city on
+phones; the 68px floor lets the full six-block city fit as two columns,
+including the whole slab, on a short phone too.
+
+**The city between the places** (`cityPlan`, merged by `cityParts` into
+three draws, plus the island and the water). Every place stands in its own
+block, paved one curb above the road with a sidewalk round it. Rows are
+parted by a cross street, or once, nearest the middle, by a canal the
+city crosses on footbridges, with low walls along it and bollards where a
+street meets it. Between two places in a row runs a street or a planted
+lane, alternating from row to row, so the streets meet at offset corners
+rather than a grid; a short row's spare room is a paved square. A ring road
+runs round the city inside a promenade at the shore, and the island is a
+rounded rectangle with a stone face and a soft contact shadow on the page.
+Crossings are painted only at street corners, cars park at curbs clear of
+every mouth, one loading bay holds a parked truck, and trees line the
+promenade (never quite evenly), the lanes and the quays — never in front of
+a place, where they would hide it or its card. It is computed from the
+places' positions alone, the same every time, for any number of places, and
+says nothing about any project: roads encode no relationship. Every street,
+paving and water colour is at least ΔE 20 from every status hue.
 
 **Camera and touch.** A fixed yaw and pitch through a gentle lens: no orbit,
-no zoom gesture. Two framings — the overview and focus (one place, its label
-and its sign, close) — with 420 ms interruptible flights. The camera looks
-only at the island: its target stays within a pad of the outer districts.
-The viewport alone has `touch-action: none`: a drag inside it pans, a drag
-outside scrolls the page. One arbiter decides every touch: under 8 px it is a
-tap; past that it is a pan for good. A tap on the island is hit-tested
-against each district's drawn outline (its pad and its roof); where two
-overlap the nearer wins, and open streets select nothing. The click that a
-pan or an island tap also makes is swallowed for a moment, so a label the
-camera has just moved under the finger never takes it; a keyboard's click
-always goes through. Pointer cancel and lost capture end a gesture with no
-tap. The camera's frame is transient: never stored. Resizing, rotating or
-docking reframes in the same mode with the same selection; a reload starts
-at the overview with the stored selection.
+no zoom gesture. Two framings — the overview and focus (one place and its
+card, close) — and one way between them: `planFlight` carries the camera
+from wherever it is, at the speed it already has (`flightSpeed`, at least a
+brisk start so a tap answers at once), over a time that grows with the way
+in views, with a small rise on a long hop, to rest exactly on its frame. A
+flight interrupted by another, a swipe caught mid-flight or a flick released
+into one never stops the camera dead. The camera looks only at the island:
+its target stays within a pad of the outer districts. One arbiter decides
+every touch and its axis as it starts: under 8 px it is a tap. In focus a
+clearly sideways drag swipes: the camera follows the finger along the very
+path the flight will take (`swipeFrame`), and `swipeVerdict` goes to the
+next place (finger left) or the previous only when the drag went far enough
+or was flicked, never on a twitch or a flick back; the next place is
+reading order, and at either end the city gives a little and comes back.
+Up and down always belong to the page: the view is `touch-action: pan-y`,
+and takes every drag (`none`, to pan) only while the whole city is not in
+view at the overview. Arrow keys move between places in focus and Escape
+goes to the overview, as the Overview button does. A tap on the island is
+hit-tested against each district's drawn outline (its pad and its roof);
+where two overlap the nearer wins, and open streets select nothing. The
+click that a drag or an island tap also makes is swallowed for a moment, so
+a label the camera has just moved under the finger never takes it; a
+keyboard's click always goes through. Pointer cancel and the view's own lost
+capture end a gesture with no tap and no navigation (a touch is first
+captured by what it touched; handing that to the view is not a cancel —
+0.8.0 treated it as one and every touch drag ended at its first move). Under
+Reduce Motion a swipe waits for its verdict and the camera cuts. The
+camera's frame is transient: never stored. Resizing, rotating or docking
+reframes in the same mode; a reload starts at the overview, with the stored
+choice and nothing in focus.
 
-**The button layer and the sign.** Every project keeps a real `<button>` in
-registry order, holding its label, moved under its district each frame: it
-is the keyboard's stop and the accessible name, which says every status. A
-label is type, not a box: the name, then one status — a chip only for what
-needs you, otherwise the status word in its colour — at least 44 px tall.
-Only the selected project's label has a backing (a chip is solid, so it reads
-over a bright facade). The sign gives way at the overview, or a pan, where it
-would hide another project's name (`resolveWithSign`); close on a place it
-keeps its room. A label that can be read
-takes a tap; one that would overlap another is hidden and takes none (the
-focused label, the sign and the selected label win, in that order), as is
-one whose district has left the view. Keyboard focus shows a hidden label
-and brings its district into view, even one behind the camera. The selected
-project wears a sign over the back of its place, where its tallest
-structures stand: its status and everything that needs you, with the words
-and shapes the brief uses, a blocker in its own words, and "Tap again for
-the brief". It rises in once when the selection changes, stays whole inside
-the view (its stem still points at the roof), takes no taps and is hidden
-from assistive tech, which the button and the dock already tell. Overview
-appears whenever the whole island is not in view.
+**The button layer, the labels and the card.** Every project keeps a real
+`<button>` in registry order, holding its label, moved by transform each
+frame: it is the keyboard's stop and the accessible name, which says every
+status. One rule places every label (`labelSpot`): on its own place, its
+foot at the front edge, so it names that place and covers no other; for the
+place in focus, its card just in front of it, where it hides nothing of the
+place. A label eases between the two (`under`) in the one loop, and one
+whose words change glides from where it was rather than jumping. A label is
+type over the city with a halo of its ground: the name, then one status —
+solid in its hue when it needs you, pale for a recorded state, a dashed
+outline for Needs update — at least 44 px tall. The chosen project's label
+stands on a light plate with an ink ring; the card is a light plate with
+every status, a blocker in its own words and "Tap for the brief", and only
+the place in focus has one. A label that can be read takes a tap; one that
+would overlap another (the keyboard's, the focused and the chosen label win,
+then what needs you, then nearer rows) or the Overview button, or whose
+place has left the view, is hidden and takes none. The labels readable
+where a flight goes are decided as it leaves, so none flickers on the way.
+Keyboard focus shows a hidden label and brings its district into view, even
+one behind the camera. Overview appears whenever the whole island is not in
+view; at the overview it is away but still laid out, so it is measured with
+the view and never in a frame.
 
 **Places, crews and life.** Each project owns an architectural block:
 a training building with a rooftop running track, a scheduling tower with a
@@ -520,8 +567,9 @@ uses the existing state rules and never invents activity.
 
 Separate city ambience has no project inputs. `streetPose(bounds, time,
 offset)` describes a continuous rounded rectangular route. Three shared box
-truck models drive the perimeter streets and up to ten resident models walk
-block sidewalks. They use the single render clock, sleep when hidden or
+truck models keep to the ring road's outer lane, clear of every block and of
+the cars parked at its inner curb, and up to ten resident models walk the
+sidewalks round the places, never across one. They use the single render clock, sleep when hidden or
 settled, and remain still under Reduced Motion. They never represent an AI
 agent, work rate, transfer, progress or an integration. Geometries and
 materials are shared across vehicles and residents; rebuilding the layout

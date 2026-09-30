@@ -4,16 +4,18 @@
    Draws Mission Control's projects as one miniature city
    with Three.js, behind the same seam as the SVG field. It is
    given a scene (ids, names, signals, crews, themes, the words
-   a label and a sign say, which one is selected) and never
-   reads storage, never fetches status, never decides one and
-   never owns the selection: a tap is reported to the app, and
-   the app's next draw says what is selected.
+   a label and a card say, which one is chosen and which is in
+   focus) and never reads storage, never fetches status, never
+   decides one and never owns the selection or the focus: a
+   tap, a swipe to the next place and Overview are reported to
+   the app, and the app's next draw says what is chosen and
+   what is in focus. The camera follows the focus.
 
    One canvas, one scene, one perspective camera that never
    turns. Each place's geometry is built once per look and
    shared; a status change swaps a material or a visibility,
-   never rebuilds. The island and its growth are rebuilt only
-   when the layout changes shape (a rotation, a resize).
+   never rebuilds. The island and the city on it are rebuilt
+   only when the layout changes shape (a rotation, a resize).
 
    One requestAnimationFrame loop, running only while something
    moves and someone can see it, at up to 60 frames a second.
@@ -30,12 +32,13 @@
    ========================================================= */
 import * as THREE from '../vendor/three/three.min.js';
 import {
-  WORLD, TILE, BEACON, eyeOf, project, chooseLayout, islandOf, islandOutline, focusFrame,
-  clampFrame, panFrame, revealFrame, hitDistrict, labelAnchor, signAnchor, sameFrame, mixFrame,
-  pixelRatioFor, nextPixelRatio, shouldStepDown, districtPx, resolveLabels, resolveWithSign, createArbiter, CREW, CREW_FACING, poseFor, crewLoops,
-  lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS, SCENERY,
-  placeHeight, cityParts, streetLamps, TRUCK_PARTS, RESIDENT_PARTS, streetPose, trafficBounds,
-  assetFor, assetHeight, assetCrew, ASSET_STATUS_MATERIAL, ASSET_LIFE_CLIP, CREW_JOIN, LIGHT, lightDirection
+  WORLD, TILE, CITY, BEACON, eyeOf, project, chooseLayout, islandOf, islandOutline, shoreHalfWidth, focusFrame,
+  clampFrame, panFrame, revealFrame, hitDistrict, labelAnchor, labelSpot, sameFrame, planFlight, flightFrame, flightSpeed,
+  pixelRatioFor, nextPixelRatio, shouldStepDown, districtPx, resolveLabels, createArbiter, swipeVerdict, swipeFrame, neighbourOf,
+  CREW, CREW_FACING, poseFor, crewLoops,
+  lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS,
+  placeHeight, cityPlan, cityParts, TRUCK_PARTS, RESIDENT_PARTS, streetPose, sidewalkLoop,
+  assetFor, assetFloor, assetHeight, assetCrew, ASSET_STATUS_MATERIAL, ASSET_LIFE_CLIP, CREW_JOIN, LIGHT, lightDirection
 } from './world.js';
 
 export const REVISION = THREE.REVISION;
@@ -45,7 +48,6 @@ const LOST_GRACE_MS = 2500;      // a lost context not back by then falls back t
 const CELEBRATE_MS = 1400;       // release ready's one acknowledgment
 const BREATH_S = 2.6;            // an attention beacon's slow breath
 const POSE_EASE_S = 0.12;        // how quickly a worker settles into a new pose
-const SIGN = ' sign';             // the sign's place among the labels: never a project id
 const CLICK_AFTER_MS = 700;       // how long after a pan or an island tap its own click may still arrive
 const ASSET_WAIT_MS = 5000;       // the world waits this long for authored places, then shows its recipe for one still coming
 const CLIP_FADE_S = 0.45;         // a worker changing what it does blends into it
@@ -140,34 +142,88 @@ function padParts(){
   ];
 }
 
-/* The city: one rounded architectural slab, asphalt on top and a curb
-   reveal at its edge. No random forest separates the project blocks. */
-function islandGeometry(island, col){
-  const top = islandOutline(island, 96, 0), n = top.length;
-  const cx = island.cx, cz = island.cz, D = WORLD.islandDepth;
-  const rings = [
-    { y: 0, k: 1, c: col('asphalt') }, { y: -0.16, k: 1.001, c: col('curb') },
-    { y: -0.28, k: 1, c: col('cityBase') }, { y: -D, k: 0.994, c: col('cityBase') }
-  ];
-  const pts = rings.map(r => top.map(([x, z]) => [cx + (x - cx) * r.k, r.y, cz + (z - cz) * r.k]));
+/* The island, from the city plan (world.js cityPlan): the road at y 0
+   inside the promenade, open where the canal runs with its quay walls down
+   to the water, the promenade one curb up round the shore, and the shore's
+   stone face down to the slab's foot. One mesh, coloured per vertex; the
+   blocks, streets' paint and everything on them are cityParts, and the
+   water is its own. */
+function islandGeometry(plan, col){
+  const isl = plan.island, W0 = CITY.walk, D = WORLD.islandDepth, sh = CITY.shore, n = 96;
   const pos = [], colr = [];
-  const tri = (a, b, c, ca, cb, cc) => { pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); colr.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b); };
-  const grass = rings[0].c;
-  for(let i = 0; i < n; i++){ const j = (i + 1) % n; tri([cx, 0, cz], pts[0][j], pts[0][i], grass, grass, grass); }
-  for(let r = 0; r < rings.length - 1; r++){
-    const a = pts[r], b = pts[r + 1], ca = rings[r].c, cb = rings[r + 1].c;
-    for(let i = 0; i < n; i++){
-      const j = (i + 1) % n;
-      tri(a[i], a[j], b[i], ca, ca, cb);
-      tri(a[j], b[j], b[i], ca, cb, cb);
-    }
+  const tri = (a, b, c, k) => { pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); for(let i = 0; i < 3; i++) colr.push(k.r, k.g, k.b); };
+  /* A strip of road between depths zA < zB, from xl to xr at each, facing up. */
+  const strip = (xlA, xrA, zA, xlB, xrB, zB, k) => { tri([xlA, 0, zA], [xlB, 0, zB], [xrB, 0, zB], k); tri([xlA, 0, zA], [xrB, 0, zB], [xrA, 0, zA], k); };
+  const road = col('asphalt'), walk = col('sidewalk'), curb = col('curb'), base = col('cityBase'), quay = col('quay');
+
+  /* The road level, laid in strips down the island, split round the canal. */
+  const b = isl.b - sh, r = Math.max(0, Math.min(isl.r - sh, isl.a - sh, b)), c = plan.canal, zs = [];
+  for(let i = 0; i <= 12; i++){ const s = Math.sin(i / 12 * Math.PI / 2) * r; zs.push(isl.cz - b + r - s, isl.cz + b - r + s); }
+  if(c) zs.push(c.minZ, c.maxZ);
+  const depths = Array.from(new Set(zs.map(z => Math.round(z * 1e4) / 1e4))).sort((p, q) => p - q);
+  for(let i = 0; i + 1 < depths.length; i++){
+    const zA = depths[i], zB = depths[i + 1], hA = shoreHalfWidth(isl, zA, sh) || 0, hB = shoreHalfWidth(isl, zB, sh) || 0;
+    if(c && zA >= c.minZ - 1e-6 && zB <= c.maxZ + 1e-6){
+      strip(isl.cx - hA, c.minX, zA, isl.cx - hB, c.minX, zB, road);
+      strip(c.maxX, isl.cx + hA, zA, c.maxX, isl.cx + hB, zB, road);
+    } else strip(isl.cx - hA, isl.cx + hA, zA, isl.cx - hB, isl.cx + hB, zB, road);
   }
-  const last = pts[pts.length - 1], rock = rings[rings.length - 1].c;
-  for(let i = 0; i < n; i++){ const j = (i + 1) % n; tri([cx, -D, cz], last[i], last[j], rock, rock, rock); }
+  /* The canal's walls, under its quays and at its ends by the ring road. */
+  if(c){
+    const y1 = -0.03, y0 = CITY.water - 0.05;
+    tri([c.minX, y1, c.minZ], [c.minX, y0, c.minZ], [c.maxX, y0, c.minZ], quay); tri([c.minX, y1, c.minZ], [c.maxX, y0, c.minZ], [c.maxX, y1, c.minZ], quay);
+    tri([c.maxX, y1, c.maxZ], [c.maxX, y0, c.maxZ], [c.minX, y0, c.maxZ], quay); tri([c.maxX, y1, c.maxZ], [c.minX, y0, c.maxZ], [c.minX, y1, c.maxZ], quay);
+    tri([c.minX, 0, c.maxZ], [c.minX, y0, c.maxZ], [c.minX, y0, c.minZ], quay); tri([c.minX, 0, c.maxZ], [c.minX, y0, c.minZ], [c.minX, 0, c.minZ], quay);
+    tri([c.maxX, 0, c.minZ], [c.maxX, y0, c.minZ], [c.maxX, y0, c.maxZ], quay); tri([c.maxX, 0, c.minZ], [c.maxX, y0, c.maxZ], [c.maxX, 0, c.maxZ], quay);
+  }
+
+  /* The promenade: its top, and its curb down to the ring road. */
+  const out = islandOutline(isl, n, 0), inn = islandOutline(isl, n, sh), m = out.length;
+  const at = (p, y) => [p[0], y, p[1]];
+  for(let i = 0; i < m; i++){
+    const j = (i + 1) % m;
+    tri(at(inn[i], W0), at(out[j], W0), at(out[i], W0), walk); tri(at(inn[i], W0), at(inn[j], W0), at(out[j], W0), walk);
+    tri(at(inn[i], W0), at(inn[i], 0), at(inn[j], W0), curb); tri(at(inn[j], W0), at(inn[i], 0), at(inn[j], 0), curb);
+  }
+  /* The shore's face: a curb stone, then the slab's stone to its foot. */
+  const rings = [{ y: W0, k: 1, c: walk }, { y: W0 - 0.1, k: 1.0015, c: curb }, { y: -0.2, k: 1.0015, c: base }, { y: -D, k: 0.994, c: base }];
+  const ring = rings.map(q => out.map(([x, z]) => [isl.cx + (x - isl.cx) * q.k, q.y, isl.cz + (z - isl.cz) * q.k]));
+  for(let q = 0; q + 1 < rings.length; q++){
+    const A = ring[q], B = ring[q + 1];
+    for(let i = 0; i < m; i++){ const j = (i + 1) % m; tri(A[i], A[j], B[i], rings[q + 1].c); tri(A[j], B[j], B[i], rings[q + 1].c); }
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3));
   g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
+}
+
+/* The canal's water: one plane at its level. */
+function waterGeometry(c){
+  const g = new THREE.PlaneGeometry(c.maxX - c.minX, c.maxZ - c.minZ).rotateX(-Math.PI / 2);
+  g.translate((c.minX + c.maxX) / 2, CITY.water, (c.minZ + c.maxZ) / 2);
+  return g;
+}
+
+/* The island's soft contact shadow on the page: dark under the slab,
+   fading to nothing a few units out, so the city sits on something rather
+   than floating. Colour and fade per vertex; the page's own colour shows
+   through the transparent canvas round it. */
+function dropGeometry(island, colour){
+  const inner = islandOutline(island, 96, 0.5), outer = islandOutline(island, 96, -4.5), m = inner.length, y = -WORLD.islandDepth - 0.02;
+  const pos = [], cols = [], a = 0.34;
+  const v = (p, alpha) => { pos.push(p[0], y, p[1]); cols.push(colour.r, colour.g, colour.b, alpha); };
+  for(let i = 0; i < m; i++){
+    const j = (i + 1) % m;
+    v([island.cx, island.cz], a); v(inner[j], a); v(inner[i], a);
+    v(inner[i], a); v(outer[j], 0); v(outer[i], 0);
+    v(inner[i], a); v(inner[j], a); v(outer[j], 0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 4));
   g.computeBoundingSphere();
   return g;
 }
@@ -214,7 +270,7 @@ export function createWorld(host, hooks){
   const root = document.documentElement;
   const rm = () => { try{ return !!(H.reducedMotion && H.reducedMotion()); }catch(e){ return false; } };
 
-  /* DOM: the viewport, its canvas, the label layer, the sign and Overview. */
+  /* DOM: the viewport, its canvas, the label layer and Overview. */
   const view = document.createElement('div');
   view.className = 'world-view';
   view.style.visibility = 'hidden';
@@ -223,15 +279,6 @@ export function createWorld(host, hooks){
   canvas.setAttribute('aria-hidden', 'true');
   const layer = document.createElement('div');
   layer.className = 'world-layer';
-  const sign = document.createElement('div');
-  sign.className = 'world-sign';
-  sign.setAttribute('aria-hidden', 'true');
-  const signCard = document.createElement('div');
-  signCard.className = 'world-sign-card';
-  const signStem = document.createElement('span');
-  signStem.className = 'world-sign-stem';
-  sign.appendChild(signStem);
-  sign.appendChild(signCard);
   const overviewBtn = document.createElement('button');
   overviewBtn.type = 'button';
   overviewBtn.className = 'world-overview';
@@ -241,7 +288,6 @@ export function createWorld(host, hooks){
   overviewBtn.setAttribute('aria-label', 'Overview: show every project');
   view.appendChild(canvas);
   view.appendChild(layer);
-  view.appendChild(sign);
   view.appendChild(overviewBtn);
   host.appendChild(view);
 
@@ -266,12 +312,16 @@ export function createWorld(host, hooks){
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(WORLD.fov, 1, 0.5, 2000);
 
+  /* focusId is the place the app says is in focus (its card, and the camera
+     on it); selected the one it says is chosen; kbd the button holding the
+     keyboard. fl is the flight under way, to where it goes, vel the
+     camera's velocity, hold the labels readable where it goes. */
   const S = {
-    w: 0, h: 0, dpr: 1, dprCap: 2, frame: null, from: null, to: null, t0: 0, mode: 'overview', over: null,
-    tiles: new Map(), order: [], selected: null, focused: null, first: true, island: null, cols: 0,
+    w: 0, h: 0, dpr: 1, dprCap: 2, frame: null, fl: null, to: null, t0: 0, vel: null, hold: null, shown: null, mode: 'overview', over: null,
+    tiles: new Map(), order: [], selected: null, focusId: null, kbd: null, first: true, island: null, cols: 0, fits: true, keep: null,
     raf: 0, lastRender: 0, lastTick: 0, lastWake: 0, onscreen: true, covered: false, lost: false, lostTimer: 0,
-    destroyed: false, failed: false, frames: 0, cost: 0, swallowUntil: 0, dirty: false, reroom: 0,
-    slowSum: 0, slowCount: 0, signFor: null, signHtml: null, signRoom: null, signEnter: 0, labelMax: 0,
+    destroyed: false, failed: false, frames: 0, cost: 0, swallowUntil: 0, dirty: false,
+    slowSum: 0, slowCount: 0, labelMax: 0, swipes: 0,
     pending: 0, shadowAt: 0, shadowRefreshes: 0, probeRest: 0, probeWait: 0
   };
 
@@ -296,7 +346,7 @@ export function createWorld(host, hooks){
   key.shadow.mapSize.set(shadowPx, shadowPx);
   key.shadow.bias = -0.0003;
   key.shadow.normalBias = 0.035;
-  key.shadow.radius = 2.5;
+  key.shadow.radius = 4;
   /* The sky's diffuse light is a hemisphere light: the same gradient, from
      the warm ground below to the cool sky above, at the strength image-based
      light would give it (a radiance L lights a surface with pi L). Sampling
@@ -316,7 +366,10 @@ export function createWorld(host, hooks){
     skin: new THREE.MeshStandardMaterial({ color: col('skin'), roughness: 0.85 }),
     spill: new THREE.MeshBasicMaterial({ map: dot, color: col('window'), transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false }),
     shadow: new THREE.MeshBasicMaterial({ map: dot, color: col('shade'), transparent: true, opacity: 0.5, depthWrite: false }),
-    lampOff: new THREE.MeshLambertMaterial({ color: col('ink'), flatShading: true })
+    lampOff: new THREE.MeshLambertMaterial({ color: col('ink'), flatShading: true }),
+    /* The canal catches the sun's highlight; it is not glass, so it does not sample the sky. */
+    water: new THREE.MeshStandardMaterial({ color: col('canal'), roughness: 0.28, metalness: 0 }),
+    drop: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false })
   };
   mats.glow.toneMapped = true;
   /* A paused place is the same place in lower light. */
@@ -325,8 +378,6 @@ export function createWorld(host, hooks){
   mats.glowDim = mats.glow.clone(); mats.glowDim.color.setScalar(DIM);
   mats.suitDim = mats.suit.clone(); mats.suitDim.color.multiplyScalar(DIM);
   mats.skinDim = mats.skin.clone(); mats.skinDim.color.multiplyScalar(DIM);
-  const select = tokenOf(root, '--field-select') || { c: col('paper'), a: 0.85 };
-  mats.select = new THREE.MeshBasicMaterial({ color: select.c, transparent: true, opacity: select.a, depthWrite: false });
 
   /* Per-signal lamp, halo and helmet materials, shared by every district in
      that state; per-look shirt materials for runners. */
@@ -379,21 +430,8 @@ export function createWorld(host, hooks){
     partGeos.set(key, g);
     return g;
   }
-  /* The selection: a lit frame round the selected district's pad. */
-  const frameGeo = (() => {
-    const s = TILE.pad * 2 / TILE.content, t = 0.1;
-    return toGeometries(mergeParts([
-      { s: 'box', p: [0, 0.005, -s / 2], d: [s + t, 0.05, t], m: 'glow', c: 'paper' },
-      { s: 'box', p: [0, 0.005, s / 2], d: [s + t, 0.05, t], m: 'glow', c: 'paper' },
-      { s: 'box', p: [-s / 2, 0.005, 0], d: [t, 0.05, s + t], m: 'glow', c: 'paper' },
-      { s: 'box', p: [s / 2, 0.005, 0], d: [t, 0.05, s + t], m: 'glow', c: 'paper' }
-    ], () => select.c)).glow;
-  })();
-  const selectMesh = new THREE.Mesh(frameGeo, mats.select);
-  selectMesh.renderOrder = 2;
-
-  /* The island and its growth: rebuilt only when the layout changes shape. */
-  const land = { island: null, scenery: [], pools: [], key: '' };
+  /* The island and the city on it: rebuilt only when the layout changes shape. */
+  const land = { island: null, water: null, drop: null, scenery: [], key: '' };
   const landGroup = new THREE.Group();
   scene.add(landGroup);
   function buildLand(districts){
@@ -401,20 +439,18 @@ export function createWorld(host, hooks){
     const layoutKey = districts.map(d => d.x.toFixed(2) + ',' + d.z.toFixed(2)).join('|');
     if(layoutKey === land.key) return island;
     land.key = layoutKey;
-    [land.island].concat(land.scenery).forEach(m => { if(m){ landGroup.remove(m); m.geometry.dispose(); } });
-    land.island = new THREE.Mesh(islandGeometry(island, col), mats.matte);
-    landGroup.add(land.island);
+    [land.island, land.water, land.drop].concat(land.scenery).forEach(m => { if(m){ landGroup.remove(m); m.geometry.dispose(); } });
+    const plan = cityPlan(districts);
+    land.island = new THREE.Mesh(islandGeometry(plan, col), mats.matte);
     land.island.receiveShadow = true;
-    const g = toGeometries(mergeParts(cityParts(districts), col));
-    land.scenery = Object.keys(g).map(m => { const mesh = new THREE.Mesh(g[m], mats[m]); mesh.receiveShadow = true; landGroup.add(mesh); return mesh; });
-    /* Shared pool geometry/material live until destroy, including across a
-       layout change: remove the meshes here without disposing their assets. */
-    land.pools.forEach(mesh => landGroup.remove(mesh));
-    land.pools = streetLamps(districts).map(p => {
-      const pool = new THREE.Mesh(geos.shadow, mats.spill);
-      pool.position.set(p.x, .045, p.z); pool.scale.set(5.2, 1, 5.2); pool.renderOrder = 1;
-      landGroup.add(pool); return pool;
-    });
+    land.water = plan.canal ? new THREE.Mesh(waterGeometry(plan.canal), mats.water) : null;
+    if(land.water) land.water.receiveShadow = true;
+    land.drop = new THREE.Mesh(dropGeometry(island, col('drop')), mats.drop);
+    land.drop.renderOrder = -1;
+    [land.island, land.water, land.drop].forEach(m => { if(m) landGroup.add(m); });
+    /* The city is architecture: it stands still, so it casts into the cached map. */
+    const g = toGeometries(mergeParts(cityParts(plan), col));
+    land.scenery = Object.keys(g).map(m => { const mesh = new THREE.Mesh(g[m], mats[m]); mesh.receiveShadow = m !== 'glow'; mesh.castShadow = m === 'matte'; landGroup.add(mesh); return mesh; });
     const radius = Math.max(island.a, island.b) + 4;
     [[key, LIGHT.key], [fill, LIGHT.fill], [rim, LIGHT.rim]].forEach(([l, spec]) => {
       const d = lightDirection(spec);
@@ -425,7 +461,7 @@ export function createWorld(host, hooks){
     Object.assign(key.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: .5, far: radius*4.5 });
     key.shadow.camera.updateProjectionMatrix();
     renderer.shadowMap.needsUpdate = true;
-    buildStreetLife(districts);
+    buildStreetLife(plan, districts);
     return island;
   }
 
@@ -483,19 +519,19 @@ export function createWorld(host, hooks){
      status or stand in for a worker, and share the world's one clock. */
   let streetLife = [], streetTime = 0;
   const streetGroup = new THREE.Group(); scene.add(streetGroup);
-  function buildStreetLife(districts){
+  function buildStreetLife(plan, districts){
     streetGroup.clear(); streetLife = [];
-    const bounds = trafficBounds(districts);
+    /* Trucks keep to the ring road's outer lane; a resident walks the sidewalk round a place. */
     for(let i=0;i<3;i++){
       const g = new THREE.Group();
       meshesFor(partsGeo('city-truck',TRUCK_PARTS),g,false).forEach(m=>{m.castShadow=false;});
       const shade = new THREE.Mesh(geos.shadow,mats.shadow); shade.scale.set(1.7,1,3); shade.position.y=.03;g.add(shade);
-      streetGroup.add(g); streetLife.push({g:g,bounds:bounds,offset:i*21,resident:false});
+      streetGroup.add(g); streetLife.push({g:g,bounds:plan.loop,offset:i*21,resident:false});
     }
     districts.slice(0,10).forEach((d,i)=>{
       const g = new THREE.Group(); meshesFor(partsGeo('city-resident',RESIDENT_PARTS),g,false).forEach(m=>{m.castShadow=false;});
       streetGroup.add(g);
-      streetLife.push({g:g,bounds:{minX:d.x-4.65,maxX:d.x+4.65,minZ:d.z-4.65,maxZ:d.z+4.65},offset:i*8,resident:true});
+      streetLife.push({g:g,bounds:sidewalkLoop(d),offset:i*8,resident:true});
     });
     stepStreetLife(0,false);
   }
@@ -503,7 +539,7 @@ export function createWorld(host, hooks){
     if(rm()) streetTime=0; else if(ambient) streetTime+=dt;
     streetLife.forEach(a=>{
       const p=streetPose(a.bounds,streetTime*(a.resident?.28:1),a.offset);
-      a.g.position.set(p.x,a.resident?TILE.padH+.035:0,p.z);a.g.rotation.y=p.turn;
+      a.g.position.set(p.x,a.resident?CITY.walk:0,p.z);a.g.rotation.y=p.turn;
       if(a.resident && ambient) a.g.position.y+=Math.abs(Math.sin(streetTime*4+a.offset))*.025;
     });
   }
@@ -530,10 +566,11 @@ export function createWorld(host, hooks){
   }
   const trackTarget = name => name.slice(0, name.lastIndexOf('.'));
   function buildAsset(t, spec, file){
-    const box = file.box, k = spec.span / (box.max.x - box.min.x);
+    const box = file.box, k = spec.span / (box.max.x - box.min.x), floor = assetFloor(spec.span);
     const inst = THREE.cloneSkinned(file.gltf.scene);
     inst.scale.setScalar(k);
-    inst.position.set(-(box.min.x + box.max.x) / 2 * k, TILE.padH - box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+    /* Set into its block: the platform's dark lower plinth under the paving (world.js CITY). */
+    inst.position.set(-(box.min.x + box.max.x) / 2 * k, floor - box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
     const copies = new Map();
     let status = null;
     inst.traverse(o => {
@@ -580,12 +617,11 @@ export function createWorld(host, hooks){
     const life = lifeClip ? mixer.clipAction(lifeClip, inst) : null;
     if(life) life.play();
     return { root: inst, mixer: mixer, crew: crew, crewNode: crewRig, life: life, status: status,
-             materials: Array.from(copies.values()), height: TILE.padH + (box.max.y - box.min.y) * k, fading: 0 };
+             materials: Array.from(copies.values()), height: floor + (box.max.y - box.min.y) * k, fading: 0 };
   }
   /* The recipe gives way to the authored place, or comes back if it fails. */
   function showAsset(t, on, why){
     t.recipe.forEach(o => { o.visible = !on; });
-    t.assetPad.forEach(o => { o.visible = on; });
     if(t.asset) t.asset.root.visible = on;
     t.height = on && t.asset ? t.asset.height : placeHeight(t.theme);
     t.assetState = on ? 'on' : why || 'failed';
@@ -596,7 +632,7 @@ export function createWorld(host, hooks){
      its height. */
   function settleAsset(t){
     if(!t.settled){ t.settled = true; S.pending = Math.max(0, S.pending - 1); }
-    if(S.order.length && S.w){ S.reroom = 0; relayout(); reframe(); }
+    if(S.order.length && S.w){ relayout(); reframe(); }
     S.dirty = true;
     wake();
   }
@@ -677,11 +713,13 @@ export function createWorld(host, hooks){
 
   /* ---------- a district ---------- */
   function makeTile(item){
-    const t = { id: item.id, theme: item.theme, state: {}, x: 0, z: 0, row: 0, pose: null, celebrate: 0, lifeT: 0,
+    const t = { id: item.id, theme: item.theme, state: {}, x: 0, z: 0, row: 0, pose: null, celebrate: 0, lifeT: 0, under: 0,
                 labelW: 0, labelH: 0, labelDirty: true, room: { w: 96, h: WORLD.labelPx }, height: placeHeight(item.theme) };
     /* Its button first: the district's colours are the page's, read from it.
        It is the keyboard's stop and the accessible name; its box takes no
-       taps, and its label takes one only while it can be read. */
+       taps, and its label takes one only while it can be read. In focus its
+       label is the place's card: every status, a blocker in its own words,
+       and what a tap does. */
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'world-tile theme-' + item.theme;
@@ -689,16 +727,23 @@ export function createWorld(host, hooks){
     b.setAttribute('data-project', item.id);
     const label = document.createElement('span');
     label.className = 'world-label';
+    const plate = document.createElement('span');
+    plate.className = 'world-plate';
     const name = document.createElement('span');
     name.className = 'world-name';
     const badge = document.createElement('span');
     badge.className = 'world-badge';
-    label.appendChild(name);
-    label.appendChild(badge);
+    const card = document.createElement('span');
+    card.className = 'world-card';
+    card.setAttribute('aria-hidden', 'true');
+    plate.appendChild(name);
+    plate.appendChild(badge);
+    plate.appendChild(card);
+    label.appendChild(plate);
     b.appendChild(label);
     b.addEventListener('click', () => { if(H.onTap) H.onTap(item.id); });
     layer.appendChild(b);
-    Object.assign(t, { button: b, label: label, nameEl: name, badgeEl: badge });
+    Object.assign(t, { button: b, label: label, nameEl: name, badgeEl: badge, cardEl: card });
 
     const tint = tokenOf(b, '--tint'), terrain = tokenOf(b, '--terrain');
     t.tint = tint ? tint.c : col('stone');
@@ -776,15 +821,13 @@ export function createWorld(host, hooks){
         t.life.push({ el: el, i: i, g: g, origin: origin, rig: rig });
       }
     });
-    /* An authored place stands on the plain pad; the recipe, its crew, its
-       life, its beacon and its painted light are the fallback. */
+    /* An authored place stands in its block on its own platform; the
+       recipe, its pad, its crew, its life, its beacon and its painted light
+       are the fallback. */
     t.recipe = recipeMeshes.concat([contact, t.lamp, t.halo, t.worker], t.life.map(L => L.g),
       t.content.children.filter(o => o.isMesh && o.material === mats.spill));
-    t.assetPad = [];
     const spec = assetFor(item.theme);
     if(spec){
-      t.assetPad = meshesFor(partsGeo('asset-pad', padParts().slice(0, 1)), t.content, true, true);
-      t.assetPad.forEach(o => { o.visible = false; });
       t.height = assetHeight(item.theme);
       startAsset(t, spec);
     }
@@ -796,7 +839,6 @@ export function createWorld(host, hooks){
     t.dropped = true;
     if(t.assetState === 'loading' && !t.settled){ t.settled = true; S.pending = Math.max(0, S.pending - 1); }
     scene.remove(t.root);
-    if(selectMesh.parent === t.content) t.content.remove(selectMesh);
     if(t.button.parentNode) t.button.parentNode.removeChild(t.button);
   }
 
@@ -805,14 +847,16 @@ export function createWorld(host, hooks){
     const prev = t.state;
     const changed = k => prev[k] !== item[k];
     const b = t.button;
-    if(changed('signal') || changed('selected') || changed('theme')){
+    if(changed('signal') || changed('selected') || changed('focused') || changed('theme')){
       b.className = 'world-tile theme-' + item.theme + ' sig-' + item.signal + (item.selected ? ' is-selected' : '') +
-        (t.hiddenLabel ? ' is-hidden' : '') + (t.off ? ' is-off' : '');
+        (item.focused ? ' is-focused' : '') + (t.hiddenLabel ? ' is-hidden' : '') + (t.off ? ' is-off' : '');
     }
     if(changed('selected')) b.setAttribute('aria-pressed', String(!!item.selected));
     if(changed('spoken')) b.setAttribute('aria-label', item.spoken || item.name);
     if(changed('name')){ t.nameEl.textContent = item.name; t.labelDirty = true; }
     if(changed('badge')){ t.badgeEl.innerHTML = item.badge || ''; t.labelDirty = true; }
+    /* The card is there only while its place is in focus, so no other place says what a tap would do. */
+    if(changed('card') || changed('focused')){ t.cardEl.innerHTML = item.focused ? item.card || '' : ''; t.labelDirty = true; }
 
     const quiet = item.workerState === 'quiet';
     if(changed('workerState') || changed('signal') || changed('recorded')){
@@ -842,7 +886,6 @@ export function createWorld(host, hooks){
     if(t.asset && (changed('workerState') || changed('signal') || changed('recorded'))) applyAssetState(t, item, S.first || rm());
     /* The recipe's crew and beacon stay away while the authored place is drawn. */
     if(t.assetState === 'on') t.recipe.forEach(o => { o.visible = false; });
-    if(item.selected && selectMesh.parent !== t.content) t.content.add(selectMesh);
     t.state = Object.assign({}, item, { attention: (item.attention || []).slice() });
   }
 
@@ -861,9 +904,10 @@ export function createWorld(host, hooks){
 
   /* ---------- layout and camera ---------- */
   function relayout(depth){
-    const heights = S.order.map(id => S.tiles.get(id).height), rooms = S.order.map(id => S.tiles.get(id).room);
-    const pick = chooseLayout(S.order.length, S.w, S.h, heights, rooms);
+    const heights = S.order.map(id => S.tiles.get(id).height);
+    const pick = chooseLayout(S.order.length, S.w, S.h, heights);
     S.cols = pick.cols;
+    S.fits = pick.fits;
     S.order.forEach((id, i) => {
       const t = S.tiles.get(id), d = pick.districts[i];
       t.x = d.x; t.z = d.z; t.row = d.row;
@@ -882,28 +926,48 @@ export function createWorld(host, hooks){
   }
   const districtOf = t => ({ x: t.x, z: t.z, row: t.row });
 
+  /* The frame for a mode: the place in focus with its card, or the whole city. */
   function targetFor(mode){
-    const sel = S.selected && S.tiles.get(S.selected);
-    if(mode === 'focus' && sel) return focusFrame(districtOf(sel), sel.height, sel.room, S.over, S.w, S.h, S.signRoom);
+    const t = S.focusId && S.tiles.get(S.focusId);
+    if(mode === 'focus' && t) return focusFrame(districtOf(t), t.height, t.room, S.over, S.w, S.h);
     return S.over;
   }
 
+  /* The one way the camera moves (world.js planFlight): from wherever it is,
+     at the speed it already has, to the frame it is sent to; at once under
+     Reduce Motion, before the first frame and while nothing is drawn. The
+     labels that will be readable there are decided as it leaves, so none
+     flickers on the way. */
   function goTo(frame, mode, instant){
     S.mode = mode;
+    view.classList.toggle('is-pannable', mode !== 'focus' && !S.fits);
     if(!S.frame || instant || rm() || !awake()){
-      S.frame = frame; S.from = S.to = null;
-    } else if(!sameFrame(S.frame, frame)){
-      S.from = S.frame; S.to = frame; S.t0 = performance.now();
+      S.frame = frame; S.fl = null; S.to = null; S.vel = null; S.hold = null;
+    } else if(sameFrame(S.frame, frame)){
+      /* Already there: whatever flight was under way (a focus the moment
+         before Overview was pressed) goes no further. */
+      S.fl = null; S.to = null; S.vel = null; S.hold = null;
+    } else {
+      const fl = planFlight(S.frame, frame, S.w, S.h, 0);
+      fl.v0 = flightSpeed(fl, S.vel);
+      S.fl = fl; S.to = frame; S.t0 = performance.now();
+      S.hold = labelsAt(frame, mode);
     }
     wake();
   }
 
   function stepCamera(now){
-    if(!S.to) return false;
-    const k = (now - S.t0) / WORLD.transitionMs;
-    if(k >= 1){ S.frame = S.to; S.from = S.to = null; return false; }
-    S.frame = mixFrame(S.from, S.to, k);
+    if(!S.fl) return false;
+    const u = (now - S.t0) / S.fl.ms;
+    if(u >= 1){ S.frame = S.fl.b; S.fl = null; S.to = null; S.vel = null; S.hold = null; return false; }
+    S.frame = flightFrame(S.fl, u);
+    S.vel = velocityOf(S.fl, u);
     return true;
+  }
+  /* A flight's velocity at u, per ms: for a flight that takes over from it. */
+  function velocityOf(fl, u){
+    const a = flightFrame(fl, Math.max(0, u - 0.01)), b = flightFrame(fl, Math.min(1, u + 0.01)), dt = 0.02 * fl.ms;
+    return { x: (b.x - a.x) / dt, z: (b.z - a.z) / dt, l: Math.log(b.d / a.d) / dt };
   }
 
   function aimCamera(){
@@ -919,6 +983,8 @@ export function createWorld(host, hooks){
     if(r.width < 2 || r.height < 2) return;
     const w = Math.round(r.width), h = Math.round(r.height);
     const dpr = Math.min(S.dprCap, pixelRatioFor(window.devicePixelRatio || 1, w, h));
+    /* The Overview button is measured here, never in a frame: no label may sit under it. */
+    S.keep = { x: overviewBtn.offsetLeft - 4, y: overviewBtn.offsetTop - 4, w: overviewBtn.offsetWidth + 8, h: overviewBtn.offsetHeight + 8 };
     if(w === S.w && h === S.h && dpr === S.dpr) return;
     const shaped = w !== S.w || h !== S.h;
     S.w = w; S.h = h; S.dpr = dpr;
@@ -928,50 +994,56 @@ export function createWorld(host, hooks){
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     if(!S.order.length || !shaped) return;
-    S.reroom = 0;
     relayout();
     reframe();
   }
 
-  /* The same mode and the same selection in a new shape. A pan keeps its
+  /* The same mode and the same place in a new shape. A pan keeps its
      target and is only held on the island. */
   function reframe(){
     if(S.mode === 'free' && S.frame) goTo(clampFrame(S.to || S.frame, S.island), 'free', true);
     else goTo(targetFor(S.mode), S.mode, true);
   }
 
-  /* ---------- labels and the sign: transforms only ---------- */
-  function placeLabels(){
-    const f = S.frame, W = S.w, Hh = S.h, rects = [];
-    let signRect = null, inView = false;
-    const sel = S.selected && S.tiles.get(S.selected);
-    if(sel){
-      /* The card stays whole inside the view; its stem still points at the
-         roof, unless the card has had to come down over it. */
-      const a = project(signAnchor(districtOf(sel), sel.height), f, W, Hh), room = S.signRoom || WORLD.sign;
-      const x = Math.round(a.x), y = Math.round(a.y), half = Math.ceil(room.w / 2);
-      const cx = Math.round(Math.min(Math.max(x, half), Math.max(half, W - half))), cy = Math.max(y, Math.ceil(room.h));
-      inView = x >= 0 && x <= W && y >= 0 && y <= Hh;
-      const stem = cy === y ? x - cx : null;
-      if(cx !== S.signX || cy !== S.signY){ S.signX = cx; S.signY = cy; sign.style.transform = 'translate3d(' + cx + 'px,' + cy + 'px,0)'; }
-      if(stem !== S.signStem){
-        S.signStem = stem;
-        signStem.style.transform = stem === null ? 'scaleY(0)' : 'translate3d(' + stem + 'px,0,0)';
-      }
-      /* A label the sign would cover is not there while the sign is, close on a place; from further out the sign gives way. */
-      if(inView && S.signFor === S.selected) signRect = { id: SIGN, row: -1, x: cx - half, y: cy - Math.ceil(room.h), w: half * 2, h: Math.ceil(room.h) };
-    }
-    S.order.forEach(id => {
-      const t = S.tiles.get(id), a = project(labelAnchor(districtOf(t)), f, W, Hh);
-      const x = Math.round(a.x - t.labelW / 2), y = Math.round(a.y + 2);
-      if(x !== t.px || y !== t.py){ t.px = x; t.py = y; t.button.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)'; }
-      const c = project([t.x, 0, t.z], f, W, Hh);
-      t.off = c.x < -40 || c.x > W + 40 || c.y < -40 || c.y > Hh + 40;
-      rects.push({ id: id, row: t.row, x: x, y: y, w: t.labelW, h: t.labelH });
+  /* ---------- labels: transforms only ----------
+     Where each label stands (world.js labelSpot) and which can be read
+     (resolveLabels): on its own place, or, for the place in focus, its card
+     in front of it. `under` eases between the two in the one loop. */
+  function labelRects(f, focusUnder){
+    return S.order.map(id => {
+      const t = S.tiles.get(id), a = project(labelAnchor(districtOf(t)), f, S.w, S.h);
+      const under = focusUnder === undefined ? t.under : id === S.focusId ? focusUnder : 0;
+      const spot = labelSpot(a, t.labelW, t.labelH, under, S.w), c = project([t.x, 0, t.z], f, S.w, S.h);
+      /* A label whose place has left the view is not there, however it is pushed into the view. */
+      const off = !(a.depth > 0.5) || c.x < -40 || c.x > S.w + 40 || c.y < -40 || c.y > S.h + 40;
+      return { id: id, row: t.row, x: spot.x, y: spot.y, w: t.labelW, h: t.labelH, off: off,
+               attn: !!(t.state.attention && t.state.attention.length) };
     });
-    const res = resolveWithSign(rects, signRect, [S.focused, SIGN, S.selected], W, Hh, S.mode === 'focus'), shown = res.shown;
-    const signOn = inView && (signRect ? res.sign : true);
-    if(sel && signOn !== S.signShown){ S.signShown = signOn; sign.classList.toggle('is-away', !signOn); }
+  }
+  const labelLead = () => [S.kbd, S.focusId, S.selected];
+  const keepClear = atOverview => atOverview || !S.keep ? [] : [S.keep];
+  /* The labels readable where a flight is going. */
+  function labelsAt(frame, mode){
+    return resolveLabels(labelRects(frame, mode === 'focus' ? 1 : 0), labelLead(), S.w, S.h, keepClear(mode === 'overview'));
+  }
+  function placeLabels(){
+    const f = S.frame, W = S.w, Hh = S.h, rects = labelRects(f);
+    let sliding = false;
+    rects.forEach(r => {
+      const t = S.tiles.get(r.id);
+      /* A label whose words changed (a card coming or going) starts from
+         where it was and glides to where it now belongs: it never jumps. */
+      if((t.labelW !== t.drawnW || t.labelH !== t.drawnH) && t.px !== undefined && !rm()){ t.slideX = t.px - r.x; t.slideY = t.py - r.y; sliding = true; }
+      t.drawnW = t.labelW; t.drawnH = t.labelH;
+      r.x = Math.round(r.x + (t.slideX || 0)); r.y = Math.round(r.y + (t.slideY || 0));
+      if(r.x !== t.px || r.y !== t.py){ t.px = r.x; t.py = r.y; t.button.style.transform = 'translate3d(' + r.x + 'px,' + r.y + 'px,0)'; }
+      t.off = r.off;
+    });
+    /* Overview is offered whenever the whole world is not in view; at the
+       overview it would cover a place and do nothing. */
+    const atOverview = S.mode === 'overview' && !S.fl;
+    const shown = S.hold || resolveLabels(rects, labelLead(), W, Hh, keepClear(atOverview));
+    S.shown = shown;
     S.order.forEach(id => {
       const t = S.tiles.get(id), hidden = !shown[id];
       if(hidden !== t.hiddenLabel || t.off !== t.wasOff){
@@ -980,39 +1052,34 @@ export function createWorld(host, hooks){
         t.button.classList.toggle('is-off', t.off);
       }
     });
-    /* Overview is offered whenever the whole world is not in view; at the
-       overview it would cover a place and do nothing. */
-    const atOverview = S.mode === 'overview' && !S.to;
-    if(overviewBtn.hidden !== atOverview){
+    if(overviewBtn.classList.contains('is-away') !== atOverview){
       const had = document.activeElement === overviewBtn;
-      overviewBtn.hidden = atOverview;
+      overviewBtn.classList.toggle('is-away', atOverview);
+      overviewBtn.tabIndex = atOverview ? -1 : 0;
       if(had && atOverview){
         const t = S.tiles.get(S.selected) || S.tiles.get(S.order[0]);
         if(t) try{ t.button.focus({ preventScroll: true }); }catch(e){}
       }
     }
+    return sliding;
   }
-
-  /* The sign over the selected place says its status and what needs you,
-     and comes in with a short rise when the selection changes. */
-  function updateSign(item){
-    if(!item){
-      if(S.signFor){ S.signFor = null; sign.classList.remove('is-in'); }
-      return;
-    }
-    if(item.sign !== S.signHtml){
-      S.signHtml = item.sign; signCard.innerHTML = item.sign || '';
-      /* Measured here, when its words change, so a focus leaves it room. */
-      const w = signCard.offsetWidth, h = signCard.offsetHeight;
-      S.signRoom = w > 0 && h > 0 ? { w: w + 8, h: h + 14 } : null;
-    }
-    if(item.id !== S.signFor){
-      S.signFor = item.id;
-      sign.classList.remove('is-in');
-      /* The entrance starts two frames on, so the browser has drawn it away
-         first; Reduce Motion shows it at once. */
-      S.signEnter = 2;
-    }
+  /* Each label eases toward where it belongs: in front of its place in
+     focus, on its place otherwise; one whose words changed eases out of
+     where it was. Returns true while one is still moving. */
+  function stepLabels(dt){
+    let moving = false;
+    const k = rm() ? 1 : 1 - Math.exp(-dt / WORLD.labelEase);
+    S.tiles.forEach(t => {
+      if(t.slideX || t.slideY){
+        t.slideX = (t.slideX || 0) * (1 - k); t.slideY = (t.slideY || 0) * (1 - k);
+        if(Math.abs(t.slideX) < 0.5 && Math.abs(t.slideY) < 0.5){ t.slideX = 0; t.slideY = 0; } else moving = true;
+      }
+      const goal = t.id === S.focusId && S.mode === 'focus' ? 1 : 0, gap = goal - t.under;
+      if(Math.abs(gap) < 0.002){ t.under = goal; return; }
+      t.under += gap * k;
+      moving = true;
+    });
+    return moving;
   }
 
   /* ---------- crews, life and beacons ---------- */
@@ -1142,6 +1209,7 @@ export function createWorld(host, hooks){
     stepStreetLife(dt, ambient);
     const blending = stepAssets(now, dt, ambient);
     stepBeacons(now, ambient);
+    const easing = stepLabels(dt);
     aimCamera();
     try{
       renderer.render(scene, camera);
@@ -1152,8 +1220,7 @@ export function createWorld(host, hooks){
     S.frames++;
     S.lastRender = now;
     S.dirty = false;
-    placeLabels();
-    if(S.signEnter && --S.signEnter === 0 && S.signFor) sign.classList.add('is-in');
+    const sliding = placeLabels();
     const spent = performance.now() - began;
     S.cost = S.cost ? S.cost * 0.9 + spent * 0.1 : spent;
     /* The first frame with every authored place settled (drawn, or given back
@@ -1163,7 +1230,7 @@ export function createWorld(host, hooks){
       /* The first frame is on screen: the app may hand the field over. */
       if(H.onReady) H.onReady();
     }
-    const again = moving || ambient || settling || blending || S.signEnter > 0;
+    const again = moving || ambient || settling || blending || easing || sliding;
     /* Frames that keep coming slowly lower the drawing resolution a step. */
     if(again && gapMs > 0 && gapMs < 250){
       S.slowSum += gapMs; S.slowCount++;
@@ -1203,15 +1270,58 @@ export function createWorld(host, hooks){
     setTimeout(() => { if(H.onFail) H.onFail(reason); }, 0);
   }
 
-  /* ---------- gestures ---------- */
+  /* ---------- gestures ----------
+     A touch is a tap, a swipe, a pan or nothing, decided once as it starts
+     (world.js createArbiter): in focus, a clearly sideways drag swipes to
+     the next or previous place; where the whole city is not in view at the
+     overview, a drag pans it; anything else is the page's (the view lets the
+     browser scroll up and down, touch-action pan-y, except while it pans)
+     or nothing at all. A drag never becomes a tap. */
   const arb = createArbiter();
+  const G = { kind: null, from: null, prev: null, next: null, tx: 0 };
   function panBy(dx, dy){
     if(!S.frame) return;
-    S.from = S.to = null;
+    S.fl = S.to = null; S.vel = null; S.hold = null;
     S.mode = 'free';
     S.frame = panFrame(S.frame, dx, dy, S.w, S.h, S.island);
     S.dirty = true;
     wake();
+  }
+  /* A swipe takes the camera where it is, even mid-flight, and moves it
+     toward the place it would go to as far as the finger goes; under
+     Reduce Motion it waits for the verdict. */
+  function frameOf(id){
+    const t = id && S.tiles.get(id);
+    return t ? focusFrame(districtOf(t), t.height, t.room, S.over, S.w, S.h) : null;
+  }
+  function startSwipe(){
+    S.fl = S.to = null; S.hold = S.shown;
+    G.from = S.frame;
+    G.prev = frameOf(neighbourOf(S.order, S.focusId, -1)); G.next = frameOf(neighbourOf(S.order, S.focusId, 1));
+  }
+  const swipeAt = tx => swipeFrame(G.from, tx < 0 ? G.next : G.prev, tx, S.w, S.h, S.island);
+  function dragSwipe(tx){
+    G.tx = tx;
+    if(rm()) return;
+    S.frame = swipeAt(tx);
+    S.dirty = true;
+    wake();
+  }
+  /* The verdict: one navigation, reported once, or back to the place in
+     focus. The camera leaves at the finger's speed either way. */
+  function endSwipe(tx, vx, cancelled){
+    const step = cancelled ? 0 : swipeVerdict(tx, vx, S.w), id = step ? neighbourOf(S.order, S.focusId, step) : null;
+    if(!rm()){
+      const a = swipeAt(tx), b = swipeAt(tx + vx * 16);
+      S.vel = { x: (b.x - a.x) / 16, z: (b.z - a.z) / 16, l: Math.log(b.d / a.d) / 16 };
+    }
+    S.hold = null;
+    if(id && H.onNavigate){
+      S.swipes++;
+      H.onNavigate(id);
+      if(S.focusId === id) return;
+    }
+    goTo(S.focusId ? targetFor('focus') : S.over, S.focusId ? 'focus' : 'overview');
   }
   const on = [];
   function listen(el, type, fn, opts){ el.addEventListener(type, fn, opts); on.push([el, type, fn, opts]); }
@@ -1221,25 +1331,36 @@ export function createWorld(host, hooks){
     S.swallowUntil = 0;
     if(e.pointerType === 'mouse' && e.button !== 0) return;
     if(e.target.closest && e.target.closest('.world-overview')) return;
-    arb.down(e.pointerId, e.clientX, e.clientY);
+    arb.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
     S.downOnIsland = onIsland(e);
     wake();
   });
   listen(view, 'pointermove', e => {
-    const r = arb.move(e.pointerId, e.clientX, e.clientY);
+    const r = arb.move(e.pointerId, e.clientX, e.clientY, e.timeStamp);
     if(!r) return;
     if(r.type === 'pan-start'){
+      G.kind = S.mode === 'focus' && S.focusId && r.axis === 'x' ? 'swipe' : S.mode !== 'focus' && !S.fits ? 'pan' : 'none';
+      if(G.kind === 'none') return;
       try{ view.setPointerCapture(e.pointerId); }catch(err){}
       view.classList.add('is-panning');
+      if(G.kind === 'swipe'){ startSwipe(); dragSwipe(r.dx); } else panBy(r.dx, r.dy);
+      return;
     }
-    panBy(r.dx, r.dy);
+    if(G.kind === 'swipe') dragSwipe(r.tx);
+    else if(G.kind === 'pan') panBy(r.dx, r.dy);
   });
   const swallowNextClick = () => { S.swallowUntil = performance.now() + CLICK_AFTER_MS; };
   const endPan = () => { view.classList.remove('is-panning'); swallowNextClick(); };
+  function endGesture(r){
+    const kind = G.kind;
+    G.kind = null;
+    if(kind === 'swipe') endSwipe(r.tx || G.tx, r.vx || 0, !!r.cancelled);
+    endPan();
+  }
   listen(view, 'pointerup', e => {
-    const r = arb.up(e.pointerId);
+    const r = arb.up(e.pointerId, e.timeStamp);
     if(!r) return;
-    if(r.type === 'pan-end'){ endPan(); return; }
+    if(r.type === 'pan-end'){ endGesture(r); return; }
     /* A tap on the island lands on the district drawn there. */
     if(r.type === 'tap' && S.downOnIsland && S.frame){
       swallowNextClick();
@@ -1249,9 +1370,15 @@ export function createWorld(host, hooks){
       if(i !== -1 && H.onTap) H.onTap(S.order[i]);
     }
   });
+  /* A cancelled touch (the browser took it to scroll the page) or a lost
+     capture ends a swipe where it started, never on the next place. Only
+     the view's own capture counts: a touch is captured to whatever it first
+     touched, and taking it for the view makes that element report the loss
+     (0.8.0 heard it as a cancel, so a touch pan ended on its first move). */
   const cancel = e => {
+    if(e.type === 'lostpointercapture' && e.target !== view) return;
     const r = arb.cancel(e.pointerId);
-    if(r && r.type === 'pan-end') endPan();
+    if(r && r.type === 'pan-end') endGesture(r);
   };
   listen(view, 'pointercancel', cancel);
   listen(view, 'lostpointercapture', cancel);
@@ -1265,12 +1392,28 @@ export function createWorld(host, hooks){
     e.stopPropagation();
     e.preventDefault();
   }, true);
-  listen(overviewBtn, 'click', () => { if(S.over) goTo(targetFor('overview'), 'overview'); });
+  /* Overview: the whole city, and the app told that nothing is in focus now. */
+  function toOverview(){
+    if(!S.over) return;
+    goTo(targetFor('overview'), 'overview');
+    if(H.onOverview) H.onOverview();
+  }
+  listen(overviewBtn, 'click', toOverview);
+  /* The keyboard: arrows move between places in focus, as a swipe does;
+     Escape goes back to the overview. */
+  listen(view, 'keydown', e => {
+    if(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !S.frame) return;
+    if(e.key === 'Escape' && S.mode !== 'overview'){ e.preventDefault(); toOverview(); return; }
+    if((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.mode === 'focus' && S.focusId){
+      const id = neighbourOf(S.order, S.focusId, e.key === 'ArrowRight' ? 1 : -1);
+      if(id && H.onNavigate){ e.preventDefault(); H.onNavigate(id); }
+    }
+  });
   /* A keyboard stop on a district brings it into view. */
   listen(layer, 'focusin', e => {
     const b = e.target.closest && e.target.closest('.world-tile');
-    S.focused = b ? b.getAttribute('data-project') : null;
-    const t = S.focused && S.tiles.get(S.focused);
+    S.kbd = b ? b.getAttribute('data-project') : null;
+    const t = S.kbd && S.tiles.get(S.kbd);
     if(t && S.frame){
       const f = revealFrame(S.to || S.frame, districtOf(t), t.height, t.room, S.w, S.h, S.island);
       if(!sameFrame(f, S.to || S.frame)) goTo(f, 'free');
@@ -1278,7 +1421,7 @@ export function createWorld(host, hooks){
     S.dirty = true;
     wake();
   });
-  listen(layer, 'focusout', () => { S.focused = null; S.dirty = true; wake(); });
+  listen(layer, 'focusout', () => { S.kbd = null; S.dirty = true; wake(); });
 
   /* ---------- lifecycle ---------- */
   const onLost = e => {
@@ -1302,7 +1445,7 @@ export function createWorld(host, hooks){
   let ro = null, io = null, mo = null, mq = null;
   const onMotion = () => {
     S.tiles.forEach(t => { t.pose = null; t.celebrate = 0; if(t.asset){ t.asset.crew.forEach(w => { if(w.action){ w.action.stop(); w.action = null; } }); applyAssetState(t, t.state, true); } });
-    if(S.to){ S.frame = S.to; S.from = S.to = null; }
+    if(S.fl){ S.frame = S.fl.b; S.fl = S.to = null; S.vel = null; S.hold = null; }
     S.dirty = true; wake();
   };
   try{ ro = new ResizeObserver(() => { resize(); S.dirty = true; wake(); }); ro.observe(view); }catch(e){}
@@ -1340,25 +1483,34 @@ export function createWorld(host, hooks){
     /* Buttons in registry order: the keyboard follows reading order. */
     if(reshaped) ids.forEach(id => layer.appendChild(S.tiles.get(id).button));
     S.order = ids;
-    const selItem = items.find(i => i.selected) || null;
-    const sel = selItem ? selItem.id : null;
-    if(!sel && selectMesh.parent) selectMesh.parent.remove(selectMesh);
+    const pick = key => { const item = items.find(i => i[key]); return item ? item.id : null; };
+    S.selected = pick('selected');
     items.forEach(item => applyState(S.tiles.get(item.id), item, now));
-    updateSign(selItem);
     if(!S.w) resize();
     const roomed = measureLabels();
-    const relaid = (reshaped || (roomed && S.mode === 'overview' && S.reroom++ < 4)) && S.w;
+    /* Only a new set of places lays the city out again. A label's words
+       change no layout (the overview frames the places, and each label
+       stands on its own), so a card coming or going never cuts a flight
+       short: 0.9.0's first Overview did, re-laying the city at once. */
+    const relaid = reshaped && S.w;
     if(relaid) relayout();
-    const was = S.selected;
-    S.selected = sel;
+    /* The camera follows what the app says is in focus: a first draw (or a
+       reload) shows it at once, or the whole city when nothing is; a new
+       focus flies there; the app leaving focus flies back out; a card whose
+       words changed is given its room. Being chosen alone moves nothing. */
+    const was = S.focusId;
+    S.focusId = pick('focused');
     if(S.first || !S.frame){
-      /* A first draw, or a reload: the whole world, whatever is selected. */
-      goTo(targetFor('overview'), 'overview', true);
-    } else if(sel && sel !== was){
+      goTo(S.focusId ? targetFor('focus') : targetFor('overview'), S.focusId ? 'focus' : 'overview', true);
+    } else if(S.focusId && S.focusId !== was){
       goTo(targetFor('focus'), 'focus');
+    } else if(!S.focusId && was && S.mode === 'focus'){
+      goTo(targetFor('overview'), 'overview');
     } else if(relaid){
       if(S.mode === 'overview') goTo(targetFor('overview'), 'overview', true);
       else reframe();
+    } else if(roomed && S.focusId && S.mode === 'focus'){
+      goTo(targetFor('focus'), 'focus');
     }
     S.first = false;
     S.dirty = true;
@@ -1383,7 +1535,6 @@ export function createWorld(host, hooks){
     placeGeos.forEach(set => Object.values(set).forEach(x => g.add(x)));
     partGeos.forEach(set => Object.values(set).forEach(x => g.add(x)));
     Object.values(geos).forEach(x => g.add(x));
-    g.add(frameGeo);
     Object.values(mats).forEach(x => m.add(x));
     signalMats.forEach(x => { m.add(x.lamp); m.add(x.halo); m.add(x.helmet); });
     shirtMats.forEach(x => m.add(x));
@@ -1415,11 +1566,14 @@ export function createWorld(host, hooks){
       revision: THREE.REVISION, drawCalls: info.render.calls, triangles: info.render.triangles,
       geometries: info.memory.geometries, textures: info.memory.textures,
       programs: info.programs ? info.programs.length : null, frames: S.frames, frameMs: Math.round(S.cost * 100) / 100,
-      width: S.w, height: S.h, pixelRatio: S.dpr, columns: S.cols, mode: S.mode,
-      frame: S.frame ? { x: S.frame.x, z: S.frame.z, d: S.frame.d } : null,
+      width: S.w, height: S.h, pixelRatio: S.dpr, columns: S.cols, mode: S.mode, fits: S.fits, focus: S.focusId, selected: S.selected,
+      frame: S.frame ? { x: S.frame.x, z: S.frame.z, d: S.frame.d } : null, flying: !!S.fl, swipes: S.swipes,
+      target: S.focusId && S.tiles.get(S.focusId) ? targetFor('focus') : S.over,
       running: !!S.raf, awake: awake(), lost: S.lost, failed: S.failed, tiles: S.tiles.size,
       built: placeGeos.size + partGeos.size, traffic: streetTime, residents: streetLife.filter(a => a.resident).length, centres: centres, life: life,
-      sign: S.signFor ? { id: S.signFor, x: S.signX, y: S.signY, shown: !!S.signShown } : null,
+      labels: S.order.map(id => { const t = S.tiles.get(id); return { id: id, x: t.px, y: t.py, w: t.labelW, h: t.labelH, under: Math.round(t.under * 1000) / 1000,
+        shown: !t.hiddenLabel && !t.off, card: !!t.cardEl.innerHTML }; }),
+      keep: S.keep, overview: !overviewBtn.classList.contains('is-away'),
       shadowMap: key.shadow.mapSize.x, shadowRefreshes: S.shadowRefreshes, pending: S.pending, probedCost: S.probedCost || null,
       assets: Array.from(S.tiles.values()).filter(t => t.assetState).map(t => ({
         id: t.id, state: t.assetState, height: Math.round(t.height * 100) / 100,

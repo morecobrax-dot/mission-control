@@ -30,16 +30,25 @@ export const WORLD = {
   yaw: 0.22,                     // turned about 13 degrees: the only turn at which a phone shows every district (see LIGHT)
   tileTurn: 0,                    // blocks align with the shared street grid
   stepX: 14.8,                     // world units between district centres across
-  stepZ: 15.4,                     // and from row to row: a little more, for the labels
-  margin: 4,                   // island beyond the outer districts
+  stepZ: 15.0,                     // and from row to row: a little more, for a cross street or the canal
   islandDepth: 1.05,              // rounded city-diorama slab below the streets
   minDist: 14, maxDist: 900,     // the closest and farthest the camera goes
   focusFill: 0.9,                // a focused district fills this share of the view
   minDistrictPx: 68,             // geometry only: measured labels keep their CSS type size; a larger island pans
-  labelPx: 36,                   // a label's room under its district, in px, until the labels are measured
-  sign: { w: 200, h: 72 },       // the tap sign's room above a focused district, in px, until it is measured
+  labelPx: 36,                   // a label's room in front of its district, in px, until the labels are measured
   edgePx: 12,                    // breathing room at the viewport's edges, in px
-  transitionMs: 420,             // a focus or overview flight: interruptible, instant under Reduce Motion
+  /* Every camera move is one flight (planFlight): longer for a longer way,
+     leaving at the speed the camera already has, a little rise on a long
+     hop, at rest on arrival. Instant under Reduce Motion. */
+  flight: { minMs: 300, perView: 230, maxMs: 820, arc: 0.16, start: 0.9 },
+  /* A horizontal drag in focus goes to the next or previous place
+     (swipeVerdict): it must begin clearly sideways (axis), then travel far
+     enough (minPx, or a share of the view) or be flicked (flickPxMs over at
+     least flickMinPx). Speed is read over the last trailMs of movement, and
+     a finger that rested restMs before lifting has none. With nowhere to go
+     the world gives at most `edge` of the view and comes back. */
+  swipe: { axis: 1.3, minPx: 48, share: 0.2, flickPxMs: 0.35, flickMinPx: 24, trailMs: 100, restMs: 60, edge: 0.12 },
+  labelEase: 0.12,               // seconds: a label easing between on its place and in front of it
   slopPx: 8,                     // movement that turns a touch into a pan
   frameMinMs: 15,                // at most about 60 frames a second, even on a 120 Hz screen
   ambientSeconds: 300,           // life settles after five minutes untouched, until someone touches it again
@@ -93,9 +102,36 @@ export function pxPerUnit(f, H){ return H / (2 * f.d * TAN); }
 
 /* ---------- the island and its districts ---------- */
 
+/* The city between the places (cityPlan): its levels and measures, in world
+   units. The road is the island's surface; every block, lane and promenade
+   is paving one curb above it; the canal runs below. An authored place is
+   built on the Blender master's platform (art/blender/scripts/mc_platform.py),
+   whose dark lower plinth is 0.42 of its 16.9 width: sunk below the paving,
+   the place stands in its block as a raised terrace rather than on a
+   display stand, its identity band a coloured course at the paving and its
+   lit status rim the block's inner edge. Placement only: the file is drawn
+   as Blender made it. */
+export const CITY = {
+  walk: 0.16,                    // paving over the road: one curb
+  water: -0.34,                  // the canal's surface
+  canalWidth: 2.4,               // the water, in place of the cross street between its two rows
+  plinth: 5.0,                   // an authored place's half width (ASSETS span / 2)
+  side: 0.7,                     // a block's sidewalk round its place
+  ring: 2.4,                     // the ring road round the city: a lane for the trucks, a curb to park at
+  shore: 1.0,                    // the promenade along the island's edge
+  corner: 5.0,                   // the island's corners, in plan: the ring road turns inside them
+  sink: 0.42 / 16.9              // the platform's dark lower plinth, over its width: below the paving
+};
+
+/* Which gap between rows is water rather than a cross street: the one
+   nearest the middle (of two, the nearer the viewer), so one canal parts
+   the city once, whatever its size. -1 for a single row. */
+export function canalAfter(rows){ return rows >= 2 ? Math.floor((rows - 1) / 2) : -1; }
+
 /* District centres in registry order, a grid with a short last row centred.
    Row 0 is farthest from the viewer, so reading order runs back to front,
-   left to right. Adding a project adds a district, never a special case. */
+   left to right. The city between them (cityPlan) is what keeps it from
+   reading as a grid. Adding a project adds a district, never a special case. */
 export function layoutDistricts(count, cols){
   const n = Math.max(0, count | 0);
   const c = Math.max(1, Math.min(cols | 0 || 1, Math.max(1, n)));
@@ -109,52 +145,70 @@ export function layoutDistricts(count, cols){
   return { cols: c, rows: rows, districts: out };
 }
 
-/* The rectangle the island covers, and the one the camera may look at. */
+/* The rectangle the island covers, and the one the camera may look at: the
+   outer places, their sidewalks, the ring road and the promenade. */
+const SHORE = CITY.plinth + CITY.side + CITY.ring + CITY.shore;
 export function islandOf(districts){
-  if(!districts.length) return { minX: -12, maxX: 12, minZ: -12, maxZ: 12, cx: 0, cz: 0, a: 12, b: 12, reach: { minX: 0, maxX: 0, minZ: 0, maxZ: 0 } };
+  if(!districts.length) return { minX: -SHORE, maxX: SHORE, minZ: -SHORE, maxZ: SHORE, cx: 0, cz: 0, a: SHORE, b: SHORE, r: CITY.corner,
+                                 reach: { minX: 0, maxX: 0, minZ: 0, maxZ: 0 } };
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   districts.forEach(d => { minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x); minZ = Math.min(minZ, d.z); maxZ = Math.max(maxZ, d.z); });
-  const m = EXTENT + WORLD.margin;
+  const m = SHORE;
   return { minX: minX - m, maxX: maxX + m, minZ: minZ - m, maxZ: maxZ + m, cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2,
-           a: (maxX - minX) / 2 + m, b: (maxZ - minZ) / 2 + m, reach: { minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ } };
+           a: (maxX - minX) / 2 + m, b: (maxZ - minZ) / 2 + m, r: CITY.corner, reach: { minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ } };
 }
 
-/* The island's shore: a soft-cornered rectangle (a superellipse), as points
-   around it. `inset` pulls it in, for what grows on it. */
-const SHAPE = 5;
+/* The island's shore: a rectangle with rounded corners, as points around
+   it, `segments` in all. `inset` pulls it in: the promenade's inner edge,
+   the ring road's lanes. */
 export function islandOutline(island, segments, inset){
-  const n = segments || 72, a = island.a - (inset || 0), b = island.b - (inset || 0), pts = [];
-  for(let i = 0; i < n; i++){
-    const t = i / n * Math.PI * 2, c = Math.cos(t), s = Math.sin(t);
-    pts.push([island.cx + a * Math.sign(c) * Math.pow(Math.abs(c), 2 / SHAPE), island.cz + b * Math.sign(s) * Math.pow(Math.abs(s), 2 / SHAPE)]);
-  }
+  const k = inset || 0, a = island.a - k, b = island.b - k, r = Math.max(0.2, Math.min(island.r - k, a, b));
+  const per = Math.max(2, Math.round((segments || 72) / 4)), pts = [];
+  [[1, 1], [-1, 1], [-1, -1], [1, -1]].forEach(([sx, sz], q) => {
+    const ox = island.cx + sx * (a - r), oz = island.cz + sz * (b - r);
+    for(let i = 0; i < per; i++){
+      const t = (q + i / (per - 1)) * Math.PI / 2;
+      pts.push([ox + r * Math.cos(t), oz + r * Math.sin(t)]);
+    }
+  });
   return pts;
 }
 export function onIsland(island, x, z, inset){
-  const a = island.a - (inset || 0), b = island.b - (inset || 0);
-  return Math.pow(Math.abs((x - island.cx) / a), SHAPE) + Math.pow(Math.abs((z - island.cz) / b), SHAPE) <= 1;
+  const k = inset || 0, a = island.a - k, b = island.b - k;
+  if(!(a > 0 && b > 0)) return false;
+  const r = Math.max(0, Math.min(island.r - k, a, b)), dx = Math.abs(x - island.cx), dz = Math.abs(z - island.cz);
+  if(dx > a || dz > b) return false;
+  const ex = dx - (a - r), ez = dz - (b - r);
+  return ex <= 0 || ez <= 0 || ex * ex + ez * ez <= r * r;
+}
+/* How far the (inset) shore reaches either side of the island's middle at
+   a depth z, or null beyond it: the road level is laid in strips from it. */
+export function shoreHalfWidth(island, z, inset){
+  const k = inset || 0, a = island.a - k, b = island.b - k, r = Math.max(0, Math.min(island.r - k, a, b));
+  const dz = Math.abs(z - island.cz);
+  if(dz > b + 1e-9) return null;
+  const ez = dz - (b - r);
+  return ez <= 0 ? a : (a - r) + Math.sqrt(Math.max(0, r * r - ez * ez));
 }
 
 /* Inside a district's pad: its diamond on the island. */
 export function onPad(d, x, z, grow){ return Math.abs(x - d.x) <= TILE.pad + (grow || 0) && Math.abs(z - d.z) <= TILE.pad + (grow || 0); }
 
-/* The points that frame a district: its pad at the grass, a narrower top at
-   its tallest, the label's anchor at the pad's nearest corner and, when
-   focused, the sign's anchor above its roof. `room` is the label's px
-   ({ w, h }); `sign` the sign's ({ w, h }), above. */
-export function districtPoints(d, height, room, sign){
+const LABEL_GAP = 4;              // px between a place's front edge and the card in front of it
+
+/* The points that frame a district: its pad at the road, a narrower top at
+   its tallest and, given the label's room in px ({ w, h }), the label in
+   front of it, where the place in focus shows its card. Without a room
+   the label is on the place itself, inside what already frames it. */
+export function districtPoints(d, height, room){
   const e = TILE.pad, t = e * 0.66, h = height;
   const pts = [[d.x + e, 0, d.z+e], [d.x - e, 0, d.z+e], [d.x+e, 0, d.z-e], [d.x-e, 0, d.z-e],
                [d.x+t, h, d.z+t], [d.x-t, h, d.z+t], [d.x+t, h, d.z-t], [d.x-t, h, d.z-t]].map(p => ({ p: p }));
-  const r = room || { w: 96, h: WORLD.labelPx };
-  pts.push({ p: labelAnchor(d), w: r.w / 2, down: r.h });
-  if(sign) pts.push({ p: signAnchor(d, height), w: sign.w / 2, up: sign.h });
+  if(room) pts.push({ p: labelAnchor(d), w: room.w / 2, down: room.h + LABEL_GAP });
   return pts;
 }
-export function labelAnchor(d){ return [d.x + TOWARD[0] * EXTENT * 0.8, TILE.padH, d.z + TOWARD[2] * EXTENT * 0.8]; }
-/* Over the back of the pad, where the tallest structures stand, so the sign
-   floats above them rather than across them. */
-export function signAnchor(d, height){ return [d.x - TOWARD[0] * EXTENT * 0.45, height + 0.8, d.z - TOWARD[2] * EXTENT * 0.45]; }
+/* A label's anchor: the middle of its place's front edge, at the paving. */
+export function labelAnchor(d){ return [d.x, CITY.walk, d.z + CITY.plinth]; }
 
 function spanPx(points, f, W, H){
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -214,13 +268,14 @@ export function districtsInView(districts, f, W, H){
 /* Which arrangement suits this view. One that shows every district beats
    one that pans; among those, whichever draws its smallest district
    largest, and among those that pan, whichever shows the most. A near tie
-   goes to fewer columns, which keeps reading order simple. `heights` and
-   `rooms` are per district (placeHeight, measured labels). */
-export function chooseLayout(count, W, H, heights, rooms){
+   goes to fewer columns, which keeps reading order simple. `heights` are
+   per district (placeHeight). At the overview a label stands on its own
+   place (labelSpot), inside what already frames it. */
+export function chooseLayout(count, W, H, heights){
   const n = Math.max(1, count | 0);
   let best = null;
   for(let c = 1; c <= Math.min(n, 8); c++){
-    const lay = layoutDistricts(n, c), o = overview(lay.districts, heights, rooms, W, H);
+    const lay = layoutDistricts(n, c), o = overview(lay.districts, heights, W, H);
     const seen = districtsInView(lay.districts, o.frame, W, H);
     const size = seen.length ? Math.min.apply(null, seen.map(d => districtPx(d, o.frame, W, H))) : 0;
     const pick = { cols: c, size: size, shown: seen.length, fits: o.fits, districts: lay.districts, frame: o.frame };
@@ -235,9 +290,9 @@ export function chooseLayout(count, W, H, heights, rooms){
    district, where reading begins, at the size it can be read, and the
    island pans. Row 0 is the farthest back, so every district in front of
    the first is drawn larger than it. */
-function overview(districts, heights, rooms, W, H){
+function overview(districts, heights, W, H){
   const pts = [], island = islandOf(districts);
-  districts.forEach((d, i) => pts.push.apply(pts, districtPoints(d, at(heights, i, 3), at(rooms, i, null))));
+  districts.forEach((d, i) => pts.push.apply(pts, districtPoints(d, at(heights, i, 3), null)));
   islandOutline(island, 32, 0).forEach(([x,z]) => pts.push({ p:[x,-WORLD.islandDepth,z] }));
   const fit = clampFrame(fitFrame(pts, W, H, 1), island);
   const small = districts.length ? Math.min.apply(null, districts.map(d => districtPx(d, fit, W, H))) : Infinity;
@@ -262,10 +317,11 @@ function overview(districts, heights, rooms, W, H){
   return { frame: place(lo), fits: false };
 }
 
-/* A focused district: close enough to fill the view with it, its label and
-   its sign (as measured, when it has been), never farther than the overview. */
-export function focusFrame(d, height, room, overview, W, H, sign){
-  const f = fitFrame(districtPoints(d, height, room, sign || WORLD.sign), W, H, WORLD.focusFill);
+/* A focused district: close enough to fill the view with it and the card in
+   front of it (as measured, when it has been), never farther than the
+   overview. */
+export function focusFrame(d, height, room, overview, W, H){
+  const f = fitFrame(districtPoints(d, height, room || { w: 96, h: WORLD.labelPx }), W, H, WORLD.focusFill);
   return { x: f.x, z: f.z, d: Math.max(WORLD.minDist, Math.min(f.d, overview ? overview.d : f.d)) };
 }
 
@@ -327,16 +383,47 @@ export function hitDistrict(districts, heights, f, W, H, px, py){
 
 const at = (list, i, dflt) => list && list[i] !== undefined && list[i] !== null ? list[i] : dflt;
 
-/* ---------- flights ---------- */
+/* ---------- flights ----------
+   Every move of the camera, overview to focus, place to place, back to the
+   overview or back to where a swipe began, is one flight: the target glides
+   along the ground and the distance changes in log space, so a flight in
+   never lurches. It takes longer for a longer way (measured in views, so
+   the same hop takes the same time on every screen), leaves at the speed
+   the camera already has along the new way (so a flight that interrupts
+   another, or follows a flick, never stops it dead) and at least at a
+   brisk start (so a tap answers at once), and comes to rest exactly on its
+   frame. A hop of a view or more rises a little in the middle, so the city
+   stays in sight on the way. */
 export function sameFrame(a, b){
   return !!a && !!b && Math.abs(a.x - b.x) < 1e-3 && Math.abs(a.z - b.z) < 1e-3 && Math.abs(a.d - b.d) / b.d < 1e-3;
 }
-export function easeInOut(t){ const k = Math.min(1, Math.max(0, t)); return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; }
-/* Between two frames: the target glides, the distance changes in log
-   space, so a flight in never lurches. */
-export function mixFrame(a, b, t){
-  const k = easeInOut(t);
-  return { x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, d: Math.exp(Math.log(a.d) + (Math.log(b.d) - Math.log(a.d)) * k) };
+/* The way from a to b in a view of W x H px, and the speed along it the
+   camera leaves with (see flightSpeed); fixed once planned. */
+export function planFlight(a, b, W, H, v0){
+  const F = WORLD.flight, view = 2 * Math.sqrt(a.d * b.d) * TAN * (W / Math.max(1, H));
+  const ground = Math.hypot(b.x - a.x, b.z - a.z) / view, zoom = Math.log(b.d / a.d);
+  const len = Math.hypot(ground, zoom);
+  return { a: a, b: b, view: view, ms: Math.min(F.maxMs, F.minMs + F.perView * len), arc: F.arc * Math.min(1, ground),
+           v0: Math.min(3, Math.max(0, v0 || 0)) };
+}
+/* How far along the way at u (0..1 of its time): leaving at v0, arriving at rest. */
+function along(u, v0){ return v0 * (u * u * u - 2 * u * u + u) + (3 * u * u - 2 * u * u * u); }
+/* The frame at u; `linear` follows a finger along the same way, unshaped. */
+export function flightFrame(fl, u, linear){
+  const k = Math.min(1, Math.max(0, u)), s = linear ? k : along(k, fl.v0);
+  const la = Math.log(fl.a.d), lb = Math.log(fl.b.d);
+  return { x: fl.a.x + (fl.b.x - fl.a.x) * s, z: fl.a.z + (fl.b.z - fl.a.z) * s,
+           d: Math.exp(la + (lb - la) * s + fl.arc * 4 * s * (1 - s)) };
+}
+/* The speed a camera moving at `vel` ({ x, z, l } per ms: ground units and
+   log-distance) has along a flight, in the flight's own terms (the whole
+   way per its whole time), never backward and at least the brisk start. */
+export function flightSpeed(fl, vel){
+  const F = WORLD.flight, v = fl.view;
+  const dx = (fl.b.x - fl.a.x) / v, dz = (fl.b.z - fl.a.z) / v, dl = Math.log(fl.b.d / fl.a.d), n = dx * dx + dz * dz + dl * dl;
+  if(!(n > 1e-9) || !vel) return F.start;
+  const rate = ((vel.x || 0) / v * dx + (vel.z || 0) / v * dz + (vel.l || 0) * dl) / n;
+  return Math.min(3, Math.max(F.start, rate * fl.ms));
 }
 
 /* ---------- the drawing buffer ----------
@@ -363,82 +450,137 @@ export function nextPixelRatio(current){
 }
 
 /* ---------- labels ----------
-   Every project keeps a real button; this only decides which labels can be
-   read at once. The focused and selected labels win, then nearer rows (which
-   the camera draws in front), then registry order; a label that would overlap
-   one already placed is hidden, and a hidden or off-screen label takes no taps.
-   Each rect is { id, x, y, w, h, row } in px. */
-export function resolveLabels(rects, first, viewW, viewH){
+   Every project keeps a real button; this decides where each label stands
+   and which can be read at once. One rule for every place, at every size:
+   a label stands on its own place, centred over the front of its deck, so
+   it names that place and covers no other; the place in focus shows its
+   card just in front of it instead, where it hides nothing of the place.
+   `under` eases between the two (0 on the place, 1 in front), so a label
+   glides rather than jumps while the camera flies. Then, in order: the
+   focused and selected labels, what needs you, nearer rows (drawn in
+   front), registry order; a label that would overlap one already placed,
+   or anything the view keeps clear (the Overview button), is hidden, and a
+   hidden or off-screen label takes no taps. */
+export function labelSpot(anchor, w, h, under, viewW){
+  const k = Math.min(1, Math.max(0, under)), m = WORLD.edgePx;
+  const x = Math.min(Math.max(anchor.x - w / 2, m), Math.max(m, viewW - m - w));
+  return { x: Math.round(x), y: Math.round(anchor.y + LABEL_GAP * k - (h + LABEL_GAP) * (1 - k)) };
+}
+/* Each rect is { id, x, y, w, h, row, attn, off } in px (off: its place
+   has left the view); `first` the ids that lead; `keep` rects no label may
+   cover. */
+export function resolveLabels(rects, first, viewW, viewH, keep){
   const lead = [].concat(first).filter(Boolean);
   const rank = r => { const i = lead.indexOf(r.id); return i === -1 ? lead.length : i; };
   const order = rects.slice().sort((a, b) =>
-    rank(a) - rank(b) || b.row - a.row || rects.indexOf(a) - rects.indexOf(b));
-  const placed = [], shown = {};
+    rank(a) - rank(b) || (b.attn ? 1 : 0) - (a.attn ? 1 : 0) || b.row - a.row || rects.indexOf(a) - rects.indexOf(b));
+  const overlap = (r, p) => !(r.x >= p.x + p.w || p.x >= r.x + r.w || r.y >= p.y + p.h || p.y >= r.y + r.h);
+  const placed = (keep || []).slice(), shown = {};
   order.forEach(r => {
-    const inView = r.x >= 0 && r.x + r.w <= viewW && r.y >= 0 && r.y + r.h <= viewH;
-    const clear = placed.every(p => r.x >= p.x + p.w || p.x >= r.x + r.w || r.y >= p.y + p.h || p.y >= r.y + r.h);
-    shown[r.id] = inView && clear;
+    const inView = !r.off && r.x >= 0 && r.x + r.w <= viewW && r.y >= 0 && r.y + r.h <= viewH;
+    shown[r.id] = inView && !placed.some(p => overlap(r, p));
     if(shown[r.id]) placed.push(r);
   });
   return shown;
-}
-
-/* The sign is a card over the selected place. Where it would hide another
-   project's name and the camera is not on that place (`close` is false), the
-   sign is the one that goes: the slim bar under the world already says the
-   same and no project loses its name. Close on a place, the sign wins as it
-   always did. Returns { shown, sign }. */
-export function resolveWithSign(rects, signRect, first, viewW, viewH, close){
-  if(!signRect) return { shown: resolveLabels(rects, first, viewW, viewH), sign: false };
-  const shown = resolveLabels([signRect].concat(rects), first, viewW, viewH);
-  if(close) return { shown: shown, sign: true };
-  const bare = resolveLabels(rects, first, viewW, viewH);
-  return rects.some(r => bare[r.id] && !shown[r.id]) ? { shown: bare, sign: false } : { shown: shown, sign: true };
 }
 
 /* ---------- gestures ----------
    One arbiter for the viewport. The first pointer owns the gesture; others
    are ignored until it ends. Until it has moved WORLD.slopPx it is a tap in
    waiting; past that it is a pan for the rest of its life, and the click it
-   would otherwise make is swallowed: a drag never opens a brief. A cancel or
-   a lost capture ends it with no tap. */
+   would otherwise make is swallowed: a drag never opens a brief. Its axis
+   is decided once, as it starts: 'x' only when clearly sideways, 'y' when
+   clearly up or down, 'xy' between. A cancel or a lost capture ends it with
+   no tap. Times (ms) are optional; given, the end reports the finger's
+   speed over its last WORLD.swipe.trailMs, and none if it rested first. */
+export function axisOf(dx, dy){
+  const k = WORLD.swipe.axis, ax = Math.abs(dx), ay = Math.abs(dy);
+  return ax > ay * k ? 'x' : ay > ax * k ? 'y' : 'xy';
+}
 export function createArbiter(slop){
   const limit = slop === undefined ? WORLD.slopPx : slop;
   let g = null;
+  const note = (t, x, y) => {
+    if(!Number.isFinite(t)) return;
+    g.trail.push([t, x, y]);
+    while(g.trail.length > 2 && t - g.trail[0][0] > WORLD.swipe.trailMs) g.trail.shift();
+  };
+  const speed = t => {
+    const tr = g.trail, a = tr[0], b = tr[tr.length - 1];
+    if(!a || a === b || !Number.isFinite(t) || t - b[0] > WORLD.swipe.restMs || b[0] - a[0] < 8) return { vx: 0, vy: 0 };
+    return { vx: (b[1] - a[1]) / (b[0] - a[0]), vy: (b[2] - a[2]) / (b[0] - a[0]) };
+  };
   return {
-    down(id, x, y){
+    down(id, x, y, t){
       if(g) return null;
-      g = { id: id, x0: x, y0: y, x: x, y: y, panning: false };
+      g = { id: id, x0: x, y0: y, x: x, y: y, panning: false, axis: null, trail: [] };
+      note(t, x, y);
       return { type: 'down' };
     },
-    move(id, x, y){
+    move(id, x, y, t){
       if(!g || g.id !== id) return null;
+      note(t, x, y);
       if(!g.panning){
         if(Math.hypot(x - g.x0, y - g.y0) <= limit) return null;
         g.panning = true;
-        const out = { type: 'pan-start', dx: x - g.x0, dy: y - g.y0 };
+        g.axis = axisOf(x - g.x0, y - g.y0);
+        const out = { type: 'pan-start', dx: x - g.x0, dy: y - g.y0, axis: g.axis };
         g.x = x; g.y = y;
         return out;
       }
-      const out = { type: 'pan', dx: x - g.x, dy: y - g.y };
+      const out = { type: 'pan', dx: x - g.x, dy: y - g.y, tx: x - g.x0, ty: y - g.y0, axis: g.axis };
       g.x = x; g.y = y;
       return out;
     },
-    up(id){
+    up(id, t){
       if(!g || g.id !== id) return null;
-      const out = { type: g.panning ? 'pan-end' : 'tap', x: g.x0, y: g.y0 };
+      const v = speed(t);
+      const out = { type: g.panning ? 'pan-end' : 'tap', x: g.x0, y: g.y0, tx: g.x - g.x0, ty: g.y - g.y0, axis: g.axis, vx: v.vx, vy: v.vy };
       g = null;
       return out;
     },
     cancel(id){
       if(!g || (id !== undefined && g.id !== id)) return null;
-      const out = { type: g.panning ? 'pan-end' : 'cancel' };
+      const out = { type: g.panning ? 'pan-end' : 'cancel', cancelled: true, axis: g.axis };
       g = null;
       return out;
     },
     busy(){ return !!g; },
     panning(){ return !!(g && g.panning); }
   };
+}
+
+/* ---------- moving between places ----------
+   In focus a sideways swipe goes to the next place (finger to the left) or
+   the previous (to the right) in reading order, which is the city's own:
+   back to front, left to right. There is no wrap: at either end the world
+   gives a little and comes back. A swipe that goes neither far enough nor
+   fast enough, or is flicked back against itself, goes nowhere. Returns 1,
+   -1 or 0. `tx` is how far the finger went, `vx` its speed (px per ms). */
+export function swipeVerdict(tx, vx, W){
+  const s = WORLD.swipe, far = Math.abs(tx) >= Math.max(s.minPx, W * s.share);
+  const fast = Math.abs(vx) >= s.flickPxMs;
+  const flick = fast && Math.abs(tx) >= s.flickMinPx && Math.sign(vx) === Math.sign(tx);
+  if(fast && Math.sign(vx) === -Math.sign(tx)) return 0;
+  if(!far && !flick) return 0;
+  return tx < 0 ? 1 : -1;
+}
+/* The place `step` along from `id` in `order`, or null: never round the end. */
+export function neighbourOf(order, id, step){
+  const i = order.indexOf(id);
+  if(i === -1 || !step) return null;
+  const j = i + step;
+  return j >= 0 && j < order.length ? order[j] : null;
+}
+/* Mid-swipe: the camera as far along the flight to the next place as the
+   finger has gone, a whole view being the whole way; with nowhere to go it
+   gives, less and less, up to WORLD.swipe.edge of the view. */
+export function swipeFrame(from, to, tx, W, H, island){
+  if(!to){
+    const most = WORLD.swipe.edge * W, give = most * Math.tanh(tx / (most * 3));
+    return clampFrame(shiftPx(from, -give, 0, H), island);
+  }
+  return flightFrame(planFlight(from, to, W, H, 0), Math.abs(tx) / Math.max(1, W), true);
 }
 
 /* ---------- crews ----------
@@ -551,6 +693,7 @@ export const PALETTE = {
   asphalt: '--city-asphalt', sidewalk: '--city-sidewalk', curb: '--city-curb', facade: '--city-facade',
   facadeWarm: '--city-facade-warm', facadeCool: '--city-facade-cool', windowCool: '--city-window-cool',
   windowDim: '--city-window-dim', roadPaint: '--city-road-paint', cityBase: '--city-base',
+  canal: '--city-water', quay: '--city-quay', drop: '--city-drop',
   shade: '--iso-shade', lightKey: '--light-key', lightFill: '--light-fill', lightRim: '--light-rim',
   lightSky: '--light-sky', lightGround: '--light-ground'
 };
@@ -814,14 +957,17 @@ export function assetCrew(workerState, authored){
    the key would graze it and light a face nobody sees, so it sits 55
    degrees round, between the front and the hidden left side. Angles are
    relative to where the camera looks from. Intensities are physical (a sun
-   of 5 is Blender's 5); colours are tokens. */
+   of 5 is Blender's 5); colours are tokens. Since 0.9.0 it is daylight
+   rather than blue hour: a stronger, warmer sun and a brighter sky over a
+   bright city, the same split of the faces (the lit face still gets over
+   three times the shade face's light), softer shadows. */
 export const LIGHT = {
-  key:  { turn: 55, elevation: 34, intensity: 5.0 },
-  fill: { turn: -32, elevation: 24, intensity: 0.35 },
+  key:  { turn: 55, elevation: 34, intensity: 5.8 },
+  fill: { turn: -32, elevation: 24, intensity: 0.4 },
   rim:  { turn: -148, elevation: 34, intensity: 0.9 },
-  sky: 0.42,                    // the sky's share, as Blender's world strength
-  exposure: 1.0,
-  status: 0.9,                  // a known status light's emission; attention breathes round it
+  sky: 0.6,                     // the sky's share, as Blender's world strength
+  exposure: 1.05,
+  status: 1.3,                  // a known status light's emission, bright enough to read in daylight; attention breathes round it
   shadowRefreshMs: 80,          // an animated worker's shadow follows it at about 12 a second,
   shadowMinPx: 240              // but only while its place is drawn at least this wide
 };
@@ -949,46 +1095,226 @@ export function scatter(districts, island, seed){
   return { items: items, ponds: ponds };
 }
 
-/* Streets are ambience, not connections between project records. The asphalt
-   slab is continuous; every block has a raised sidewalk and marked crossings. */
-export function cityParts(districts){
-  const out=[];
-  districts.forEach(d=>{
-    const x=d.x,z=d.z,p=TILE.pad;
-    out.push(box(x,.025,z,p*2+.3,.15,p*2+.3,'matte','curb',{bevel:.12}));
-    for(const side of [-1,1]){
-      /* Pavement seams and curb stones establish scale without textures. */
-      for(let a=-p+.7;a<p;a+=1.3){
-        out.push(box(x+a,.184,z+side*(p-.4),.025,.006,.65,'matte','windowDim'));
-        out.push(box(x+side*(p-.4),.184,z+a,.65,.006,.025,'matte','windowDim'));
+/* ---------- the city between the places ----------
+   One plan for any layout (rule 42: no ceiling, no special case). Every
+   place stands in its own block, paved one curb above the road with a
+   sidewalk round it. Rows are parted by a cross street, or once by the
+   canal (canalAfter), which the city crosses on footbridges. The gap between
+   two places in a row is a street or a planted lane, alternating from row
+   to row, so the streets meet at offset corners rather than a grid. A ring
+   road runs round the whole city inside a promenade at the shore; a short
+   row's spare room is a paved square. Trees, lamps, benches, parked cars,
+   crossings (only at street corners) and bollards (where a street ends at
+   the water) follow from where those are. It is scenery: it knows
+   positions, never a record, and the same layout is the same city every
+   time. Everything is in world units; y 0 is the road. */
+export function cityPlan(districts){
+  const P = CITY.plinth, E = P + CITY.side, island = islandOf(districts);
+  const byRow = new Map();
+  districts.forEach(d => { if(!byRow.has(d.row)) byRow.set(d.row, []); byRow.get(d.row).push(d); });
+  const rows = Array.from(byRow.keys()).sort((a, b) => a - b).map(r => {
+    const ds = byRow.get(r).slice().sort((a, b) => a.x - b.x);
+    return { r: r, z: ds[0].z, ds: ds, gaps: [] };
+  });
+  const inner = { minX: island.reach.minX - E, maxX: island.reach.maxX + E, minZ: island.reach.minZ - E, maxZ: island.reach.maxZ + E };
+  const plan = { island: island, inner: inner, canal: null, paving: [], dashes: [], zebras: [], trees: [], lamps: [], benches: [],
+                 cars: [], bollards: [], bridges: [], parapets: [], rails: [], bays: [], loop: null };
+  if(!rows.length) return plan;
+  const water = canalAfter(rows.length);
+  if(water >= 0 && rows[water + 1]){
+    const zc = (rows[water].z + rows[water + 1].z) / 2, w = CITY.canalWidth / 2;
+    plan.canal = { minX: inner.minX, maxX: inner.maxX, minZ: zc - w, maxZ: zc + w, z: zc };
+  }
+  const hash = (a, b) => ((a * 73856093) ^ (b * 19349663)) >>> 0;
+  const tree = (x, z, n) => plan.trees.push({ kind: n % 5 === 3 ? 'pine' : 'tree', x: x, z: z, s: 0.62 + (n * 37 % 7) * 0.035, turn: (n * 53 % 12) / 12 * Math.PI * 2 });
+  let seq = 0;
+
+  /* Each row: its gaps (a street where row and column are even together, a
+     lane otherwise), and its paving, split only where a street runs. */
+  rows.forEach((row, i) => {
+    for(let k = 0; k + 1 < row.ds.length; k++){
+      const a = row.ds[k], b = row.ds[k + 1];
+      row.gaps.push({ x0: a.x + E, x1: b.x - E, cx: (a.x + b.x) / 2, lane: (i + Math.round(a.col)) % 2 === 1 });
+    }
+    let from = inner.minX;
+    row.gaps.forEach(g => { if(!g.lane){ plan.paving.push({ minX: from, maxX: g.x0, minZ: row.z - E, maxZ: row.z + E }); from = g.x1; } });
+    plan.paving.push({ minX: from, maxX: inner.maxX, minZ: row.z - E, maxZ: row.z + E });
+  });
+  /* Nothing tall stands in front of a place, where it would hide the place or its card. */
+  const clear = (x, z) => !districts.some(d => Math.abs(x - d.x) < P + 0.4 && z > d.z + P - 0.2 && z < d.z + P + 4.2);
+
+  /* Cross streets between rows; the canal where it runs. */
+  rows.forEach((row, i) => {
+    const next = rows[i + 1];
+    if(!next) return;
+    if(i === water && plan.canal){
+      const c = plan.canal, above = { minX: inner.minX, maxX: inner.maxX, minZ: row.z + E, maxZ: c.minZ },
+            below = { minX: inner.minX, maxX: inner.maxX, minZ: c.maxZ, maxZ: next.z - E };
+      plan.paving.push(above, below);
+      /* Footbridges where the lanes and streets run, or one in the middle. */
+      const gaps = (row.gaps.length >= next.gaps.length ? row : next).gaps;
+      const xs = gaps.length ? gaps.map(g => g.cx) : [(inner.minX + inner.maxX) / 2];
+      xs.forEach(x => plan.bridges.push({ x: x, w: 2.2, minZ: c.minZ - 0.25, maxZ: c.maxZ + 0.25 }));
+      /* Low walls along the water, open at each bridge; railings where the ring road passes its ends. */
+      [c.minZ - 0.05, c.maxZ + 0.05].forEach(z => {
+        let x = inner.minX;
+        xs.slice().sort((p, q) => p - q).forEach(bx => { plan.parapets.push({ minX: x, maxX: bx - 1.1, z: z }); x = bx + 1.1; });
+        plan.parapets.push({ minX: x, maxX: inner.maxX, z: z });
+      });
+      plan.rails = [{ x: inner.minX - 0.06, minZ: c.minZ, maxZ: c.maxZ }, { x: inner.maxX + 0.06, minZ: c.minZ, maxZ: c.maxZ }];
+      /* A street that reaches the water ends in bollards. */
+      row.gaps.filter(g => !g.lane).forEach(g => [-1, 0, 1].forEach(k => plan.bollards.push({ x: g.cx + k * 1.05, z: row.z + E + 0.25 })));
+      next.gaps.filter(g => !g.lane).forEach(g => [-1, 0, 1].forEach(k => plan.bollards.push({ x: g.cx + k * 1.05, z: next.z - E - 0.25 })));
+      /* The quays: benches facing the water in front of the row above, trees along the one behind the row below. */
+      const qa = (above.minZ + above.maxZ) / 2, qb = (below.minZ + below.maxZ) / 2;
+      row.ds.forEach(d => { plan.benches.push({ x: d.x - 2.1, z: qa + 0.25, turn: 0 }, { x: d.x + 2.1, z: qa + 0.25, turn: 0 });
+                            plan.lamps.push({ x: d.x + P + 0.9, z: qa - 0.2 }); });
+      for(let x = inner.minX + 1.4; x < inner.maxX - 1; x += 2.9){
+        if(xs.some(bx => Math.abs(x - bx) < 1.9)) continue;
+        tree(x, qb, seq++);
       }
-      const gapX=WORLD.stepX-2*p,gapZ=WORLD.stepZ-2*p;
-      for(let a=-1.15;a<=1.15;a+=.5){
-        out.push(box(x+side*(p+gapX/2),.03,z+a,gapX*.66,.01,.22,'matte','roadPaint'));
-        out.push(box(x+a,.03,z+side*(p+gapZ/2),.22,.01,gapZ*.66,'matte','roadPaint'));
-      }
-      for(let a=-3.5;a<=3.5;a+=2.2){
-        out.push(box(x+a,.024,z+side*(p+gapZ/2),.8,.01,.045,'matte','roadPaint'));
-        out.push(box(x+side*(p+gapX/2),.024,z+a,.045,.01,.8,'matte','roadPaint'));
-      }
+      return;
+    }
+    const z0 = row.z + E, z1 = next.z - E, zc = (z0 + z1) / 2;
+    for(let x = inner.minX + 1.7; x < inner.maxX - 1.5; x += 1.7) plan.dashes.push({ x: x, z: zc, len: 0.75, along: 'x' });
+    /* Crossings at the street's two ends, where the outer sidewalks cross it. */
+    [inner.minX + 0.75, inner.maxX - 0.75].forEach(x => plan.zebras.push({ x: x, z: zc, w: 1.1, len: z1 - z0, along: 'z' }));
+    /* Parked cars at both curbs, clear of every street mouth. */
+    [[row, z0 + 0.55, 1], [next, z1 - 0.55, -1]].forEach(([r, z, side]) => r.ds.forEach(d => {
+      const off = ((hash(r.r + 3, Math.round(d.col * 2) + 5) % 3) - 1) * 2.6;
+      const x = d.x + (off || 2.6 * side);
+      if(r.gaps.some(g => !g.lane && Math.abs(x - g.cx) < (g.x1 - g.x0) / 2 + 1.4)) return;
+      plan.cars.push({ x: x, z: z, turn: side > 0 ? Math.PI / 2 : -Math.PI / 2, n: hash(r.r, Math.round(d.col * 2)) % 5 });
+    }));
+  });
+
+  /* More at the ring road's inner curb, beside the outer blocks and behind
+     the back row (the trucks keep to its outer lane); one loading bay, with
+     its truck, in the first street between two places. */
+  rows.forEach(row => [-1, 1].forEach(s => {
+    const off = ((hash(row.r + 11, s + 7) % 3) - 1) * 2.4;
+    plan.cars.push({ x: s < 0 ? inner.minX - 0.55 : inner.maxX + 0.55, z: row.z + off, turn: s < 0 ? 0 : Math.PI, n: hash(row.r + 5, s + 3) % 5 });
+  }));
+  rows[0].ds.forEach(d => { if(hash(Math.round(d.col * 2) + 17, 3) % 2) plan.cars.push({ x: d.x - 1.8, z: inner.minZ - 0.55, turn: Math.PI / 2, n: hash(Math.round(d.col * 2), 9) % 5 }); });
+  const street = rows.map(r => r.gaps.filter(g => !g.lane).map(g => ({ g: g, row: r }))).flat()[0];
+  if(street) plan.bays.push({ x: street.g.cx - 0.75, z: street.row.z + 0.9, len: 3.0, w: 1.2, along: 'z' });
+
+  /* Each street between two places: a centre line, bollards or crossings at its mouths. */
+  rows.forEach((row, i) => row.gaps.forEach(g => {
+    if(g.lane){
+      /* A lane is planted down its middle. */
+      for(let z = row.z - P + 1.4; z <= row.z + P - 1.2; z += 2.35) tree(g.cx, z, seq++);
+      return;
+    }
+    for(let z = row.z - E + 1.9; z < row.z + E - 1.5; z += 1.6) plan.dashes.push({ x: g.cx, z: z, len: 0.75, along: 'z' });
+    const top = i === 0 ? true : (i - 1 !== water), bottom = i === rows.length - 1 ? true : i !== water;
+    if(top) plan.zebras.push({ x: g.cx, z: row.z - E + 0.75, w: 1.1, len: g.x1 - g.x0, along: 'x' });
+    if(bottom) plan.zebras.push({ x: g.cx, z: row.z + E - 0.75, w: 1.1, len: g.x1 - g.x0, along: 'x' });
+  }));
+
+  /* Trees at the back corners of every block and along its outer sides;
+     lamps where the ring road passes. */
+  rows.forEach(row => row.ds.forEach((d, k) => {
+    [-1, 1].forEach(s => { const x = d.x + s * (P + CITY.side / 2), z = d.z - P - CITY.side / 2 + 0.1; if(clear(x, z)) tree(x, z, seq++); });
+    if(k === 0) plan.lamps.push({ x: inner.minX + 0.3, z: d.z });
+    if(k === row.ds.length - 1) plan.lamps.push({ x: inner.maxX - 0.3, z: d.z });
+  }));
+
+  /* The promenade at the shore, planted all round but for the fronts of the
+     places: never quite evenly, with now and then a gap, the same every time. */
+  const walk = insetLoop(island, CITY.shore / 2), around = loopLength(walk);
+  for(let s = 1.3, k = 0; s < around - 1; k++){
+    const p = streetPose(walk, s / STREET_SPEED, 0), h = hash(k + 101, 37);
+    if(h % 7 !== 3 && clear(p.x, p.z)) tree(p.x, p.z, seq++);
+    s += 2.2 + (h % 5) * 0.28;
+  }
+
+  /* The trucks' lane: the ring road's outer lane, round every corner. */
+  plan.loop = insetLoop(island, CITY.shore + 0.72);
+  return plan;
+}
+/* The island's outline pulled in by k, as a loop streetPose can follow. */
+function insetLoop(island, k){
+  return { minX: island.cx - island.a + k, maxX: island.cx + island.a - k, minZ: island.cz - island.b + k, maxZ: island.cz + island.b - k,
+           r: Math.max(0.5, island.r - k) };
+}
+export function loopLength(b){
+  const r = loopRadius(b);
+  return 2 * (b.maxX - b.minX - 2 * r) + 2 * (b.maxZ - b.minZ - 2 * r) + 2 * Math.PI * r;
+}
+const loopRadius = b => Math.min(b.r === undefined ? 1.5 : b.r, (b.maxX - b.minX) / 4, (b.maxZ - b.minZ) / 4);
+
+/* The plan as parts, merged by the renderer with the rest of the city. The
+   island itself (its road, promenade, shore and canal) and the water are
+   drawn from the plan by the renderer. */
+export function cityParts(given){
+  const plan = Array.isArray(given) ? cityPlan(given) : given, W0 = CITY.walk, out = [];
+  plan.paving.forEach(p => {
+    const w = p.maxX - p.minX, d = p.maxZ - p.minZ, cx = (p.minX + p.maxX) / 2, cz = (p.minZ + p.maxZ) / 2;
+    if(!(w > 0.05 && d > 0.05)) return;
+    out.push(box(cx, -0.03, cz, w, W0 + 0.03, d, 'matte', 'sidewalk', { bevel: 0.05 }));
+    /* A curb stone along every edge, so the blocks read at any distance. */
+    out.push(box(cx, W0, p.minZ + 0.07, w, 0.012, 0.14, 'matte', 'curb'), box(cx, W0, p.maxZ - 0.07, w, 0.012, 0.14, 'matte', 'curb'),
+             box(p.minX + 0.07, W0, cz, 0.14, 0.012, d - 0.28, 'matte', 'curb'), box(p.maxX - 0.07, W0, cz, 0.14, 0.012, d - 0.28, 'matte', 'curb'));
+  });
+  plan.dashes.forEach(m => out.push(m.along === 'x' ? box(m.x, 0.002, m.z, m.len, 0.006, 0.09, 'matte', 'roadPaint')
+                                                    : box(m.x, 0.002, m.z, 0.09, 0.006, m.len, 'matte', 'roadPaint')));
+  /* A crossing's bars lie along the way people walk. */
+  plan.zebras.forEach(c => {
+    for(let k = -c.w / 2 + 0.12; k <= c.w / 2 - 0.1; k += 0.3){
+      out.push(c.along === 'x' ? box(c.x, 0.002, c.z + k, c.len - 0.2, 0.006, 0.17, 'matte', 'roadPaint')
+                               : box(c.x + k, 0.002, c.z, 0.17, 0.006, c.len - 0.2, 'matte', 'roadPaint'));
     }
   });
-  streetLamps(districts).forEach(p => out.push(...lamp(p.x, p.z, 3.2)));
+  /* A loading bay: its outline, and its truck, along the street. */
+  plan.bays.forEach(b => {
+    const bay = [box(0, 0.002, -b.len / 2, b.w, 0.006, 0.07, 'matte', 'roadPaint'), box(0, 0.002, b.len / 2, b.w, 0.006, 0.07, 'matte', 'roadPaint'),
+                 box(-b.w / 2, 0.002, 0, 0.07, 0.006, b.len, 'matte', 'roadPaint'), box(b.w / 2, 0.002, 0, 0.07, 0.006, b.len, 'matte', 'roadPaint')];
+    const turn = b.along === 'z' ? 0 : Math.PI / 2;
+    out.push(...turned(bay, b.x, 0, b.z, turn, 1), ...turned(TRUCK_PARTS, b.x, 0, b.z, turn, 1));
+  });
+  plan.trees.forEach(t => out.push(...turned(SCENERY[t.kind], t.x, W0, t.z, t.turn, t.s)));
+  plan.lamps.forEach(l => out.push(...lift(lamp(l.x, l.z, 2.2), W0)));
+  plan.benches.forEach(b => out.push(...lift(bench(b.x, b.z, b.turn), W0)));
+  plan.bollards.forEach(b => out.push(cyl(b.x, W0, b.z, 0.07, 0.32, 'matte', 'ink', { n: 6 })));
+  plan.cars.forEach(c => out.push(...turned(CAR_PARTS[c.n % CAR_PARTS.length], c.x, 0, c.z, c.turn, 1)));
+  plan.bridges.forEach(b => {
+    const len = b.maxZ - b.minZ, cz = (b.minZ + b.maxZ) / 2;
+    out.push(box(b.x, W0 - 0.2, cz, b.w, 0.26, len, 'matte', 'sidewalk', { bevel: 0.04 }),
+             box(b.x, W0 - 0.32, cz, b.w - 0.3, 0.12, len - 0.3, 'matte', 'stone'));
+    [-1, 1].forEach(s => out.push(box(b.x + s * (b.w / 2 - 0.07), W0 + 0.06, cz, 0.14, 0.24, len, 'matte', 'curb', { bevel: 0.03 })));
+  });
+  plan.parapets.forEach(p => { if(p.maxX - p.minX > 0.3) out.push(box((p.minX + p.maxX) / 2, W0, p.z, p.maxX - p.minX, 0.2, 0.1, 'matte', 'curb')); });
+  (plan.rails || []).forEach(r => out.push(box(r.x, 0, (r.minZ + r.maxZ) / 2, 0.08, 0.34, r.maxZ - r.minZ + 0.2, 'metal', 'steel')));
   return out;
 }
-
-/* A few curbside lamps share merged geometry and painted light pools. They
-   are city furniture, independent of the state beacons on the blocks. */
-export function streetLamps(districts){
-  return districts.slice(0, 4).map(d => ({ x: d.x + TILE.pad + .32, z: d.z + TILE.pad - 1 }));
+/* Parts stood somewhere: turned about y by `turn`, scaled by s, set down at
+   (x, y, z). A part's own turn about y is kept; parts that lean (an x or z
+   turn) are only the round kind, whose turn about y does not show. */
+function turned(parts, x, y, z, turn, s){
+  const c = Math.cos(turn), sn = Math.sin(turn);
+  return parts.map(p => Object.assign({}, p, {
+    p: [x + (p.p[0] * c + p.p[2] * sn) * s, y + p.p[1] * s, z + (-p.p[0] * sn + p.p[2] * c) * s],
+    d: p.d.map(v => v * s), r: [p.r ? p.r[0] : 0, (p.r ? p.r[1] : 0) + turn, p.r ? p.r[2] : 0]
+  }));
 }
+function lift(parts, y){ return parts.map(p => Object.assign({}, p, { p: [p.p[0], p.p[1] + y, p.p[2]] })); }
+
+/* Parked cars, a few colours of the city's own. Along z, as the trucks. */
+const car = (body, roof) => [
+  mass(0, 0.14, 0, 0.84, 0.3, 1.78, body), mass(0, 0.42, -0.08, 0.74, 0.3, 0.98, roof),
+  box(0, 0.47, 0.42, 0.66, 0.2, 0.02, 'metal', 'windowCool'), box(0, 0.47, -0.58, 0.66, 0.18, 0.02, 'metal', 'windowCool'),
+  ...[-1, 1].flatMap(s => [cyl(s * 0.4, 0, -0.55, 0.16, 0.1, 'matte', 'ink', Object.assign({ n: 8 }, LIE_X)),
+                           cyl(s * 0.4, 0, 0.55, 0.16, 0.1, 'matte', 'ink', Object.assign({ n: 8 }, LIE_X))])
+];
+export const CAR_PARTS = [car('paper', 'paper'), car('facadeCool', 'paper'), car('facadeWarm', 'facadeWarm'), car('ink', 'ink'), car('stone', 'paper')];
 
 export const TRUCK_PARTS=[
   mass(0,.28,0,1.02,.16,2.28,'ink'),mass(0,.45,-.32,1.03,.91,1.45,'paper'),
   mass(0,.44,.7,1.01,.77,.66,'facadeCool'),box(0,.86,1.045,.79,.32,.02,'metal','windowCool'),
   box(-.515,.9,.73,.018,.25,.4,'metal','windowCool'),box(.515,.9,.73,.018,.25,.4,'metal','windowCool'),
   box(0,.58,-1.06,.9,.72,.02,'matte','curb'),box(0,.61,-1.075,.025,.63,.015,'matte','steel'),
-  ...[-1,1].flatMap(side=>[cyl(side*.5,.12,-.66,.23,.1,'matte','ink',LIE_X),cyl(side*.5,.12,.7,.23,.1,'matte','ink',LIE_X),
+  ...[-1,1].flatMap(side=>[cyl(side*.5,0,-.66,.23,.1,'matte','ink',LIE_X),cyl(side*.5,0,.7,.23,.1,'matte','ink',LIE_X),
     box(side*.34,.54,1.045,.19,.12,.035,'glow','window'),box(side*.34,.46,-1.1,.14,.09,.025,'glow','windowDim')])
 ];
 export const RESIDENT_PARTS=[
@@ -999,12 +1325,14 @@ export const RESIDENT_PARTS=[
 ];
 
 /* Constant-speed rounded rectangle: continuous position and heading at all
-   eight joins. This has no project/state inputs and conveys no work progress. */
+   eight joins, its corners as round as `bounds.r` (1.5 when unsaid). This
+   has no project/state inputs and conveys no work progress. */
+const STREET_SPEED = 1.1;
 export function streetPose(bounds,time,offset){
   const x0=bounds.minX,x1=bounds.maxX,z0=bounds.minZ,z1=bounds.maxZ;
-  const r=Math.min(1.5,(x1-x0)/4,(z1-z0)/4),wx=x1-x0-2*r,wz=z1-z0-2*r,arc=Math.PI*r/2;
+  const r=loopRadius(bounds),wx=x1-x0-2*r,wz=z1-z0-2*r,arc=Math.PI*r/2;
   const lengths=[wx,arc,wz,arc,wx,arc,wz,arc],total=lengths.reduce((a,b)=>a+b,0);
-  let s=((time+(offset||0))*1.1%total+total)%total,i=0;
+  let s=((time+(offset||0))*STREET_SPEED%total+total)%total,i=0;
   while(i<7&&s>lengths[i]){s-=lengths[i];i++;}
   let x,z,dx,dz;
   if(i===0){x=x0+r+s;z=z0;dx=1;dz=0;}
@@ -1018,9 +1346,12 @@ export function streetPose(bounds,time,offset){
   }
   return {x:x,z:z,turn:Math.atan2(dx,dz)};
 }
-export function trafficBounds(districts){
-  const island=islandOf(districts),r=island.reach;
-  return {minX:r.minX-WORLD.stepX/2,maxX:r.maxX+WORLD.stepX/2,minZ:r.minZ-WORLD.stepZ/2,maxZ:r.maxZ+WORLD.stepZ/2};
+/* The trucks' way: the ring road's outer lane. */
+export function trafficBounds(districts){ return cityPlan(districts).loop; }
+/* Where a resident walks: the sidewalk round a place. */
+export function sidewalkLoop(d){
+  const k = CITY.plinth + CITY.side / 2;
+  return { minX: d.x - k, maxX: d.x + k, minZ: d.z - k, maxZ: d.z + k, r: 0.3 };
 }
 
 /* ---------- each place's real height ----------
@@ -1056,8 +1387,12 @@ export function placeHeight(theme){
   HEIGHTS[key] = TILE.padH + Math.max(top, crew) * TILE.content;
   return HEIGHTS[key];
 }
-/* An authored place's height: its pad and its measured rise. */
+/* Where an authored place's lowest point stands: its dark lower plinth
+   just under the paving (CITY.sink), so what shows is its identity band,
+   its ledge, its status rim and its deck. */
+export function assetFloor(span){ return CITY.walk - 0.012 - span * CITY.sink; }
+/* An authored place's height: from where it stands, its measured rise. */
 export function assetHeight(theme){
   const a = ASSETS[theme];
-  return a ? TILE.padH + a.span * a.rise : null;
+  return a ? assetFloor(a.span) + a.span * a.rise : null;
 }

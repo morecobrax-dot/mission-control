@@ -27,21 +27,24 @@ and works offline.
   you open the app, when you come back to it, and when you tap Refresh. See
   *Status from repositories* below.
 - **Project world.** Every project in the registry — six to start, and a new
-  record needs no other change — as a block in one miniature city, with
-  shared streets, crossings, sidewalks and warm street lighting. Each app has
-  its own architecture: a rooftop track, a clock tower, a reading house, a
-  vault entrance, an observatory or a sushi storefront. Box trucks and
-  residents are ambient scenery; they do not represent live AI activity.
-  Project-specific activity still follows recorded work state. Each has its name and one
-  status on its label (what needs you comes first), a beacon lit only by a
-  known state, and a worker whose station and pose follow that state; a
-  project with no recorded state has no worker. Tap once to bring a project
-  into focus, with a sign over it saying its status and what needs you; tap
-  again (or press Enter) for its brief, or use the Brief
-  button in the slim bar under the world, which always shows the selected
-  project above the tab bar. Drag inside the world to look around; Overview
-  shows every project again. Where WebGL 2 is not
-  available, or the world fails, the flat isometric field is used instead.
+  record needs no other change — as a block in one bright miniature city,
+  set into its own paved block among streets, planted lanes, a canal with
+  footbridges, trees and parked cars. Each app has its own architecture: a
+  rooftop track, a clock tower, a reading house, a vault entrance, an
+  observatory or a sushi storefront. Box trucks and residents are ambient
+  scenery; they do not represent live AI activity. Project-specific activity
+  still follows recorded work state. Each has its name and one status on its
+  label (what needs you comes first), a status light lit only by a known
+  state, and a worker whose station and pose follow that state; a project
+  with no recorded state has no worker. Tap once to bring a project into
+  focus, with a card in front of it saying its status and what needs you;
+  tap it again (or press Enter) for its brief, or use the Brief button in
+  the slim bar under the world, which always shows the chosen project above
+  the tab bar. In focus, swipe sideways (or use the arrow keys) to move to
+  the next or previous project; up and down still scroll the page. Overview
+  (or Escape) shows every project again, and nothing at the overview opens a
+  brief on a single tap. Where WebGL 2 is not available, or the world fails,
+  the flat isometric field is used instead.
 - **Quick brief.** Purpose, version, phase, status, current work, next action,
   the blocker if there is one, and when it was last updated — plus the tools
   that are actually set up. On a phone it is a page; on an iPad in landscape
@@ -52,7 +55,8 @@ and works offline.
   attention counts. Nothing is ever filled in for you.
 - **Private tool links.** A ChatGPT conversation link and a Claude Code
   session link per project, kept only on this device.
-- The project you focused on is still focused when you come back.
+- The project you chose is still chosen when you come back: the bar under
+  the world shows it, and the world opens on the whole city.
 
 ## What is public and what is not
 
@@ -66,7 +70,7 @@ This repository and its GitHub Pages site are **public**.
 | The copy of it this device fetched, with when and where from | `cache.repoStatus` on your device | A copy of public data |
 | Which record each project shows: yours or its repository's | `data.stateSources` on your device | No |
 | ChatGPT and Claude links | `data.privateLinks` on your device | No |
-| The project in focus | `ui.selectedProject` on your device | No |
+| The project you chose | `ui.selectedProject` on your device | No |
 
 Private links are never written into source, a test, a log, the offline cache
 or a backup file, and the screens show only a link's host, never its path.
@@ -210,7 +214,7 @@ npm run config:sync   # write derived values into the static files
 
 ```
 index.html              the whole app: tokens, shell, engine, Mission Control
-field/world.js          the 3D world's layout, camera, gestures, crews and places, as data
+field/world.js          the 3D world as data: layout, the city, camera, gestures, labels, crews, places
 field/render3d.js       the 3D world, drawn with Three.js behind the field seam
 vendor/three/           Three.js 0.186.1, a pinned subset, with its licence and provenance
 sw.js                   installs one verified release at a time; its release manifest is generated

@@ -170,19 +170,30 @@ The product's own rules, on top of everything above.
   is on the first screen of a phone, a phone on its side and an iPad, above
   the tab bar.
 - **One miniature city you look at, not one you fly.** Every project owns
-  a titled city block on shared streets, seen through a fixed camera with
-  gentle depth: no orbit or zoom gesture. Roads are visual infrastructure,
-  not claims about dependencies or data flowing between projects. Tap focuses,
-  Overview shows everything, a drag inside the world looks around the island,
-  and the page scrolls everywhere else. A drag never opens anything. Moves
-  are short and can be interrupted; with Reduce Motion they are instant.
+  a block of one city, seen through a fixed camera with gentle depth: no
+  orbit or zoom gesture. Roads, the canal and the bridges are visual
+  infrastructure, not claims about dependencies or data flowing between
+  projects. Tap focuses; in focus a sideways swipe goes to the next or
+  previous place, in the city's reading order (back to front, left to
+  right), never round the end; Overview shows everything. Up and down
+  always scroll the page, a drag pans only while the whole city is not in
+  view, and a drag never opens anything. Only a clear swipe moves: one that
+  goes neither far enough nor fast enough settles back. Every move is one
+  flight: it leaves at the speed the camera already has, can be interrupted
+  or chained, and lands exactly on its frame; with Reduce Motion it is
+  instant, and a swipe still moves the focus.
 - **Smooth before rich.** A frame only moves things; it never measures the
   page. Detail and life never cost a tap its response: on a device that
   cannot keep up, the world draws at a lower resolution rather than slower.
-- **The first tap says where things stand.** A sign rises over the tapped
-  place with its status and everything that needs you, in the brief's words
-  and shapes, and says that a second tap opens the brief. It shows only what
-  the record holds: no count, score or trend it cannot support.
+  No label jumps or flickers on the way: the ones readable where the camera
+  is going are decided as it leaves, and a label whose words change glides
+  from where it was.
+- **The place in focus says where things stand.** Its card stands just in
+  front of it with its status and everything that needs you, in the brief's
+  words and shapes, and says that a tap opens the brief. It shows only what
+  the record holds: no count, score or trend it cannot support. Nothing out
+  of focus offers the brief: at the overview, after Overview and after a
+  relaunch no place says it. *(enforced)*
 - **The selection is always actionable.** The selected project's name, its
   one dominant status and a Brief action sit in a slim dock under the world,
   above the tab bar, whatever was panned, focused, rotated or reopened. It is
@@ -190,13 +201,16 @@ The product's own rules, on top of everything above.
 - **Attention is short because the row says why.** Each button says only
   what the project needs — Decision, QA, or what is blocking — and its
   accessible name says it in full. It is never hidden behind a control.
-- **One status per label.** A label says the project's name and one status —
-  what needs you, if anything does — in words and a shape. Labels are type,
-  not boxes: a chip only for what needs you, a backing only for the
-  selection. The brief says the
-  rest. Labels never shrink as projects are added; the world pans instead. A
-  label that cannot be read without covering another is not shown, and cannot
-  be tapped.
+- **One status per label, on its own place.** A label says the project's
+  name and one status — what needs you, if anything does — in words and a
+  shape, and stands on its own place, so it names that place and covers no
+  other. Labels are type over the city with a halo of its ground: a solid
+  chip in its hue for what needs you, a pale one for a recorded state, a
+  dashed outline for Needs update. Only the chosen project gets a light plate
+  with an ink ring; no dark box ever sits over the bright city. The brief says
+  the rest. Labels never shrink as projects are added; the world pans instead.
+  A label that cannot be read without covering another, or whose place has
+  left the view, is not shown, and cannot be tapped.
 - **Places, not progress bars.** Each project's place says what the project
   is, drawn from what it really is. Nothing in it counts, fills or levels up;
   no building appears because a project is further along.
@@ -211,8 +225,13 @@ The product's own rules, on top of everything above.
   travel the streets as decorative city life. They are not Claude agents,
   proof of project activity or a progress metric. Their appearance never
   changes the actual worker state.
-- **One focus.** One tap focuses a project, a second opens its brief. The
-  focus is remembered, because it is what you come back to.
+- **Chosen and in focus are two things.** One tap focuses a project, a
+  second on the project in focus opens its brief, and a swipe moves the
+  focus without opening anything. The choice is remembered, because it is
+  what you come back to: the dock shows it and opens its brief in one tap.
+  The focus is this visit's: the overview, Overview and a relaunch have
+  nothing in focus, so the next tap on a place focuses it rather than
+  opening a brief nobody asked for. *(enforced)*
 - **Unknown is not a status.** A project with no recorded state says "Needs
   update" — in words, with its own shape, never as a status chip — and is
   counted as a project, not as active or as needing you. Nothing is invented
@@ -248,12 +267,19 @@ The product's own rules, on top of everything above.
   Blocked workers stand still and paused workers sit. All motion settles five
   minutes after you last touch the world, stops when hidden, and respects
   Reduced Motion. Nothing claims live agent execution.
-- **Blue-hour architecture.** Soft bevels, physical matte materials, cool
-  ambient fill, warm windows and restrained contact shadows establish the
-  miniature-city look. Lighting is a mobile-friendly approximation, not
-  ray-traced global illumination. Each block has a distinct silhouette,
-  recognizable purpose and street-facing details; avoid generic props on
-  scattered platforms or a random forest between them.
+- **A bright, warm miniature city.** Daylight: a warm sun with soft
+  shadows over warm stone paving, a charcoal road, one jade canal and round
+  trees, on a warm ivory ground, while the app's chrome stays dark — a
+  control surface with one bright window onto the city. Each place is set
+  into its own block as a raised terrace: its platform's dark plinth under
+  the paving, its identity band a coloured course at the curb, its status
+  rim the block's lit inner edge. The city between is controlled
+  irregularity, never a grid, tiles or a playmat: streets and planted lanes
+  alternate so corners are offset, crossings are painted only at street
+  corners, a street that meets the water ends in bollards, and nothing tall
+  stands in front of a place. Every street, paving and water colour stays at
+  least ΔE 20 from every status colour. *(enforced)* Lighting is a
+  mobile-friendly approximation, not ray-traced global illumination.
 
 ## Real-device QA before shipping
 

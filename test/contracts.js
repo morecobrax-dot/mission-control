@@ -38,6 +38,14 @@ function js(){ return H.mainScript(H.readApp()); }
 function stripComments(s){
   return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
+/* One function of the page script, whole, by its name ('' if it is gone). */
+function fnSrc(name){
+  const s = js(), at = s.indexOf('function ' + name + '(');
+  if(at === -1) return '';
+  let depth = 0;
+  for(let j = s.indexOf('{', at); j < s.length; j++){ if(s[j] === '{') depth++; else if(s[j] === '}' && --depth === 0) return s.slice(at, j + 1); }
+  return '';
+}
 
 /* Obviously fake links. Real ones never appear in this repository: the
    secret scan (contract 25) ignores exactly these markers — a .test host or
@@ -1731,6 +1739,62 @@ function testHub(){
   c.closeBrief(); c.__flush();
   T('Back closes it', !d.getElementById('briefOverlay').classList.contains('open'));
 
+  /* 0.8.0 kept one value for both "chosen" and "armed for a second tap":
+     after Overview, or any relaunch with a stored choice, the world still
+     said "Tap again for the brief" over a project nobody was looking at,
+     and the next tap on it opened the brief at once. */
+  sub('the overview offers no brief: focus is this visit\'s, the choice is remembered');
+  const cardOf = (ctx, id) => (ctx.fieldScene(ctx.allViews()).find(x => x.id === id) || {}).card;
+  T('in focus, the project is chosen and in focus, and only it carries the card that offers the brief',
+    c.selectedId === 'dayplan' && c.focusedId === 'dayplan' && !!cardOf(c, 'dayplan') &&
+    c.fieldScene(c.allViews()).filter(x => x.card || x.focused).map(x => x.id).join() === 'dayplan');
+  c.leaveFocus(); c.__flush();
+  T('Overview leaves focus and keeps the choice', c.focusedId === null && c.selectedId === 'dayplan' &&
+    shared.get(ns + c.KEYS.selectedProject) === 'dayplan');
+  T('nothing in the world offers the brief at the overview', c.fieldScene(c.allViews()).every(x => !x.card && !x.focused));
+  T('the chosen project is still marked chosen, and the dock still opens its brief in one tap',
+    c.fieldScene(c.allViews()).filter(x => x.selected).map(x => x.id).join() === 'dayplan' &&
+    /DayPlan/.test(html('focusBar')) && /class="focus-go">Brief/.test(html('focusBar')));
+  c.tapProject('dayplan'); c.__flush();
+  T('a tap on the chosen project at the overview brings it into focus, and opens nothing',
+    c.focusedId === 'dayplan' && !d.getElementById('briefOverlay').classList.contains('open') && !!cardOf(c, 'dayplan'));
+  c.tapProject('dayplan'); c.__flush();
+  T('the next tap on it opens its brief', d.getElementById('briefOverlay').classList.contains('open'));
+  c.closeBrief(); c.__flush();
+  c.leaveFocus(); c.leaveFocus(); c.__flush();
+  T('leaving focus twice is harmless', c.focusedId === null && c.selectedId === 'dayplan');
+  const back = H.loadApp({ sharedStorage: shared });
+  T('a relaunch remembers the choice and has nothing in focus, so nothing offers the brief',
+    back.ctx.selectedId === 'dayplan' && back.ctx.focusedId === null &&
+    back.ctx.fieldScene(back.ctx.allViews()).every(x => !x.card && !x.focused));
+  back.ctx.tapProject('dayplan'); back.ctx.__flush();
+  T('after a relaunch the first tap focuses, and only the second opens the brief',
+    !back.dom.document.getElementById('briefOverlay').classList.contains('open') && back.ctx.focusedId === 'dayplan');
+  back.ctx.tapProject('dayplan'); back.ctx.__flush();
+  T('and it does', back.dom.document.getElementById('briefOverlay').classList.contains('open'));
+  back.ctx.closeBrief(); back.ctx.__flush();
+
+  sub('a swipe moves the focus: once, quietly, never into a brief');
+  c.tapProject('loop'); c.__flush();
+  const scrolled = [];
+  const dockEl = d.getElementById('focusBar');
+  const realReveal = dockEl.scrollIntoView;
+  dockEl.scrollIntoView = () => scrolled.push(1);
+  c.navigateProject('dayplan'); c.__flush();
+  T('the next place is chosen and in focus, and the choice is saved',
+    c.selectedId === 'dayplan' && c.focusedId === 'dayplan' && shared.get(ns + c.KEYS.selectedProject) === 'dayplan');
+  T('the dock follows it', /DayPlan/.test(html('focusBar')) && html('focusBar').indexOf('>' + c.PROJECT_REGISTRY.find(p => p.id === 'loop').name + '<') === -1);
+  T('the brief stays closed, and the page is not scrolled to the dock', !d.getElementById('briefOverlay').classList.contains('open') && scrolled.length === 0);
+  T('the card moves with it', !cardOf(c, 'loop') && !!cardOf(c, 'dayplan'));
+  c.navigateProject('no-such-project'); c.__flush();
+  T('a swipe to nothing changes nothing', c.selectedId === 'dayplan' && c.focusedId === 'dayplan');
+  dockEl.scrollIntoView = realReveal;
+  c.openProjectBrief('capybara-sushi'); c.__flush();
+  T('a Needs-attention button opens its project\'s brief, with that project in focus behind it',
+    d.getElementById('briefOverlay').classList.contains('open') && c.focusedId === 'capybara-sushi' && c.selectedId === 'capybara-sushi');
+  c.closeBrief(); c.__flush();
+  c.leaveFocus(); c.__flush();
+
   sub('recorded attention appears; unknown stays apart');
   const record = (id, fill) => { c.openStateForm(id); fill(); c.saveStateForm(); c.__flush(); };
   record('capybara-sushi', () => { c.pickStatus('building'); d.getElementById('stateBlocker').value = 'Waiting on art'; });
@@ -1829,27 +1893,29 @@ function testFieldSeam(){
   const renderer = (src.match(/PROJECT FIELD — one renderer at a time[\s\S]*?\r?\n   HUB\r?\n/) || [''])[0];
   T('the renderer section is found', renderer.length > 2000);
   T('the renderer never reads or writes storage', !/Store\./.test(stripComments(renderer)));
-  T('the renderer never changes the selection', !/selectedId\s*=(?!=)/.test(stripComments(renderer)));
+  T('the renderer never changes the selection or the focus', !/(selectedId|focusedId)\s*=(?!=)/.test(stripComments(renderer)));
   const scene = c.fieldScene(c.allViews());
   T('the scene carries only what drawing needs', Object.keys(scene[0]).sort().join() ===
-    'attention,badge,id,name,recorded,selected,sign,signal,spoken,status,theme,workerState');
+    'attention,badge,card,focused,id,name,recorded,selected,signal,spoken,status,theme,workerState');
   T('the page adds no script file and no package dependency: the world is a module the page imports',
     !/<canvas/.test(H.readApp()) && !/<script[^>]*\bsrc=/.test(H.readApp()) &&
     Object.keys(H.readPkg().dependencies || {}).length === 0 && Object.keys(H.readPkg().devDependencies || {}).length === 0);
 
-  sub('the sign over the selected project says what the record holds, and nothing more');
+  sub('the card of the project in focus says what the record holds, and nothing more');
   const signApp = H.loadApp(), sc = signApp.ctx;
-  const signOf = id => (sc.fieldScene(sc.allViews()).find(x => x.id === id) || {}).sign;
+  const signOf = id => (sc.fieldScene(sc.allViews()).find(x => x.id === id) || {}).card || '';
   const plain = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   const firstId = sc.PROJECT_REGISTRY[0].id, secondId = sc.PROJECT_REGISTRY[1].id;
+  T('with nothing in focus no project carries a card', sc.fieldScene(sc.allViews()).every(x => !x.card));
   sc.tapProject(firstId); sc.__flush();
-  T('only the selected project carries a sign', sc.fieldScene(sc.allViews()).filter(x => x.sign).map(x => x.id).join() === firstId);
+  T('only the project in focus carries a card', sc.fieldScene(sc.allViews()).filter(x => x.card).map(x => x.id).join() === firstId &&
+    sc.fieldScene(sc.allViews()).filter(x => x.focused).map(x => x.id).join() === firstId);
   T('with no record it says Needs update, and names no status', /Needs update/.test(plain(signOf(firstId))) &&
     !/Building|Planning|Stable|Paused|Blocked|Needs QA|Needs decision|Release ready/.test(plain(signOf(firstId))));
   sc.openStateForm(firstId); sc.pickStatus('building'); sc.toggleSwitch('stateQa'); sc.saveStateForm(); sc.__flush();
   T('recorded, it names the status and everything that needs you, each with its shape',
     /Building/.test(plain(signOf(firstId))) && /Needs QA/.test(plain(signOf(firstId))) && (signOf(firstId).match(/<svg/g) || []).length === 2);
-  T('it says what a second tap does', /Tap again for the brief/.test(plain(signOf(firstId))));
+  T('it says what a tap on it does now', /Tap for the brief/.test(plain(signOf(firstId))));
   sc.openStateForm(firstId); sc.pickStatus('building');
   const blockerField = signApp.dom.document.getElementById('stateBlocker');
   if(blockerField) blockerField.value = 'Waiting on <b>FAKE</b> review 2';
@@ -1858,7 +1924,10 @@ function testFieldSeam(){
   T('beyond the blocker\'s own words it shows no number: nothing the record cannot support',
     !/\d/.test(plain(signOf(firstId)).replace(/Waiting on &lt;b&gt;FAKE&lt;\/b&gt; review 2/, '')));
   sc.tapProject(secondId); sc.__flush();
-  T('choosing another project moves the sign to it', !signOf(firstId) && !!signOf(secondId));
+  T('focusing another project moves the card to it', !signOf(firstId) && !!signOf(secondId));
+  sc.leaveFocus(); sc.__flush();
+  T('at the overview no project carries one, the chosen one included', sc.fieldScene(sc.allViews()).every(x => !x.card) &&
+    sc.fieldScene(sc.allViews()).find(x => x.id === secondId).selected === true);
   T('no errors', signApp.errors.length === 0, signApp.errors.join(' | '));
 
   sub('platforms are drawn from data');
@@ -2935,12 +3004,14 @@ async function testWorld(){
   Object.keys(W.STATIONS).forEach(k => W.STATIONS[k].parts.forEach(p => parts.push(['station ' + k, p])));
   Object.keys(W.HAND_PROPS).forEach(k => W.HAND_PROPS[k].forEach(p => parts.push(['hand ' + k, p])));
   Object.keys(W.SCENERY).forEach(k => W.SCENERY[k].forEach(p => parts.push(['growth ' + k, p])));
+  [[6, 2], [6, 3], [7, 3], [1, 1], [12, 4]].forEach(([n, cols]) => W.cityParts(W.layoutDistricts(n, cols).districts).forEach(p => parts.push(['city ' + n + 'x' + cols, p])));
+  W.CAR_PARTS.concat([W.TRUCK_PARTS, W.RESIDENT_PARTS]).forEach(set => set.forEach(p => parts.push(['city traffic', p])));
   const bad = parts.filter(([, p]) => !colours.has(p.c) || W.SHAPES.indexOf(p.s) === -1 || W.FINISHES.indexOf(p.m) === -1 ||
     !p.p.every(Number.isFinite) || !p.d.every(v => v === null || v === undefined || (Number.isFinite(v) && v > 0)));
-  T('every part is a known shape, finish and colour, with real dimensions', bad.length === 0,
+  T('every part is a known shape, finish and colour, with real dimensions, the city\'s included', bad.length === 0,
     bad.slice(0, 3).map(b => b[0] + ' ' + JSON.stringify(b[1])).join(' | '));
-  T('a station or the island\'s growth is the same everywhere: no project colour',
-    parts.filter(([w, p]) => /^(station|hand|growth)/.test(w) && (p.c === 'tint' || p.c === 'terrain')).length === 0);
+  T('a station, the island\'s growth or the city is the same everywhere: no project colour',
+    parts.filter(([w, p]) => /^(station|hand|growth|city)/.test(w) && (p.c === 'tint' || p.c === 'terrain')).length === 0);
   T('glow is only ever the light of a place', parts.filter(([, p]) => p.m === 'glow').every(([, p]) => ['window', 'windowCool', 'windowDim', 'screen', 'tint', 'paper'].indexOf(p.c) !== -1));
   /* CIE76, as contract 24: the island and what grows on it are never read
      as a state. */
@@ -2954,12 +3025,13 @@ async function testWorld(){
   };
   const hexOf = name => { const m = new RegExp(name + ':\\s*(#[0-9A-Fa-f]{6})').exec(style); return m ? m[1] : null; };
   const sigHex = [...style.matchAll(/--sig-[a-z]+:\s*(#[0-9A-Fa-f]{6})/g)].map(m => m[1]);
-  const land = ['grass', 'grassEdge', 'soil', 'rock', 'leaf', 'leafDark', 'bark', 'petal', 'petalLight'].map(k => W.PALETTE[k]);
+  const land = ['grass', 'grassEdge', 'soil', 'rock', 'leaf', 'leafDark', 'bark', 'petal', 'petalLight',
+                'asphalt', 'sidewalk', 'curb', 'cityBase', 'canal', 'quay', 'roadPaint'].map(k => W.PALETTE[k]);
   const nearest = land.map(t => {
     const a = lab(hexOf(t) || '#000000');
     return [t, Math.min.apply(null, sigHex.map(h => { const b = lab(h); return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }))];
   });
-  T('the land is never a status colour: every land and plant token is at least ΔE 20 from every status hue',
+  T('the land and the city are never a status colour: every land, plant, street, paving and water token is at least ΔE 20 from every status hue',
     sigHex.length === 9 && land.every(t => !!hexOf(t)) && nearest.every(([, d]) => d >= 20),
     nearest.filter(([, d]) => d < 20).map(([t, d]) => t + ' ' + d.toFixed(1)).join(', '));
 
@@ -3074,16 +3146,27 @@ async function testWorld(){
   T('one world with depth: a nearer row is drawn larger than a farther one', deeper);
   const phone = W.chooseLayout(6, 358, 521, themes6.map(W.placeHeight), null);
   T('on a phone the six city blocks stand two to a row at the readable overview scale', phone.fits && phone.cols === 2 && phone.size >= W.WORLD.minDistrictPx, phone.cols + ' cols, ' + phone.size.toFixed(1) + ' px');
-  const phoneRooms = themes6.map((_, i) => ({ w: 100, h: i === 4 ? 56 : 36 }));
-  const phoneMeasured = W.chooseLayout(6, 358, 521, themes6.map(W.placeHeight), phoneRooms);
-  const phonePoints = phoneMeasured.districts.flatMap((d, i) => W.districtPoints(d, W.placeHeight(themes6[i]), phoneRooms[i]));
+  /* Labels at the overview stand on their own places (labelSpot, under 0):
+     each is whole in the view and names no other place. */
+  const phoneRooms = themes6.map((_, i) => ({ w: 100, h: i === 4 ? 56 : 44 }));
+  const phoneMeasured = W.chooseLayout(6, 358, 521, themes6.map(W.placeHeight));
+  const phonePoints = phoneMeasured.districts.flatMap((d, i) => W.districtPoints(d, W.placeHeight(themes6[i]), null));
   W.islandOutline(W.islandOf(phoneMeasured.districts), 96, 0).forEach(([x, z]) => phonePoints.push({ p: [x, -W.WORLD.islandDepth, z] }));
-  T('phone overview keeps the whole street slab and measured labels inside the view instead of cropping side blocks',
+  const onPlace = phoneMeasured.districts.map((d, i) => {
+    const a = W.project(W.labelAnchor(d), phoneMeasured.frame, 358, 521), s = W.labelSpot(a, phoneRooms[i].w, phoneRooms[i].h, 0, 358);
+    const hull = W.project([d.x, W.CITY.walk, d.z - W.CITY.plinth], phoneMeasured.frame, 358, 521);
+    return { s: s, w: phoneRooms[i].w, h: phoneRooms[i].h, a: a, back: hull };
+  });
+  T('phone overview keeps the whole street slab and every place inside the view instead of cropping side blocks',
     phoneMeasured.fits && phoneMeasured.cols === 2 && phonePoints.every(q => {
       const p = W.project(q.p, phoneMeasured.frame, 358, 521);
-      return p.depth > 0 && p.x - (q.w || 0) >= 0 && p.x + (q.w || 0) <= 358 && p.y - (q.up || 0) >= 0 && p.y + (q.down || 0) <= 521;
+      return p.depth > 0 && p.x >= 0 && p.x <= 358 && p.y >= 0 && p.y <= 521;
     }));
-  const shortPhone = W.chooseLayout(6, 341, 335, themes6.map(W.placeHeight), phoneRooms);
+  T('at the phone overview each label stands on its own place, whole in the view: its foot at the place\'s front edge, its middle over the place',
+    onPlace.every(l => l.s.x >= 0 && l.s.x + l.w <= 358 && l.s.y >= 0 && l.s.y + l.h <= 521 &&
+      Math.abs(l.s.y + l.h - (l.a.y - 4)) <= 1 && l.s.y + l.h / 2 > l.back.y && l.s.y + l.h / 2 < l.a.y),
+    JSON.stringify(onPlace.map(l => [l.s.y, Math.round(l.back.y), Math.round(l.a.y)])));
+  const shortPhone = W.chooseLayout(6, 341, 335, themes6.map(W.placeHeight));
   T('a short phone shows all six blocks instead of silently panning past the bank', shortPhone.fits && shortPhone.cols === 2);
 
   sub('city ambience has bounded continuous paths, separate from project work');
@@ -3096,16 +3179,90 @@ async function testWorld(){
   }
   T('trucks remain on their road bounds',pathsSafe);
   T('rounded street turns keep position and heading continuous',pathsContinuous);
-  T('street scenery is generated for any registered block count', W.cityParts(phone.districts).length>0 && W.cityParts(W.layoutDistricts(7,3).districts).length>W.cityParts(phone.districts).length);
   T('residents and delivery trucks have no state inputs', W.streetPose.length===3 && !/workerState|status|recorded/.test(W.streetPose.toString()));
+
+  /* 0.9.0 set the places into one city (world.js cityPlan): before it they
+     stood on separate plinths on a dark slab with crossings painted
+     everywhere. A place hidden behind a tree, a truck through a block, a
+     second canal or a street grid are what these prevent. */
+  sub('the city: every place in its block, one canal, offset corners, life on its own ways');
+  const P = W.CITY.plinth, E = P + W.CITY.side;
+  const cities = [[1, 1], [2, 2], [3, 3], [5, 2], [6, 2], [6, 3], [7, 3], [9, 3], [12, 4], [20, 5], [50, 8]].map(([n, cols]) => {
+    const lay = W.layoutDistricts(n, cols);
+    return { n: n, cols: cols, rows: lay.rows, ds: lay.districts, plan: W.cityPlan(lay.districts) };
+  });
+  const inRect = (x, z, r, m) => x > r.minX - (m || 0) && x < r.maxX + (m || 0) && z > r.minZ - (m || 0) && z < r.maxZ + (m || 0);
+  const onAPlace = (ds, x, z, m) => ds.some(d => Math.abs(x - d.x) < P + (m || 0) && Math.abs(z - d.z) < P + (m || 0));
+  T('every place stands in a paved block: its sidewalk all round it is one curb above the road',
+    cities.every(c => c.ds.every(d => [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 1], [0, -1], [1, 0], [-1, 0]].every(([sx, sz]) =>
+      c.plan.paving.some(r => inRect(d.x + sx * (E - 0.05), d.z + sz * (E - 0.05), r))))));
+  const things = c => c.plan.trees.concat(c.plan.lamps, c.plan.benches, c.plan.cars, c.plan.bollards, c.plan.bays);
+  T('nothing is planted, parked, lit or painted on a place', cities.every(c => things(c).every(t => !onAPlace(c.ds, t.x, t.z, 0.05)) &&
+    c.plan.zebras.concat(c.plan.dashes).every(m => !onAPlace(c.ds, m.x, m.z, 0))));
+  T('nothing tall stands just in front of a place, where it would hide the place or its card', cities.every(c =>
+    c.plan.trees.every(t => !c.ds.some(d => Math.abs(t.x - d.x) < P && t.z > d.z + P && t.z < d.z + P + 4))));
+  T('everything stands on the island, inside the promenade\'s shore', cities.every(c => things(c).every(t => W.onIsland(c.plan.island, t.x, t.z, 0.3))));
+  T('one canal, only where there are two rows or more, spanning the city between the two rows nearest the middle',
+    cities.every(c => c.rows < 2 ? !c.plan.canal : !!c.plan.canal && W.canalAfter(c.rows) >= 0 &&
+      c.plan.canal.minX === c.plan.inner.minX && c.plan.canal.maxX === c.plan.inner.maxX &&
+      c.ds.every(d => d.z + P < c.plan.canal.minZ || d.z - P > c.plan.canal.maxZ)));
+  T('the city crosses the canal on footbridges that land on paving on both sides', cities.filter(c => c.plan.canal).every(c => c.plan.bridges.length >= 1 &&
+    c.plan.bridges.every(b => [b.minZ, b.maxZ].every(z => c.plan.paving.some(r => inRect(b.x, z, r, 0.3))))));
+  const fullRows = c => { const byRow = {}; c.ds.forEach(d => { (byRow[d.row] = byRow[d.row] || []).push(d); }); return byRow; };
+  T('no two neighbouring rows meet at the same corner: where one row has a street between two places, the next has a lane',
+    cities.filter(c => c.cols >= 2 && c.rows >= 2).every(c => {
+      const rows = fullRows(c), road = (r, x) => !c.plan.paving.some(p => inRect(x, (rows[r][0].z), p));
+      return Object.keys(rows).map(Number).every(r => !rows[r + 1] || rows[r].length !== rows[r + 1].length ||
+        rows[r].slice(1).every((d, k) => road(r, (rows[r][k].x + d.x) / 2) !== road(r + 1, (rows[r][k].x + d.x) / 2)));
+    }));
+  const zebraEnds = z => z.along === 'z' ? [[z.x, z.z - z.len / 2], [z.x, z.z + z.len / 2]] : [[z.x - z.len / 2, z.z], [z.x + z.len / 2, z.z]];
+  const strays = cities.map(c => c.plan.zebras.filter(z => c.plan.paving.some(r => inRect(z.x, z.z, r, -0.05)) ||
+    !zebraEnds(z).every(([x, zz]) => c.plan.paving.some(r => inRect(x, zz, r, 0.3)))).length);
+  T('a crossing is painted only on a road, from curb to curb at a block\'s corner, and a street that reaches the water ends in bollards',
+    strays.every(n => n === 0) && cities.filter(c => c.plan.canal).every(c => c.plan.bollards.every(b => Math.abs(b.z - c.plan.canal.z) < W.WORLD.stepZ / 2)),
+    strays.join());
+  const pathNear = (loop, x, z) => { let m = Infinity; for(let t = 0; t < W.loopLength(loop) / 1.1; t += 0.05){ const p = W.streetPose(loop, t, 0); m = Math.min(m, Math.hypot(p.x - x, p.z - z)); } return m; };
+  T('parked cars keep to the curb, clear of the trucks\' lane', cities.slice(0, 7).every(c => c.plan.cars.every(car => pathNear(c.plan.loop, car.x, car.z) > 0.51 + 0.42)));
+  let truckSafe = true;
+  cities.forEach(c => { for(let t = 0; t < 200; t += 0.37){
+    const p = W.streetPose(c.plan.loop, t, 0), ux = Math.sin(p.turn), uz = Math.cos(p.turn);
+    [[0, 1.14], [0, -1.14], [0.51, 1.14], [-0.51, 1.14], [0.51, -1.14], [-0.51, -1.14]].forEach(([s, f]) => {
+      const x = p.x + uz * s + ux * f, z = p.z - ux * s + uz * f;
+      if(c.plan.paving.some(r => inRect(x, z, r, -0.02)) || !W.onIsland(c.plan.island, x, z, W.CITY.shore - 0.05)) truckSafe = false;
+    });
+  } });
+  T('a truck keeps to the ring road: its whole body off every block and inside the promenade, round every corner', truckSafe);
+  T('a resident walks the sidewalk round its place, never across it', cities.every(c => c.ds.slice(0, 10).every(d => {
+    const w = W.sidewalkLoop(d);
+    for(let t = 0; t < 60; t += 0.5){ const p = W.streetPose(w, t, 0); if(onAPlace([d], p.x, p.z, 0.1)) return false; }
+    return true;
+  })));
+  T('the same layout is the same city every time', JSON.stringify(W.cityPlan(cities[4].ds)) === JSON.stringify(cities[4].plan) &&
+    JSON.stringify(W.cityParts(cities[4].ds)) === JSON.stringify(W.cityParts(cities[4].plan)));
+  T('the city is scenery: it knows positions, never a record', !/workerState|status|recorded|attention|signal/.test(W.cityPlan.toString() + W.cityParts.toString()));
+  T('the city is sized to its places, and stays lean: a bounded number of parts per place, at any size',
+    cities.every(c => W.cityParts(c.plan).length <= 120 + 95 * c.n), cities.map(c => c.n + ':' + W.cityParts(c.plan).length).join(' '));
+  /* The platform numbers are the Blender master's: a change there must change them here. */
+  const platform = read('art/blender/scripts/mc_platform.py');
+  const base = Number((/BASE = ([\d.]+)/.exec(platform) || [])[1]), plinthTop = Number((/'PB_Plinth', BASE, BASE, [\d.]+, 0\.0, ([\d.]+),/.exec(platform) || [])[1]);
+  const bandTop = plinthTop + Number((/'PB_Accent', BAND, BAND, [\d.]+, [\d.]+, ([\d.]+),/.exec(platform) || [])[1]);
+  T('an authored place is set into its block: its dark plinth just under the paving, its identity band, rim and deck above it',
+    base === 16.9 && Math.abs(W.CITY.sink - plinthTop / base) < 1e-9 && Object.values(W.ASSETS).every(a => {
+      const floor = W.assetFloor(a.span);
+      return a.span === 2 * P && floor + a.span * plinthTop / base < W.CITY.walk && floor + a.span * plinthTop / base > W.CITY.walk - 0.05 &&
+        floor + a.span * bandTop / base > W.CITY.walk + 0.05;
+    }), [base, plinthTop, bandTop].join());
+  T('placement only: the renderer stands the file there and changes nothing of it', /inst\.position\.set\(-\(box\.min\.x \+ box\.max\.x\) \/ 2 \* k, floor - box\.min\.y \* k,/.test(r3) &&
+    !/assetPad|asset-pad/.test(r3));
   const landBody = r3.slice(r3.indexOf('function buildLand('), r3.indexOf('function meshesFor('));
   T('light and layout identifiers cannot shadow each other at world construction', /const layoutKey =/.test(r3) &&
     /\[\[key, LIGHT\.key\], \[fill, LIGHT\.fill\], \[rim, LIGHT\.rim\]\]\.forEach/.test(landBody) && !/\b(const|let) (key|fill|rim)\b/.test(landBody));
-  T('cached shadows cannot retain an old worker station or moving prop: only architecture, the recipe place or an authored place\'s pad, casts into the cached map',
+  T('cached shadows cannot retain an old worker station or moving prop: only architecture, the recipe place and the still city, casts into the cached map',
     /mesh\.castShadow = !!staticShadow && m !== 'glow'/.test(r3) &&
     /meshesFor\(placeGeo\(item\.theme, tintOf\), t\.content, true, true\)/.test(r3) &&
-    /meshesFor\(partsGeo\('asset-pad', padParts\(\)\.slice\(0, 1\)\), t\.content, true, true\)/.test(r3) &&
-    (r3.match(/, true, true\)/g) || []).length === 2);
+    (r3.match(/, true, true\)/g) || []).length === 1 &&
+    /const g = toGeometries\(mergeParts\(cityParts\(plan\), col\)\);[\s\S]{0,200}mesh\.castShadow = m === 'matte';/.test(r3) &&
+    /meshesFor\(partsGeo\('city-truck',TRUCK_PARTS\),g,false\)\.forEach\(m=>\{m\.castShadow=false;\}\)/.test(r3));
   T('an authored worker that moves takes its shadow with it: the map follows at a set pace, only while it moves and is drawn large',
     /if\(districtPx\(districtOf\(t\), S\.frame, S\.w, S\.h\) >= LIGHT\.shadowMinPx\) moved = true;/.test(r3) &&
     /if\(moved && now - S\.shadowAt >= LIGHT\.shadowRefreshMs\)\{ S\.shadowAt = now; S\.shadowRefreshes\+\+; renderer\.shadowMap\.needsUpdate = true; \}/.test(r3) &&
@@ -3204,7 +3361,7 @@ async function testWorld(){
     /showAsset\(t, false\)/.test(r3) && /ASSET_WAIT_MS = \d{4,5};/.test(r3) && Number(/ASSET_WAIT_MS = (\d+);/.exec(r3)[1]) <= 6000);
   T('a file that arrives after the world is shown still takes its place, and the layout follows its height',
     /showAsset\(t, false, 'late'\)/.test(r3) &&
-    /if\(!t\.settled\)\{ t\.settled = true; S\.pending = Math\.max\(0, S\.pending - 1\); \}\s*if\(S\.order\.length && S\.w\)\{ S\.reroom = 0; relayout\(\); reframe\(\); \}/.test(r3));
+    /if\(!t\.settled\)\{ t\.settled = true; S\.pending = Math\.max\(0, S\.pending - 1\); \}\s*if\(S\.order\.length && S\.w\)\{ relayout\(\); reframe\(\); \}/.test(r3));
   T('the authored districts stand in the city together, each its own file and its own look',
     Object.keys(W.ASSETS).length >= 2 && new Set(Object.values(W.ASSETS).map(a => a.url)).size === Object.keys(W.ASSETS).length);
   /* 0.8.0 completed the city: one of the six required projects without an
@@ -3259,13 +3416,17 @@ async function testWorld(){
   const focus = W.focusFrame(ds6[5], hts[5], null, over, 358, 521);
   T('focus comes closer than the overview', focus.d < over.d && focus.d >= W.WORLD.minDist);
   T('and draws the place larger', W.districtPx(ds6[5], focus, 358, 521) > W.districtPx(ds6[5], over, 358, 521) * 1.2);
-  const seen = W.districtPoints(ds6[5], hts[5], null, W.WORLD.sign).every(q => {
-    const s = W.project(q.p, focus, 358, 521);
-    return inView({ x: s.x, y: s.y + (q.down || 0) - (q.up || 0) }, 358, 521, 1);
+  const cardRoom = { w: 230, h: 96 }, carded = W.focusFrame(ds6[5], hts[5], cardRoom, over, 358, 521);
+  const seen = W.districtPoints(ds6[5], hts[5], cardRoom).every(q => {
+    const s = W.project(q.p, carded, 358, 521);
+    return inView({ x: s.x - (q.w || 0), y: s.y + (q.down || 0) }, 358, 521, 1) && inView({ x: s.x + (q.w || 0), y: s.y }, 358, 521, 1);
   });
-  T('the focused place, its label and its sign are all in view', seen);
-  const tall = W.focusFrame(ds6[5], hts[5], null, over, 358, 521, { w: 200, h: 140 });
-  T('a taller sign is given its room', tall.d > focus.d);
+  T('the focused place and its card in front of it are all in view', seen);
+  const tallRoom = { w: 230, h: 170 }, tall = W.focusFrame(ds6[5], hts[5], tallRoom, over, 358, 521);
+  T('a taller card is given its room: the place and all of the card still in view', W.districtPoints(ds6[5], hts[5], tallRoom).every(q => {
+    const s = W.project(q.p, tall, 358, 521);
+    return inView({ x: s.x - (q.w || 0), y: s.y + (q.down || 0) }, 358, 521, 1) && inView({ x: s.x + (q.w || 0), y: s.y }, 358, 521, 1);
+  }));
   const home = W.revealFrame(focus, ds6[5], hts[5], null, 358, 521, isl6);
   T('a district already in view does not move the camera', home === focus);
   const moved = W.revealFrame(focus, ds6[0], hts[0], null, 358, 521, isl6), p0 = W.project([ds6[0].x, 0, ds6[0].z], moved, 358, 521);
@@ -3273,8 +3434,35 @@ async function testWorld(){
   const close = { x: ds6[0].x, z: ds6[0].z, d: W.WORLD.minDist }, behind = W.project([ds6[5].x, 0, ds6[5].z], close, 358, 521);
   const turned = W.revealFrame(close, ds6[5], hts[5], null, 358, 521, isl6), p5 = W.project([ds6[5].x, 0, ds6[5].z], turned, 358, 521);
   T('even one behind the camera, close in at the back row', behind.depth < 0.5 && p5.depth > 0.5 && inView(p5, 358, 521, 0), [behind.depth, p5]);
-  T('a flight starts where it is and ends where it was sent',
-    W.sameFrame(W.mixFrame(over, focus, 0), over) && W.sameFrame(W.mixFrame(over, focus, 1), focus));
+  /* One way the camera moves (world.js planFlight), for overview, focus, the
+     next place and back: 0.8.0 flew a fixed 420 ms from a standstill, so a
+     flight that interrupted another stopped the camera dead first. */
+  const fl = W.planFlight(over, focus, 358, 521, W.WORLD.flight.start), steps = [];
+  for(let u = 0; u <= 1.0001; u += 0.02) steps.push(W.flightFrame(fl, u));
+  const along = f => Math.hypot(f.x - over.x, f.z - over.z) / Math.max(1e-9, Math.hypot(focus.x - over.x, focus.z - over.z));
+  T('a flight starts where it is and ends exactly where it was sent',
+    W.sameFrame(W.flightFrame(fl, 0), over) && W.sameFrame(W.flightFrame(fl, 1), focus) && W.sameFrame(W.flightFrame(fl, 7), focus));
+  T('it only ever goes forward, and arrives at rest', steps.every((f, i) => i === 0 || along(f) >= along(steps[i - 1]) - 1e-9) &&
+    along(W.flightFrame(fl, 1)) - along(W.flightFrame(fl, 0.98)) < along(W.flightFrame(fl, 0.02)) - along(W.flightFrame(fl, 0)));
+  const hop = W.planFlight(W.focusFrame(ds6[0], hts[0], null, over, 358, 521), W.focusFrame(ds6[1], hts[1], null, over, 358, 521), 358, 521, 0);
+  const longHop = W.planFlight(W.focusFrame(ds6[0], hts[0], null, over, 358, 521), W.focusFrame(ds6[5], hts[5], null, over, 358, 521), 358, 521, 0);
+  T('a longer way takes longer, within bounds', longHop.ms > hop.ms && hop.ms >= W.WORLD.flight.minMs && longHop.ms <= W.WORLD.flight.maxMs, hop.ms + ' / ' + longHop.ms);
+  const midD = W.flightFrame(hop, 0.5).d, flatD = Math.sqrt(hop.a.d * hop.b.d);
+  T('a hop from place to place rises a little on the way, so the city stays in sight', hop.arc > 0 && midD > flatD * 1.05 && midD < flatD * 1.4, midD.toFixed(1) + ' vs ' + flatD.toFixed(1));
+  const moving = { x: (hop.b.x - hop.a.x) / hop.ms * 2, z: (hop.b.z - hop.a.z) / hop.ms * 2, l: 0 };
+  T('a flight leaves at the speed the camera already has: one that takes over from another never stops it dead',
+    W.flightSpeed(hop, moving) > 1.5 && W.flightSpeed(hop, null) === W.WORLD.flight.start &&
+    W.flightSpeed(hop, { x: -moving.x, z: -moving.z, l: 0 }) === W.WORLD.flight.start && W.flightSpeed(hop, { x: 1e3, z: 1e3, l: 0 }) <= 3);
+  T('and a tap is answered at once: a flight from rest is already under way in its first frame',
+    along(W.flightFrame(fl, 16 / fl.ms)) > 0.02);
+  /* Found in 0.9.0's diff audit: Overview pressed in the first frame of a
+     focus flight asked for the frame the camera was still at, planned no
+     flight, and left the old one flying to the place. */
+  T('a camera sent where it already is stops there: no earlier flight carries on',
+    /\} else if\(sameFrame\(S\.frame, frame\)\)\{[\s\S]{0,160}S\.fl = null; S\.to = null; S\.vel = null; S\.hold = null;\s*\} else \{/.test(r3));
+  T('the renderer moves the camera only by these flights, leaving at its own velocity',
+    /const fl = planFlight\(S\.frame, frame, S\.w, S\.h, 0\);\s*fl\.v0 = flightSpeed\(fl, S\.vel\);/.test(r3) &&
+    /S\.frame = flightFrame\(S\.fl, u\);\s*S\.vel = velocityOf\(S\.fl, u\);/.test(r3) && !/mixFrame|transitionMs/.test(r3 + wj));
   T('the drawing buffer never exceeds two device pixels per CSS pixel', W.pixelRatioFor(3, 390, 520) === 2);
   T('nor a size a tablet pays for', W.pixelRatioFor(2, 1400, 1000) ** 2 * 1400 * 1000 <= W.WORLD.maxCanvasPixels + 1);
   T('a slow device steps its resolution down, never below one pixel per pixel',
@@ -3299,13 +3487,13 @@ async function testWorld(){
   T('where two overlap, the nearer is the one tapped', W.hitDistrict(pair, ph, pf, 358, 521, top.x, top.y) === 1);
 
   sub('smooth: a frame moves things, it never measures the page');
-  const perFrame = ['tick', 'stepCamera', 'aimCamera', 'stepCrews', 'stepLife', 'stepAssets', 'stepBeacons', 'placeLabels', 'applyPose'].map(fnBody);
+  const perFrame = ['tick', 'stepCamera', 'velocityOf', 'aimCamera', 'stepCrews', 'stepLife', 'stepAssets', 'stepBeacons', 'stepLabels', 'placeLabels', 'labelRects', 'applyPose'].map(fnBody);
   T('every per-frame step is found', perFrame.every(Boolean));
   const reads = /offsetWidth|offsetHeight|getBoundingClientRect|getComputedStyle|clientWidth|clientHeight|scrollTop|innerHTML|textContent|measureLabels|rawToken|tokenOf/;
   T('no frame reads layout or style, or writes content (0.3.1 recalculated the page on every zoom frame)',
     perFrame.every(b => !reads.test(code(b || ''))), perFrame.filter(b => b && reads.test(code(b))).map(b => b.slice(9, 30)).join(', '));
   T('a label moves by transform alone, and only when it has moved',
-    /if\(x !== t\.px \|\| y !== t\.py\)\{ t\.px = x; t\.py = y; t\.button\.style\.transform = 'translate3d\('/.test(r3) &&
+    /if\(r\.x !== t\.px \|\| r\.y !== t\.py\)\{ t\.px = r\.x; t\.py = r\.y; t\.button\.style\.transform = 'translate3d\('/.test(r3) &&
     !/style\.(left|top|width|height)\s*=/.test(code(fnBody('placeLabels') || '')));
   T('labels are measured when their words or their room change, outside any frame',
     /t\.labelW = t\.label\.offsetWidth; t\.labelH = t\.label\.offsetHeight; t\.labelDirty = false;/.test(r3) &&
@@ -3341,35 +3529,68 @@ async function testWorld(){
     /\.world-tile\.is-hidden \.world-label\{ opacity: 0; pointer-events: none; \}/.test(style) &&
     /\.world-tile\.is-off \.world-label\{ opacity: 0; pointer-events: none; \}/.test(style));
   T('a focused label always shows', /\.world-tile:focus-visible \.world-label\{ opacity: 1;/.test(style));
+  const attnFirst = W.resolveLabels([
+    { id: 'calm', row: 2, x: 10, y: 10, w: 80, h: 40 }, { id: 'asks', row: 0, x: 40, y: 20, w: 80, h: 40, attn: true }], [], 400, 300);
+  T('what needs you is placed before what does not, whatever its row', attnFirst.asks === true && attnFirst.calm === false);
+  /* The first 0.9.0 build predicted labels at a flight's end without
+     asking whether each place was still in view: a label showed as the
+     camera left and hid again on the way. */
+  const offPlace = W.resolveLabels([{ id: 'gone', row: 0, x: 10, y: 10, w: 80, h: 40, off: true }, { id: 'here', row: 0, x: 200, y: 10, w: 80, h: 40 }], [], 400, 300);
+  T('a label whose place has left the view is not there, however it is pushed into the view, whether predicted or drawn',
+    offPlace.gone === false && offPlace.here === true && /t\.off = r\.off;/.test(r3) &&
+    /const off = !\(a\.depth > 0\.5\) \|\| c\.x < -40 \|\| c\.x > S\.w \+ 40 \|\| c\.y < -40 \|\| c\.y > S\.h \+ 40;/.test(r3));
+  const kept = W.resolveLabels([{ id: 'under', row: 1, x: 300, y: 10, w: 80, h: 40 }, { id: 'free', row: 1, x: 10, y: 10, w: 80, h: 40 }], [], 400, 300,
+    [{ x: 290, y: 0, w: 110, h: 60 }]);
+  T('no label stands under the Overview button', kept.under === false && kept.free === true &&
+    /S\.keep = \{ x: overviewBtn\.offsetLeft - 4,/.test(r3) && /const keepClear = atOverview => atOverview \|\| !S\.keep \? \[\] : \[S\.keep\];/.test(r3));
+  /* One rule for every place (world.js labelSpot): on its own place, or its card just in front of it. */
+  const anchor = { x: 200, y: 300 }, onIt = W.labelSpot(anchor, 90, 40, 0, 400), before = W.labelSpot(anchor, 90, 40, 1, 400);
+  const halfway = W.labelSpot(anchor, 90, 40, 0.5, 400), edge = W.labelSpot({ x: 5, y: 300 }, 90, 40, 0, 400);
+  T('a label stands on its own place, its foot at the front edge; the card of the place in focus stands just in front of it',
+    onIt.y + 40 <= anchor.y && onIt.y + 40 >= anchor.y - 6 && before.y >= anchor.y && before.y <= anchor.y + 6 && onIt.x === 155 && before.x === 155);
+  T('between the two it moves continuously, and it is never pushed out of the view', halfway.y > onIt.y && halfway.y < before.y &&
+    edge.x === W.WORLD.edgePx && Number.isFinite(edge.y));
 
-  sub('the sign: status and what needs you, rising in once, taking no taps');
-  T('it sits over the selected place only, whole inside the view', /const a = project\(signAnchor\(districtOf\(sel\), sel\.height\), f, W, Hh\)/.test(r3) &&
-    /cx = Math\.round\(Math\.min\(Math\.max\(x, half\), Math\.max\(half, W - half\)\)\), cy = Math\.max\(y, Math\.ceil\(room\.h\)\)/.test(r3));
-  T('it takes no taps and is not read twice', /\.world-sign\{[^}]*pointer-events: none;/.test(style) && /sign\.setAttribute\('aria-hidden', 'true'\)/.test(r3));
-  T('it rises in when the selection changes, from the one loop', /S\.signEnter = 2;/.test(r3) &&
-    /if\(S\.signEnter && --S\.signEnter === 0 && S\.signFor\) sign\.classList\.add\('is-in'\);/.test(r3) &&
-    /\.world-sign\.is-in \.world-sign-card\{ opacity: 1;/.test(style));
-  const beneath = W.resolveLabels([
-    { id: ' sign', row: -1, x: 100, y: 10, w: 200, h: 60 },
-    { id: 'near', row: 2, x: 150, y: 40, w: 80, h: 40 },
-    { id: 'clear', row: 2, x: 10, y: 120, w: 80, h: 40 }], [null, ' sign', 'clear'], 400, 300);
-  T('a label the sign would cover is not there while the sign is, close on a place', beneath.near === false && beneath.clear === true &&
-    /signRect = \{ id: SIGN, row: -1,/.test(r3) && /resolveWithSign\(rects, signRect, \[S\.focused, SIGN, S\.selected\], W, Hh, S\.mode === 'focus'\)/.test(r3));
-  const nameRects = [
-    { id: 'back-a', row: 0, x: 60, y: 200, w: 100, h: 44 }, { id: 'back-b', row: 0, x: 200, y: 200, w: 100, h: 44 },
-    { id: 'mid', row: 1, x: 130, y: 300, w: 100, h: 44 }, { id: 'front', row: 2, x: 130, y: 400, w: 100, h: 44 }];
-  const roofSign = { id: ' sign', row: -1, x: 40, y: 180, w: 300, h: 90 };
-  const lead = [null, ' sign', 'front'];
-  const yielded = W.resolveWithSign(nameRects, roofSign, lead, 390, 600, false), closeUp = W.resolveWithSign(nameRects, roofSign, lead, 390, 600, true);
-  T('from the overview the sign gives way rather than hide a project\'s name',
-    yielded.sign === false && nameRects.every(r => yielded.shown[r.id] === true), JSON.stringify(yielded));
-  T('close on a place the sign keeps its room and the names under it wait',
-    closeUp.sign === true && closeUp.shown['back-a'] === false && closeUp.shown.front === true, JSON.stringify(closeUp));
-  T('where the sign hides no name it stays, at any distance',
-    W.resolveWithSign(nameRects.slice(2), roofSign, lead, 390, 600, false).sign === true &&
-      W.resolveWithSign(nameRects, null, lead, 390, 600, false).sign === false);
-  T('it is measured when its words change, so a focus leaves it room', /S\.signRoom = w > 0 && h > 0 \?/.test(r3) &&
-    /focusFrame\(districtOf\(sel\), sel\.height, sel\.room, S\.over, S\.w, S\.h, S\.signRoom\)/.test(r3));
+  sub('the card: the place in focus says what it holds, and nothing else offers the brief');
+  T('a card is there only while its place is in focus', /if\(changed\('card'\) \|\| changed\('focused'\)\)\{ t\.cardEl\.innerHTML = item\.focused \? item\.card \|\| '' : '';/.test(r3) &&
+    /\.world-card\{ display: none; \}/.test(style) && /\.world-tile\.is-focused \.world-card\{ display: flex;/.test(style));
+  T('it is read once: the button says every status in words; the card\'s words are for the eye', /card\.setAttribute\('aria-hidden', 'true'\)/.test(r3));
+  T('it is measured when its words change, so a focus gives it room', /t\.cardEl\.innerHTML = item\.focused \? item\.card \|\| '' : ''; t\.labelDirty = true;/.test(r3) &&
+    /return focusFrame\(districtOf\(t\), t\.height, t\.room, S\.over, S\.w, S\.h\);/.test(r3));
+  T('a label glides between on its place and in front of it, in the one loop, and simply is there under Reduce Motion',
+    /const k = rm\(\) \? 1 : 1 - Math\.exp\(-dt \/ WORLD\.labelEase\);/.test(r3) && /const goal = t\.id === S\.focusId && S\.mode === 'focus' \? 1 : 0/.test(r3) &&
+    /const easing = stepLabels\(dt\);/.test(r3) && /const again = moving \|\| ambient \|\| settling \|\| blending \|\| easing \|\| sliding;/.test(r3));
+  /* 0.9.0's first build moved a label that became a card (wider, pushed
+     inside the view) 130 px in one frame, mid-swipe. */
+  T('a label whose words change never jumps: it starts where it was and glides to where it now belongs, and the loop runs until it is there',
+    /if\(\(t\.labelW !== t\.drawnW \|\| t\.labelH !== t\.drawnH\) && t\.px !== undefined && !rm\(\)\)\{ t\.slideX = t\.px - r\.x; t\.slideY = t\.py - r\.y; sliding = true; \}/.test(r3) &&
+    /r\.x = Math\.round\(r\.x \+ \(t\.slideX \|\| 0\)\); r\.y = Math\.round\(r\.y \+ \(t\.slideY \|\| 0\)\);/.test(r3) &&
+    /const sliding = placeLabels\(\);/.test(r3) && /t\.slideX = \(t\.slideX \|\| 0\) \* \(1 - k\);/.test(r3));
+  /* 0.9.0's first build re-laid the city when Overview took the card away,
+     and the re-layout cut the flight out short: the camera snapped. */
+  T('only a new set of places lays the city out again: a card coming or going never cuts a flight short',
+    /const relaid = reshaped && S\.w;/.test(r3) && !/roomed && S\.mode === 'overview'/.test(r3));
+  T('the labels readable where the camera is going are decided as it leaves, so none flickers on the way',
+    /S\.hold = labelsAt\(frame, mode\);/.test(r3) && /const shown = S\.hold \|\| resolveLabels\(/.test(r3) && /S\.hold = S\.shown;/.test(r3));
+  T('no dark box over the bright city: only the chosen project\'s plate and the card in focus have a backing, and both are light',
+    /\.world-tile\.is-selected \.world-plate\{[^}]*background: var\(--world-card\)/.test(style) &&
+    /\.world-tile\.is-focused \.world-plate\{[^}]*background: var\(--world-card\)/.test(style) &&
+    !/(^|\n)\.world-plate\{[^}]*background:/.test(style) && !/--world-label:/.test(style) && /\.world-name\{[^}]*text-shadow:/.test(style));
+  T('Needs update keeps its own look in the world, on a label and on the card: said in words, in an outline, never a filled chip',
+    /\.world-badge \.block-unrecorded, \.world-card \.chip\.sig-unrecorded\{[^}]*border: 1px dashed/.test(style));
+
+  sub('the camera follows the app\'s focus; Overview hands it back');
+  T('a new focus flies there; the app leaving focus flies out; being chosen alone moves nothing',
+    /S\.focusId = pick\('focused'\);/.test(r3) && /\} else if\(S\.focusId && S\.focusId !== was\)\{\s*goTo\(targetFor\('focus'\), 'focus'\);/.test(r3) &&
+    /\} else if\(!S\.focusId && was && S\.mode === 'focus'\)\{\s*goTo\(targetFor\('overview'\), 'overview'\);/.test(r3) &&
+    !/S\.selected[^;\n]*goTo|goTo\([^;\n]*S\.selected/.test(r3));
+  T('a first draw shows what is in focus, or the whole city when nothing is: a relaunch never opens on a stale prompt',
+    /goTo\(S\.focusId \? targetFor\('focus'\) : targetFor\('overview'\), S\.focusId \? 'focus' : 'overview', true\);/.test(r3));
+  T('Overview flies out and tells the app that nothing is in focus now, as Escape does',
+    /function toOverview\(\)\{\s*if\(!S\.over\) return;\s*goTo\(targetFor\('overview'\), 'overview'\);\s*if\(H\.onOverview\) H\.onOverview\(\);\s*\}/.test(r3) &&
+    /listen\(overviewBtn, 'click', toOverview\);/.test(r3) && /if\(e\.key === 'Escape' && S\.mode !== 'overview'\)\{ e\.preventDefault\(\); toOverview\(\); return; \}/.test(r3));
+  T('the Overview button is away at the overview, where it would do nothing, but always laid out, so it is never measured in a frame',
+    /\.world-overview\.is-away\{ visibility: hidden; \}/.test(style) && /overviewBtn\.classList\.toggle\('is-away', atOverview\);/.test(r3) && !/overviewBtn\.hidden/.test(r3));
 
   sub('a touch is a tap or a pan, never both');
   let g = W.createArbiter(8);
@@ -3385,8 +3606,60 @@ async function testWorld(){
   g.down(3, 0, 0); g.move(3, 30, 0);
   T('a lost capture ends a pan as a pan', g.cancel(3).type === 'pan-end');
   T('a stray event after the end does nothing', g.up(3) === null && g.move(3, 1, 1) === null);
-  T('the viewport, and only it, takes drags from the page', /\.world-view\{[^}]*touch-action: none/.test(style) &&
-    (style.match(/touch-action: none/g) || []).length === 1);
+  T('the viewport takes sideways drags and leaves up and down to the page; it takes every drag only while it must pan',
+    /\.world-view\{[^}]*touch-action: pan-y;/.test(style) && /\.world-view\.is-pannable\{ touch-action: none;/.test(style) &&
+    (style.match(/touch-action: none/g) || []).length === 1 && /view\.classList\.toggle\('is-pannable', mode !== 'focus' && !S\.fits\);/.test(r3));
+
+  /* Phase 3G: in focus a swipe goes to the next or previous place. The
+     page must still scroll, a tap must still be a tap, and a slip of the
+     finger must never move the city. */
+  sub('a swipe in focus goes to the next place: only a clear one, once, never round the end');
+  T('a drag is decided once, as it starts: sideways, up and down, or neither',
+    W.axisOf(30, 4) === 'x' && W.axisOf(-30, 4) === 'x' && W.axisOf(3, 40) === 'y' && W.axisOf(20, 18) === 'xy' && W.axisOf(18, 20) === 'xy');
+  g = W.createArbiter(8);
+  g.down(7, 100, 100, 0); const sideways = g.move(7, 120, 104, 20);
+  T('the arbiter reports that axis as the drag starts', sideways.type === 'pan-start' && sideways.axis === 'x');
+  g.move(7, 160, 104, 40); g.move(7, 200, 104, 60);
+  const flung = g.up(7, 70);
+  T('and the finger\'s speed over its last moments', flung.type === 'pan-end' && flung.tx === 100 && Math.abs(flung.vx - 100 / 60) < 0.01 &&
+    Math.abs(flung.vy - 4 / 60) < 0.01, JSON.stringify(flung));
+  g.down(8, 100, 100, 0); g.move(8, 60, 100, 30); g.move(8, 20, 100, 60);
+  const rested = g.up(8, 400);
+  T('a finger that rested before lifting has no speed: a slow drag is judged by its distance alone', rested.vx === 0 && rested.tx === -80);
+  const W390 = 390;
+  T('a slow drag far enough goes to the next place (finger to the left) or the previous (to the right)',
+    W.swipeVerdict(-120, -0.05, W390) === 1 && W.swipeVerdict(120, 0.05, W390) === -1);
+  T('a short quick flick goes too', W.swipeVerdict(-30, -0.6, W390) === 1 && W.swipeVerdict(30, 0.6, W390) === -1);
+  T('a short slow drag goes nowhere: the camera settles back on the place in focus', W.swipeVerdict(-40, -0.1, W390) === 0 && W.swipeVerdict(40, 0.1, W390) === 0);
+  T('a twitch goes nowhere, however quick', W.swipeVerdict(-12, -1.5, W390) === 0);
+  T('a drag flicked back against itself goes nowhere', W.swipeVerdict(-150, 0.8, W390) === 0 && W.swipeVerdict(150, -0.8, W390) === 0);
+  const order = ['a', 'b', 'c'];
+  T('the next and previous places are the city\'s reading order, the same every time, never round the end',
+    W.neighbourOf(order, 'a', 1) === 'b' && W.neighbourOf(order, 'b', -1) === 'a' && W.neighbourOf(order, 'c', 1) === null &&
+    W.neighbourOf(order, 'a', -1) === null && W.neighbourOf(order, 'x', 1) === null && W.neighbourOf(order, 'b', 0) === null);
+  const fromF = W.focusFrame(ds6[0], hts[0], null, over, 358, 521), toF = W.focusFrame(ds6[1], hts[1], null, over, 358, 521);
+  T('mid-swipe the camera is as far along the way to the next place as the finger has gone',
+    W.sameFrame(W.swipeFrame(fromF, toF, 0, 358, 521, isl6), fromF) && W.sameFrame(W.swipeFrame(fromF, toF, -358, 358, 521, isl6), toF) &&
+    Math.abs(W.swipeFrame(fromF, toF, -179, 358, 521, isl6).x - W.flightFrame(W.planFlight(fromF, toF, 358, 521, 0), 0.5, true).x) < 1e-9);
+  const give = W.swipeFrame(fromF, null, 2000, 358, 521, isl6), atEdge = W.project([fromF.x, 0, fromF.z], give, 358, 521);
+  T('with nowhere to go the city gives a little, never more than its share of the view, and nothing moves on', Math.abs(atEdge.x - 179) > 1 &&
+    Math.abs(atEdge.x - 179) <= W.WORLD.swipe.edge * 358 + 0.5);
+  T('in the renderer, only a clearly sideways drag in focus is a swipe; a drag that must pan pans; any other is the page\'s or nothing',
+    /G\.kind = S\.mode === 'focus' && S\.focusId && r\.axis === 'x' \? 'swipe' : S\.mode !== 'focus' && !S\.fits \? 'pan' : 'none';/.test(r3));
+  T('a swipe moves the focus once, by telling the app; the next draw flies there', /S\.swipes\+\+;\s*H\.onNavigate\(id\);\s*if\(S\.focusId === id\) return;/.test(r3) &&
+    (r3.match(/H\.onNavigate\(/g) || []).length === 2);
+  T('a swipe the browser takes to scroll, or a lost capture, never navigates: it settles back', /const step = cancelled \? 0 : swipeVerdict\(tx, vx, S\.w\)/.test(r3) &&
+    /if\(r && r\.type === 'pan-end'\) endGesture\(r\);/.test(r3));
+  /* 0.8.0 heard the canvas give up a touch's implicit capture, as the view
+     took it, as a cancel: every touch drag ended on its first move. */
+  T('only the view losing its own capture ends a drag; the capture a touch starts with is handed over, not lost',
+    /const cancel = e => \{\s*if\(e\.type === 'lostpointercapture' && e\.target !== view\) return;/.test(r3) &&
+    /listen\(view, 'lostpointercapture', cancel\);/.test(r3));
+  T('a swipe takes the camera where it is, even mid-flight, so a second swipe chains from the first', /function startSwipe\(\)\{\s*S\.fl = S\.to = null; S\.hold = S\.shown;\s*G\.from = S\.frame;/.test(r3));
+  T('under Reduce Motion a swipe still moves the focus, with no travel: the camera waits for the verdict and cuts', /function dragSwipe\(tx\)\{\s*G\.tx = tx;\s*if\(rm\(\)\) return;/.test(r3));
+  T('the keyboard moves between places in focus as a swipe does', /\(e\.key === 'ArrowLeft' \|\| e\.key === 'ArrowRight'\) && S\.mode === 'focus' && S\.focusId/.test(r3));
+  T('a swipe never opens a brief: the app moves the focus quietly', /function navigateProject\(id\)\{ return focusProject\(id, \{ quiet: true \}\); \}/.test(js()) &&
+    !/openBrief/.test(fnSrc('navigateProject') + fnSrc('focusProject') + fnSrc('leaveFocus')));
   const clickGuard = r3.slice(r3.indexOf("listen(view, 'click'"), r3.indexOf("listen(view, 'click'") + 260);
   T('the click a drag or an island tap would also make never reaches a button, however the camera has moved',
     /listen\(view, 'click', e => \{\s*if\(e\.detail === 0 \|\| performance\.now\(\) > S\.swallowUntil\) return;/.test(r3) && /, true\);/.test(clickGuard) &&
@@ -3407,10 +3680,10 @@ async function testWorld(){
     (app.dom.document.getElementById('projectField').innerHTML.match(/<button class="block /g) || []).length === 6);
   c.stopWorld(); c.startWorld();
   T('and it is not tried again this visit', destroyed === 1 && c.worldStage === 'off' && c.Field === c.IsoField);
-  T('the world reports taps to the app and asks it about motion and cover',
-    /onTap: tapProject,[\s\S]{0,80}onFail: stopWorld,[\s\S]{0,80}reducedMotion: prefersReducedMotion,[\s\S]{0,80}covered: \(\) => document\.body\.classList\.contains\('scroll-locked'\)/.test(js()));
+  T('the world reports taps, swipes and Overview to the app and asks it about motion and cover',
+    /onTap: tapProject,\s*onNavigate: navigateProject,\s*onOverview: leaveFocus,\s*onFail: stopWorld,[\s\S]{0,80}reducedMotion: prefersReducedMotion,[\s\S]{0,80}covered: \(\) => document\.body\.classList\.contains\('scroll-locked'\)/.test(js()));
   T('the world is made behind the flat field, in its own host, and takes over only once it has drawn',
-    /WorldField\.world = mod\.createWorld\(host, \{[\s\S]{0,120}onReady: adoptWorld/.test(js()) &&
+    /WorldField\.world = mod\.createWorld\(host, \{[\s\S]{0,200}onReady: adoptWorld/.test(js()) &&
     !/import\(WORLD_MODULE\)[\s\S]{0,400}IsoField\.unmount\(\)/.test(js()) &&
     /function adoptWorld\(\)\{\s*if\(worldStage !== 'loading'\) return;[\s\S]{0,300}IsoField\.unmount\(\);[\s\S]{0,300}Field = WorldField;/.test(js()));
   T('while it loads the flat field stays drawn and the world takes no taps',
@@ -3420,8 +3693,6 @@ async function testWorld(){
   T('the world\'s box is what the screen has left, measured: above the tab bar, with the dock\'s room kept',
     /vh - top - bar - dockH - gap/.test(js()) && /fitField\(\);\r?\n\}/.test(js()) && /addEventListener\('resize', fitField\)/.test(js()) &&
     /if\(worldStage === 'off' \|\|/.test(js()));
-  T('labels are type, not boxes: only the selected one has a backing', /\.world-label\{[^}]*background: none;/.test(css()) &&
-    /\.world-tile\.is-selected \.world-label\{ background: var\(--world-label\); \}/.test(css()) && /\.world-name\{[^}]*text-shadow:/.test(css()));
   T('each renderer has its own host in one box', /<div class="field-box">\s*<div class="project-field" id="projectField"[^>]*><\/div>\s*<div class="world-host" id="worldHost"/.test(H.readApp()));
   T('no errors', app.errors.length === 0, app.errors.join(' | '));
 }

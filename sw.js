@@ -28,14 +28,14 @@
  */
 
 /* APP-CACHE-BEGIN */
-const CACHE_NAME = 'mission-control-v0.8.0-f46e7226ac92';
+const CACHE_NAME = 'mission-control-v0.9.0-450c3da84994';
 /* APP-CACHE-END */
 
 /* APP-FILES-BEGIN */
 const RELEASE = {
-  id: 'f351a9039676',
+  id: '7b4dbadc9f8a',
   files: [
-    ['./index.html', 'dbeeb36825cbb13ddfdde58e04e234eb9c96a727a797f9e8e4d8253717b2b73c', 238842],
+    ['./index.html', 'bbfb1c9435848b6966c01a84a957c94980ffc31cb92309050312e0210b0f5b56', 242165],
     ['./manifest.webmanifest', '774e9d6751d74a9ae1e205dcfd4c3ff4e602d58bb2ad7ca749d1b9f4328efe42', 583],
     ['./icon-192.png', '0158e8011a048dd9d51da60afed6ccae8a9d66932e9f424b6e2c15e6e2eb00d1', 20289],
     ['./icon-512.png', '04ec5545111e900e3b2bc584c9d7fd33f126f0d2d4a4464c8e627b467048a31d', 86533],
@@ -43,11 +43,11 @@ const RELEASE = {
     ['./release/dailyverse-diorama.97f674076d4d.glb', '97f674076d4d35d758a3f22e96b4c4048dec29f170891aa78d0ec221c5be358a', 1216940],
     ['./release/dayplan-diorama.c60794997357.glb', 'c60794997357d1ebaf75a7d67d6c2673b83a1f6fdf5b199f3806e10ac957cca9', 1330208],
     ['./release/golden-diorama.e0b21a1c4dcc.glb', 'e0b21a1c4dccae20cab54981955546cdd9f250d4d75a98a02caaa9fb9481d52e', 1581172],
-    ['./release/render3d.1dddab0564c7.js', '1dddab0564c78a0b4d00a286dbe9136668df4547f5459df716c7e8c539b5d141', 69913],
+    ['./release/render3d.bc44354e8ca1.js', 'bc44354e8ca188b5e2c46573ba8ca586927e67d61ff233b13c8256233e62ad71', 79787],
     ['./release/savings-diorama.9099b2690506.glb', '9099b2690506df593e611c7aa501363747e53f305f20c02ff6f6c72332a82c4e', 1085452],
     ['./release/spacek-diorama.7b9d1f6a6052.glb', '7b9d1f6a60522e0724ec3611dffd44cdac35ed71973154a5ce170ae8c3f8a80e', 1132352],
     ['./release/three.min.0c9283a1079c.js', '0c9283a1079c2dcb73462eea6746a8ccfa791eadb65ccfbb753bdd867a59a5f9', 639129],
-    ['./release/world.4f89ecac17ff.js', '4f89ecac17ff914ddc6a21bf27a652b4aec275a4ee0dc3ef84e79a5ae8d03b00', 61145]
+    ['./release/world.1b0aab428b87.js', '1b0aab428b87c646d7e855dfa2f37bd9e41c0e98154d59691ff8f7aadd6a5661', 82954]
   ]
 };
 /* APP-FILES-END */
