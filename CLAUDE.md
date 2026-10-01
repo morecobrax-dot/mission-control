@@ -373,7 +373,12 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     `selectedId` is the choice: stored, shown in the dock. `focusedId` is
     this visit's focus: never stored, set by `focusProject` (a tap, a swipe
     through `navigateProject`, a Needs-attention button) and cleared by
-    `leaveFocus` (Overview, Escape). Only the project in focus carries a
+    `leaveFocus` (Overview, Escape). Overview ends on the overview: the
+    keyboard focus it hands on as it hides goes to a name readable there
+    and is never a keyboard stop (0.9.6 revealed the chosen project and a
+    panning city ended away from the overview). Test Overview with real
+    touch, mouse and keys, never only `.click()`, which takes no focus.
+    Only the project in focus carries a
     card, and only a tap on it opens its brief; the overview, a relaunch and
     the world's first draw have nothing in focus, so nothing there offers
     the brief (0.8.0 kept one value for both, and said "Tap again for the

@@ -4070,6 +4070,17 @@ async function testWorld(){
     /listen\(overviewBtn, 'click', toOverview\);/.test(r3) && /if\(e\.key === 'Escape' && S\.mode !== 'overview'\)\{ e\.preventDefault\(\); toOverview\(\); return; \}/.test(r3));
   T('the Overview button is away at the overview, where it would do nothing, but always laid out, so it is never measured in a frame',
     /\.world-overview\.is-away\{ visibility: hidden; \}/.test(style) && /overviewBtn\.classList\.toggle\('is-away', atOverview\);/.test(r3) && !/overviewBtn\.hidden/.test(r3));
+  /* 0.9.6: a tap or click gives Overview the focus; as it hid itself it
+     handed the focus to the chosen project, and the world took that for a
+     keyboard stop and revealed it, so a city that pans ended away from the
+     overview the person had asked for. */
+  T('as Overview hides, the focus it held (or one on a name that cannot be read here) goes on to a name that can, the chosen one first',
+    /const had = at === overviewBtn \|\| \(onId !== null && !shown\[onId\]\);/.test(r3) &&
+    /const id = \[S\.selected\]\.concat\(S\.order\)\.find\(i => S\.tiles\.has\(i\) && shown\[i\]\)/.test(r3));
+  T('handing the focus on is not a keyboard stop: nothing is revealed and the camera stays on the overview; a real keyboard stop still reveals',
+    /S\.handing = true; try\{ t\.button\.focus\(\{ preventScroll: true \}\); \}catch\(e\)\{\} finally\{ S\.handing = false; \}/.test(r3) &&
+    (r3.match(/S\.handing = true/g) || []).length === 1 && (r3.match(/S\.handing/g) || []).length === 3 &&
+    /if\(t && S\.frame && !S\.handing\)\{\s*const f = revealFrame\(S\.to \|\| S\.frame, districtOf\(t\), t\.height, t\.room, S\.w, S\.h, S\.island\);\s*if\(!sameFrame\(f, S\.to \|\| S\.frame\)\) goTo\(f, 'free'\);/.test(r3));
 
   sub('a touch is a tap or a pan, never both');
   let g = W.createArbiter(8);

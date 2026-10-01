@@ -575,7 +575,15 @@ only where it can move, at once under Reduce Motion. Anything else that
 sends the camera (Overview, Escape, the app's focus, a new shape) ends a
 drag under way where the city is drawn, reporting nothing. Arrow keys move
 between places in focus and Escape goes to the overview, as the Overview
-button does. A tap on the island is hit-tested against each district's
+button does. A keyboard stop on a place (`focusin`) reveals it; the focus
+handed on as the overview lands is not a stop. When Overview hides itself
+holding the focus (a tap or click gives a button the focus), or the focus
+is on a name that cannot be read at the overview, `placeLabels` hands it
+to a name that can — the chosen project's, else the first in reading
+order — inside `S.handing`, a guard set only around that one `focus()`
+call, so nothing is revealed and the camera stays where the person sent it
+(0.9.7; 0.9.6 revealed the chosen project wherever it was, and in a city
+that pans a tap on Overview ended away from the overview). A tap on the island is hit-tested against each district's
 drawn outline (its pad and its roof); where two overlap the nearer wins,
 and open streets select nothing. The click that a drag or an island tap
 also makes is swallowed for a moment, so a label the camera has just moved

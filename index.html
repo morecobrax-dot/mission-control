@@ -1731,6 +1731,16 @@ function validateAppId(id){
    ========================================================= */
 const APP_UPDATES = [
   {
+    id: 'v0-9-7',
+    version: '0.9.7',
+    title: 'Overview stays put',
+    date: '2026-10-01',
+    summary: 'Overview now always ends on the whole city.',
+    improvements: [
+      'In a city larger than the screen, a tap or click on Overview could end away from the overview, at the project you had chosen; it now stays on the overview, and the keyboard focus moves to a project name you can see'
+    ]
+  },
+  {
     id: 'v0-9-6',
     version: '0.9.6',
     title: 'Pan to any name',
@@ -3702,13 +3712,13 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = '1cad4c908f0b';
-const WORLD_MODULE = './release/render3d.c1f261ca0e18.js';
+const APP_RELEASE = 'b0051273b1d1';
+const WORLD_MODULE = './release/render3d.f5e8309467dc.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
   './release/dayplan-diorama.c60794997357.glb',
   './release/golden-diorama.e0b21a1c4dcc.glb',
-  './release/render3d.c1f261ca0e18.js',
+  './release/render3d.f5e8309467dc.js',
   './release/savings-diorama.9099b2690506.glb',
   './release/spacek-diorama.7b9d1f6a6052.glb',
   './release/street-life.e0a6f770609c.glb',

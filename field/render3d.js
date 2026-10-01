@@ -318,7 +318,7 @@ export function createWorld(host, hooks){
      camera's velocity, hold the labels readable where it goes. */
   const S = {
     w: 0, h: 0, dpr: 1, dprCap: 2, frame: null, fl: null, to: null, t0: 0, vel: null, hold: null, shown: null, mode: 'overview', over: null,
-    tiles: new Map(), order: [], selected: null, focusId: null, kbd: null, first: true, island: null, cols: 0, fits: true, keep: null,
+    tiles: new Map(), order: [], selected: null, focusId: null, kbd: null, handing: false, first: true, island: null, cols: 0, fits: true, keep: null,
     raf: 0, lastRender: 0, lastTick: 0, lastWake: 0, onscreen: true, covered: false, lost: false, lostTimer: 0,
     destroyed: false, failed: false, frames: 0, cost: 0, swallowUntil: 0, dirty: false,
     slowSum: 0, slowCount: 0, labelMax: 0, swipes: 0,
@@ -1139,12 +1139,20 @@ export function createWorld(host, hooks){
       }
     });
     if(overviewBtn.classList.contains('is-away') !== atOverview){
-      const had = document.activeElement === overviewBtn;
+      const at = document.activeElement, on = at && at.closest && at.closest('.world-tile'), onId = on && layer.contains(on) ? on.getAttribute('data-project') : null;
+      const had = at === overviewBtn || (onId !== null && !shown[onId]);
       overviewBtn.classList.toggle('is-away', atOverview);
       overviewBtn.tabIndex = atOverview ? -1 : 0;
+      /* The overview has landed and the focus is on Overview (now hidden)
+         or on a name that cannot be read here: it goes on to one that can,
+         the chosen project's, else the first in reading order. Handing it
+         on is not a keyboard stop, so nothing is revealed and the camera
+         stays where the person sent it. (0.9.6 revealed the chosen project
+         wherever it was: in a city that pans, a tap on Overview, which
+         gives the button the focus, ended away from the overview.) */
       if(had && atOverview){
-        const t = S.tiles.get(S.selected) || S.tiles.get(S.order[0]);
-        if(t) try{ t.button.focus({ preventScroll: true }); }catch(e){}
+        const id = [S.selected].concat(S.order).find(i => S.tiles.has(i) && shown[i]) || S.selected || S.order[0], t = S.tiles.get(id);
+        if(t){ S.handing = true; try{ t.button.focus({ preventScroll: true }); }catch(e){} finally{ S.handing = false; } }
       }
     }
     return sliding;
@@ -1540,12 +1548,13 @@ export function createWorld(host, hooks){
       if(id && H.onNavigate){ e.preventDefault(); H.onNavigate(id); }
     }
   });
-  /* A keyboard stop on a district brings it into view. */
+  /* A keyboard stop on a district brings it into view; the focus handed
+     on as Overview hides itself (placeLabels) is not a stop. */
   listen(layer, 'focusin', e => {
     const b = e.target.closest && e.target.closest('.world-tile');
     S.kbd = b ? b.getAttribute('data-project') : null;
     const t = S.kbd && S.tiles.get(S.kbd);
-    if(t && S.frame){
+    if(t && S.frame && !S.handing){
       const f = revealFrame(S.to || S.frame, districtOf(t), t.height, t.room, S.w, S.h, S.island);
       if(!sameFrame(f, S.to || S.frame)) goTo(f, 'free');
     }
