@@ -64,6 +64,32 @@ Four layers in one `:root`, meant to be edited in order:
    project's ground and accent (`--terrain-*`, `--tint-*`), and the wide
    layout (`--layout-wide`, `--brief-dock`).
 
+**The chrome and the world** (0.10.0). The app's chrome is warm ivory: the
+ground (`--brand-ground`, `#F3EEE4`) is ΔE 1 from the world's sky, surfaces
+are lighter cream, the sunken one warm stone, words deep charcoal and warm
+grey, the accent a deep blue. Two sets of tokens never mix:
+
+- **The chrome's** — layers 1 to 3, `--border-control` (the 3:1 edge of a
+  field or a switch), `--scrim`, and the status inks `--status-text-*`.
+- **The world's** — `--sig-*`, `--tint-*`, `--terrain-*`, `--mat-*`,
+  `--city-*`, `--light-*`, `--land-*`, `--glow-*`, `--worker-*`,
+  `--iso-shade`, `--world-*`. `render3d.js` reads only these, through the
+  tile's `.sig-*`/`.theme-*` classes and `:root`.
+
+A `.sig-*` class sets both `--sig` (the hue that lights a beacon, a helmet,
+an authored place's status rim, a world label's chip) and `--sig-text`
+(the ink the chrome writes that status in: a chip's word, a count, an
+attention stripe, a picked status). Each ink is the hue's own family,
+darkened to 4.5:1 or better on every surface and on its own 12% tint, so
+retheming the chrome cannot recolour the city, and making a status
+readable on cream never touches a beacon. Contract 24 measures every word
+token and every ink on every surface, the 3:1 edges and the focus ring,
+and that the renderer reads no chrome token. The flat field (`--field-*`)
+sits on the world's ground. `APP_CONFIG.themeColor` and
+`backgroundColor` are the ground, so the launch screen and the browser's
+bar match; the status bar asks for dark words (`default`). How an iOS Home
+Screen app paints that bar has not been checked on a device.
+
 Two contracts keep the system real rather than aspirational: no `font-family`
 literal outside layer 1, and no `font-size` outside the type scale. Genuine
 exceptions are marked inline with `/* fs-exempt: reason */`. A third keeps the
@@ -428,7 +454,8 @@ light carrying the Blender world's gradient (warm ground, pale sky) at
 π × its strength, which is what image-based light would give a surface.
 Since 0.9.0 it is daylight: a stronger, warmer sun, a brighter sky and softer
 shadows over a bright city on a warm ivory ground (the world's own
-background, `.world-view`), while the page's chrome stays dark.
+background, `.world-view`); since 0.10.0 the page's chrome is the same warm ivory
+(see **The chrome and the world** below).
 What is kept is Blender's split of the faces, not its angles: the face that
 fills the view is lit, the narrow face to its right is in shade, cast
 shadows run to screen-right. Tone mapping is Khronos PBR Neutral, which

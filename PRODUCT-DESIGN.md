@@ -297,8 +297,7 @@ The product's own rules, on top of everything above.
   Reduced Motion. Nothing claims live agent execution.
 - **A bright, warm miniature city.** Daylight: a warm sun with soft
   shadows over warm stone paving, a charcoal road, one jade canal and round
-  trees, on a warm ivory ground, while the app's chrome stays dark — a
-  control surface with one bright window onto the city. Each place is set
+  trees, on a warm ivory ground. Each place is set
   into its own block as a raised terrace: its platform's dark plinth under
   the paving, its identity band a coloured course at the curb, its status
   rim the block's lit inner edge. The city between is controlled
@@ -308,6 +307,17 @@ The product's own rules, on top of everything above.
   stands in front of a place. Every street, paving and water colour stays at
   least ΔE 20 from every status colour. *(enforced)* Lighting is a
   mobile-friendly approximation, not ray-traced global illumination.
+
+- **One warm ivory interface around the city.** Since 0.10.0 the app's
+  chrome is the city's own family: a warm ivory ground close to the
+  world's sky, lighter cream surfaces, warm stone for what is sunken and
+  for dividers, deep charcoal words, readable warm grey for what is
+  secondary, and one restrained deep blue for what you can act on. Shadows
+  are soft and shallow and only where something is raised. No stark white,
+  no muddy beige, no pastel words, no heavy outlines, no decorative
+  gradients. Status keeps its colours, but on cream a status's words and
+  marks wear a deeper ink of its own hue, readable at 4.5:1 or better; the
+  city's beacons and rims keep the bright hue. *(enforced)*
 
 ## Real-device QA before shipping
 

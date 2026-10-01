@@ -28,15 +28,15 @@
  */
 
 /* APP-CACHE-BEGIN */
-const CACHE_NAME = 'mission-control-v0.9.7-80166cbb8619';
+const CACHE_NAME = 'mission-control-v0.10.0-088cef50b1b1';
 /* APP-CACHE-END */
 
 /* APP-FILES-BEGIN */
 const RELEASE = {
-  id: 'b0051273b1d1',
+  id: '6ab9d81956f6',
   files: [
-    ['./index.html', 'a53237bb7046ea3aa743d0348120b94093ae63de2d5973033e60aa2be3d77d28', 253630],
-    ['./manifest.webmanifest', '774e9d6751d74a9ae1e205dcfd4c3ff4e602d58bb2ad7ca749d1b9f4328efe42', 583],
+    ['./index.html', '5ce1bc6d61aed2208549d498ab4e6164583076f88256e101eed3e8cef5836458', 256728],
+    ['./manifest.webmanifest', '4346c78c46c1977592bcbce8e7f17446b971fdf93d020339c14430fb63a0d3ef', 583],
     ['./icon-192.png', '0158e8011a048dd9d51da60afed6ccae8a9d66932e9f424b6e2c15e6e2eb00d1', 20289],
     ['./icon-512.png', '04ec5545111e900e3b2bc584c9d7fd33f126f0d2d4a4464c8e627b467048a31d', 86533],
     ['./release/capysushi-diorama.5e636e127ee4.glb', '5e636e127ee4642568ed4ca26a2f0faee3c434cb93ecb25ac698c71a0d21e81e', 1011368],

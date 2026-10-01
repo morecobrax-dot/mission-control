@@ -1400,8 +1400,10 @@ function testStatusModel(){
   T('and nothing else', Object.keys(c.SIGNALS).sort().join() === keys.slice().sort().join());
   T('every shape is different, so colour is never the only difference',
     new Set(keys.map(k => c.SIGNALS[k].icon)).size === keys.length);
-  T('every one has its own hue class', keys.every(k =>
-    new RegExp('\\.sig-' + k + '\\{ --sig: var\\(--sig-[a-z]+\\); \\}').test(css())));
+  T('every one has its own hue class, which sets its hue and the ink its words wear on the app\'s surfaces', keys.every(k => {
+    const m = new RegExp('\\.sig-' + k + '\\{ --sig: var\\(--sig-([a-z]+)\\); --sig-text: var\\(--status-text-([a-z]+)\\); \\}').exec(css());
+    return !!m && m[1] === m[2];
+  }));
   T('the hues are tokens in the domain layer', /4 · DOMAIN[\s\S]*--sig-unrecorded: #/.test(css()));
   T('"Needs update" is neither a status nor an attention kind',
     c.PROJECT_STATUSES.indexOf('unrecorded') === -1 && c.ATTENTION_KINDS.indexOf('unrecorded') === -1);
@@ -1966,6 +1968,41 @@ function testFieldSeam(){
   });
   T('every ground is dark, so a platform never glows with its identity',
     Object.keys(c.LANDMARKS).every(t => lab(hex('terrain-' + t))[0] < 30));
+
+  /* 0.10.0 turned the chrome warm ivory. The status hues were chosen to
+     glow on a dark page and to light the city; as words on cream most fall
+     under 2:1 (QA's amber is 1.9). So the chrome's words and marks wear an
+     ink per status, and the world keeps lighting with the hue. */
+  sub('the warm ivory chrome: every word readable, and the city never recoloured by it');
+  const rgbOf = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const lum = h => { const v = rgbOf(h).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const tint12 = (hue, over) => '#' + rgbOf(hue).map((v, i) => Math.round(v * 0.12 + rgbOf(over)[i] * 0.88).toString(16).padStart(2, '0')).join('');
+  const grounds = ['brand-ground', 'brand-surface', 'brand-surface-raised', 'brand-surface-sunken'].map(hex);
+  const worstOn = (fg, list) => Math.min.apply(null, list.map(g => ratio(fg, g)));
+  const words = ['text', 'text-dim', 'text-faint', 'brand-accent', 'success', 'warning', 'danger'];
+  T('every word the chrome writes is at least 4.5:1 on every surface it sits on, the sunken one included',
+    grounds.every(Boolean) && words.every(w => hex(w) && worstOn(hex(w), grounds) >= 4.5),
+    words.map(w => w + ' ' + (hex(w) ? worstOn(hex(w), grounds).toFixed(2) : 'missing')).join(', '));
+  const inks = sigs.map(s => s.replace('sig-', '')).map(k => [k, hex('status-text-' + k), hex('sig-' + k)]);
+  T('every status has an ink that reads at least 4.5:1 on every surface and on its own tint',
+    inks.length === 9 && inks.every(([k, ink, hue]) => ink && worstOn(ink, grounds.concat(grounds.map(g => tint12(hue, g)))) >= 4.5),
+    inks.map(([k, ink, hue]) => k + ' ' + (ink ? worstOn(ink, grounds.concat(grounds.map(g => tint12(hue, g)))).toFixed(2) : 'missing')).join(', '));
+  T('the inks stay apart: no two statuses\' words look alike (ΔE 12 or more), and words and shapes still say which',
+    inks.every(([a, ia], i) => inks.slice(i + 1).every(([b, ib]) => dE(ia, ib) >= 12)));
+  T('a field\'s and a switch\'s edge, and the focus ring, are at least 3:1 on every surface; words on the accent at least 4.5:1',
+    worstOn(hex('border-control'), grounds) >= 3 && worstOn(hex('brand-accent'), grounds.concat([hex('world-sky-bottom')])) >= 3 &&
+    worstOn(hex('accent-contrast'), [hex('brand-accent'), hex('brand-accent-deep')]) >= 4.5 &&
+    /input\[type="text"\][^{]*\{[^}]*border: 1px solid var\(--border-control\)/.test(css()) &&
+    /\.toggle\{[^}]*border: 1px solid var\(--border-control\)/.test(css()) && /\*:focus-visible\{ outline: 2px solid var\(--accent\)/.test(css()));
+  T('the chrome never writes in a raw status hue: its words, marks and stripes wear the ink',
+    !/(^|[;{\s])color:\s*var\(--sig\)/m.test(css()) && !/border-left: \d+px solid var\(--sig\)/.test(css()) && !/color: var\(--sig-(?!text)[a-z]+\)/.test(css()));
+  const r3src = require('fs').readFileSync(require('path').join(H.ROOT, 'field/render3d.js'), 'utf8') + require('fs').readFileSync(require('path').join(H.ROOT, 'field/world.js'), 'utf8');
+  T('the world reads no chrome token: no ink, ground, surface, text, accent or border, so retheming the app cannot recolour the city',
+    !/--sig-text|--status-text|'--(bg|surface[a-z-]*|text[a-z-]*|accent[a-z-]*|border[a-z-]*|brand-[a-z-]+|scrim|shadow[a-z-]*)'/.test(r3src) && /rawToken\(t\.button, '--sig'\)/.test(r3src));
+  T('the page, the launch screen and the browser chrome are the app\'s ground, and the status bar asks for dark words',
+    hex('brand-ground') === c.APP_CONFIG.themeColor.toUpperCase() && c.APP_CONFIG.backgroundColor === c.APP_CONFIG.themeColor &&
+    /<meta name="apple-mobile-web-app-status-bar-style" content="default">/.test(H.readApp()));
 
   sub('light belongs to the place; the beacon to the state');
   const lit = c.platformSvg({ id: 'x', name: 'x', theme: 'track', status: 'building', signal: 'building', attention: [],

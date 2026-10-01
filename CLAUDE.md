@@ -335,7 +335,8 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     or light, preserve fallback and dispose the shadow target with other
     resources. Since 0.9.0 it is daylight over a bright city on a warm ivory
     ground (brighter, warmer, softer; the lit face still gets over three
-    times the shade face's light); the page's chrome stays dark. Every city
+    times the shade face's light); since 0.10.0 the page's chrome is warm
+    ivory too (rule 61). Every city
     surface colour stays at least ΔE 20 from every status hue (contract 30).
 53. **Blender owns an authored place; the app drives it.** A look with a GLB
     in `ASSETS` is drawn from it: never rebuild or retouch its geometry or
@@ -442,3 +443,13 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     navigation suite and the touch pan-and-tap tour green on fitting and
     panning worlds; a feature that only needs the world draws through the
     field seam and leaves navigation as it is.
+61. **The chrome is warm ivory; the world keeps its own tokens.** The
+    app's chrome uses layers 1 to 3 and the status inks `--status-text-*`;
+    the world uses `--sig-*`, `--tint-*`, `--terrain-*`, `--mat-*`,
+    `--city-*`, `--light-*` and the rest of its own, and `render3d.js` reads
+    no chrome token. A `.sig-*` class sets both the hue (`--sig`, which
+    lights the city) and the ink (`--sig-text`, which the chrome writes
+    in); never write a status's word in the raw hue, and never darken a
+    `--sig-*` to make text readable. Every word token and every ink stays
+    at least 4.5:1 on every surface and on its own tint, a control's edge
+    and the focus ring at least 3:1. No second theme. Contract 24.

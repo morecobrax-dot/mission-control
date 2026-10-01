@@ -8,11 +8,15 @@
 <title>Mission Control</title>
 <meta name="description" content="A personal command center for software projects.">
 <meta name="apple-mobile-web-app-title" content="Mission Ctrl">
-<meta name="theme-color" content="#0B0F16">
+<meta name="theme-color" content="#F3EEE4">
 <!-- APP-META-END -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- 0.10.0: a cream page. `black-translucent` draws the status bar's
+     words in white over the page, which on cream cannot be read; `default`
+     asks for dark words. How a Home Screen app on iOS paints that bar has
+     not been seen on a device yet. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
@@ -41,19 +45,26 @@
   --font-display: var(--font-ui);
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
-  --brand-accent: #4CC2FF;
-  --brand-accent-deep: #2E6BFF;
+  /* A restrained deep blue: it reads on cream (6.2:1 on --surface) and
+     the cream reads on it, so one accent serves a link, a ring and a
+     filled button. */
+  --brand-accent: #246480;
+  --brand-accent-deep: #1D5670;
 
   /* The ground and the surfaces that sit on it. These are literal values,
      not computed from --brand-ground, because the steps between them were
      chosen for contrast rather than for arithmetic. Retheming means editing
      this ramp — five values, all here. Changing only the ground and leaving
-     the ramp behind is what makes a rebrand look half-finished. */
-  --brand-ground: #0B0F16;
-  --brand-surface: #121824;
-  --brand-surface-raised: #1A2230;
-  --brand-surface-sunken: #0A0E14;
-  --brand-border: #2A3547;
+     the ramp behind is what makes a rebrand look half-finished.
+     Warm ivory (0.10.0), the family of the city's own ground: the page
+     is ΔE 1 from the world's sky, so the city sits in the app rather than
+     in a window cut through it. Surfaces are a little lighter cream, the
+     sunken one warm stone. Never stark white. */
+  --brand-ground: #F3EEE4;
+  --brand-surface: #FBF8F1;
+  --brand-surface-raised: #FFFCF6;
+  --brand-surface-sunken: #EAE3D7;
+  --brand-border: #D6CDBE;
 
   /* ---- 2 · SEMANTIC --------------------------------------------
      Roles, not colours. Components only ever reference these, so a
@@ -63,27 +74,32 @@
   --surface-raised: var(--brand-surface-raised);
   --surface-sunken: var(--brand-surface-sunken);
   --border: var(--brand-border);
-  --border-quiet: rgba(42,53,71,0.55);
-  --edge-hi: rgba(238,241,245,0.05);
+  --border-quiet: rgba(110,94,72,0.16);
+  /* The edge that identifies a control (a field, a switch): at least 3:1
+     on every surface it sits on, where --border is only a divider. */
+  --border-control: #857B6C;
+  --edge-hi: rgba(255,255,255,0.55);
+  /* Behind a sheet: the page dimmed, not blacked out. */
+  --scrim: rgba(41,45,48,0.36);
 
-  --text: #EEF1F5;
-  --text-dim: #9AA6B8;
-  /* Measured at ~4.1:1 on --surface. Recessive to --text-dim, still
-     comfortably readable at micro sizes. */
-  --text-faint: #7A8598;
+  /* Each at least 4.5:1 on every surface, the sunken one included
+     (measured: 10.9, 5.5 and 4.6 there, more on the rest). */
+  --text: #292D30;
+  --text-dim: #5B5952;
+  --text-faint: #68645C;
 
   --accent: var(--brand-accent);
   --accent-deep: var(--brand-accent-deep);
-  --accent-soft: rgba(76,194,255,0.12);
+  --accent-soft: rgba(36,100,128,0.10);
   /* Text drawn ON a filled accent surface. */
-  --accent-contrast: #06121F;
+  --accent-contrast: #FBF8F1;
 
-  --success: #4B9C81;
-  --success-soft: rgba(75,156,129,0.12);
-  --warning: #BD9260;
-  --warning-soft: rgba(189,146,96,0.12);
-  --danger: #E5675F;
-  --danger-soft: rgba(229,103,95,0.12);
+  --success: #2B7150;
+  --success-soft: rgba(43,113,80,0.10);
+  --warning: #875A12;
+  --warning-soft: rgba(135,90,18,0.10);
+  --danger: #B0342B;
+  --danger-soft: rgba(176,52,43,0.08);
 
   --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-deep));
 
@@ -115,10 +131,12 @@
   --radius-xl: 16px;
   --radius-pill: 999px;
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.20);
-  --shadow-md: 0 3px 10px rgba(0,0,0,0.24);
-  --shadow-lg: 0 10px 28px rgba(0,0,0,0.38);
-  --shadow-accent: 0 2px 12px rgba(76,194,255,0.20);
+  /* Soft, shallow and warm, and only where something is raised. */
+  --shadow-sm: 0 1px 2px rgba(70,54,34,0.08);
+  --shadow-md: 0 2px 8px rgba(70,54,34,0.12);
+  --shadow-lg: 0 10px 28px rgba(70,54,34,0.16);
+  --shadow-accent: 0 2px 8px rgba(36,100,128,0.22);
+  --shadow-bar: 0 -1px 8px rgba(70,54,34,0.06);
 
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --dur-fast: 0.12s;
@@ -160,13 +178,29 @@
   --sig-blocked: #FF6464;
   /* No recorded state: deliberately the quietest hue in the set. */
   --sig-unrecorded: #8390A3;
+  /* The same statuses as ink on the app's cream surfaces: a word or a
+     mark in a status's colour on a chip, a count, a stripe. Each is the
+     hue's own family darkened to at least 4.5:1 on every surface and on
+     its own 12% tint. Only the app's chrome reads these; the world's
+     beacons, helmets and status rims light with --sig-* above, so text
+     contrast can never recolour the city. A .sig-* class sets both. */
+  --status-text-planning: #3D5882;
+  --status-text-building: #09646E;
+  --status-text-release: #426A0D;
+  --status-text-stable: #1F6A45;
+  --status-text-paused: #61574C;
+  --status-text-qa: #815300;
+  --status-text-decision: #6540B6;
+  --status-text-blocked: #A82A2A;
+  --status-text-unrecorded: #525D6D;
 
-  /* The project field: a quiet floor under platforms built from
-     dark materials, so a project's identity can never be read as
-     its status. Faces are shaded by mixing toward --iso-shade. */
-  --field-floor: #111523;
-  --field-line: rgba(143,163,191,0.07);
-  --field-haze: rgba(107,122,180,0.16);
+  /* The project field: platforms built from dark materials on the
+     world's own warm ground, so a project's identity can never be read
+     as its status. Faces are shaded by mixing toward --iso-shade. It is
+     what shows while the world loads and where it cannot run. */
+  --field-floor: #E7DED0;
+  --field-line: rgba(110,94,72,0.08);
+  --field-haze: rgba(255,251,243,0.7);
   --field-select: rgba(238,241,245,0.85);
   /* Light, not status: the lit lip of every platform and the pool under
      the one in focus. Neutral, so it can never be read as a signal. */
@@ -377,7 +411,7 @@ p{ margin: 0; }
   padding-left: var(--inset-left);
   padding-right: var(--inset-right);
   max-width: var(--layout-max); margin: 0 auto;
-  box-shadow: 0 -4px 12px rgba(0,0,0,0.18);
+  box-shadow: var(--shadow-bar);
 }
 .tab-btn{
   flex: 1; background: none; border: none; cursor: pointer;
@@ -444,7 +478,7 @@ p{ margin: 0; }
 input[type="text"], input[type="number"], input[type="date"], textarea, select{
   width: 100%;
   background: var(--surface-raised); color: var(--text);
-  border: 1px solid var(--border); border-radius: var(--radius-md);
+  border: 1px solid var(--border-control); border-radius: var(--radius-md);
   padding: var(--space-md) var(--space-md);
   /* fs-exempt: iOS Safari zooms the page whenever a focused field is below
      16px and does not zoom back out. Applied once here rather than per
@@ -487,7 +521,7 @@ input.field-error, textarea.field-error{ border-color: var(--danger); box-shadow
 .toggle{
   position: relative; flex-shrink: 0;
   width: 48px; height: 28px; border-radius: var(--radius-pill);
-  background: var(--surface-raised); border: 1px solid var(--border);
+  background: var(--surface-sunken); border: 1px solid var(--border-control);
   cursor: pointer; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 .toggle::after{
@@ -643,7 +677,7 @@ input.field-error, textarea.field-error{ border-color: var(--danger); box-shadow
    ========================================================= */
 .overlay{
   position: fixed; inset: 0; z-index: 60;
-  background: rgba(6,7,9,0.72);
+  background: var(--scrim);
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
   display: none; align-items: flex-end;
   /* A flick that runs out of sheet must stop, not hand itself to the page
@@ -793,15 +827,15 @@ body.scroll-locked{
 
 /* ---- Signals: one class sets the hue for a status or an attention.
    Colour is never alone — every use carries the word and the shape. */
-.sig-planning{ --sig: var(--sig-planning); }
-.sig-building{ --sig: var(--sig-building); }
-.sig-release_ready{ --sig: var(--sig-release); }
-.sig-stable{ --sig: var(--sig-stable); }
-.sig-paused{ --sig: var(--sig-paused); }
-.sig-needs_qa{ --sig: var(--sig-qa); }
-.sig-needs_decision{ --sig: var(--sig-decision); }
-.sig-blocked{ --sig: var(--sig-blocked); }
-.sig-unrecorded{ --sig: var(--sig-unrecorded); }
+.sig-planning{ --sig: var(--sig-planning); --sig-text: var(--status-text-planning); }
+.sig-building{ --sig: var(--sig-building); --sig-text: var(--status-text-building); }
+.sig-release_ready{ --sig: var(--sig-release); --sig-text: var(--status-text-release); }
+.sig-stable{ --sig: var(--sig-stable); --sig-text: var(--status-text-stable); }
+.sig-paused{ --sig: var(--sig-paused); --sig-text: var(--status-text-paused); }
+.sig-needs_qa{ --sig: var(--sig-qa); --sig-text: var(--status-text-qa); }
+.sig-needs_decision{ --sig: var(--sig-decision); --sig-text: var(--status-text-decision); }
+.sig-blocked{ --sig: var(--sig-blocked); --sig-text: var(--status-text-blocked); }
+.sig-unrecorded{ --sig: var(--sig-unrecorded); --sig-text: var(--status-text-unrecorded); }
 
 /* ---- Project identity: the ground and accent a project is drawn in. */
 .theme-generic{ --terrain: var(--terrain-generic); --tint: var(--tint-generic); }
@@ -817,7 +851,7 @@ body.scroll-locked{
   padding: 2px var(--space-sm); border-radius: var(--radius-pill);
   font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
   letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
-  color: var(--sig, var(--text-dim)); background: var(--surface-raised);
+  color: var(--sig-text, var(--text-dim)); background: var(--surface-raised);
   border: 1px solid var(--border);
 }
 .chip svg{ flex-shrink: 0; }
@@ -867,8 +901,8 @@ body.scroll-locked{
   font-family: var(--font-display); font-size: var(--fs-title); font-weight: 700;
   line-height: var(--lh-tight); font-variant-numeric: tabular-nums; color: var(--text);
 }
-.hud-value svg{ color: var(--sig); }
-.hud-item.is-alert .hud-value{ color: var(--sig); }
+.hud-value svg{ color: var(--sig-text); }
+.hud-item.is-alert .hud-value{ color: var(--sig-text); }
 .hud-item.is-zero .hud-value{ color: var(--text-faint); }
 .hud-item.is-zero .hud-value svg{ color: var(--text-faint); }
 .hud-label{
@@ -894,14 +928,14 @@ body.scroll-locked{
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0;
   min-height: var(--touch-min); padding: 0 var(--space-md) 0 var(--space-sm);
   background: var(--surface); color: var(--text); text-align: left; cursor: pointer;
-  border: 1px solid var(--border-quiet); border-left: 2px solid var(--sig); border-radius: var(--radius-md);
+  border: 1px solid var(--border-quiet); border-left: 2px solid var(--sig-text); border-radius: var(--radius-md);
   font-size: var(--fs-support); line-height: var(--lh-tight);
   -webkit-tap-highlight-color: transparent;
 }
 .attn-pill:active{ transform: scale(0.98); }
-.attn-pill .attn-mark{ flex-shrink: 0; display: flex; color: var(--sig); }
+.attn-pill .attn-mark{ flex-shrink: 0; display: flex; color: var(--sig-text); }
 .attn-pill .attn-name{ flex: 0 1 auto; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.attn-pill .attn-why{ flex: 0 1 auto; min-width: 2.5em; color: var(--sig); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attn-pill .attn-why{ flex: 0 1 auto; min-width: 2.5em; color: var(--sig-text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Three or more on a phone: two to a row, so the row stays short, each
    with its name over what it needs so both have the pill's width. What
    still cannot fit ends with an ellipsis; its accessible name and the brief
@@ -922,10 +956,10 @@ body.scroll-locked{
   color: var(--text-faint); font-size: var(--fs-meta); line-height: var(--lh-tight);
 }
 .hub-summary[hidden]{ display: none; }
-.hub-summary svg{ flex-shrink: 0; color: var(--sig-unrecorded); }
+.hub-summary svg{ flex-shrink: 0; color: var(--status-text-unrecorded); }
 /* Only when every state is known and none asks for you. */
 .hub-summary.is-clear{ color: var(--text-dim); }
-.hub-summary.is-clear svg{ color: var(--sig-stable); }
+.hub-summary.is-clear svg{ color: var(--status-text-stable); }
 .hub-summary .sep{ color: var(--border); }
 /* An older record is a date, not a status: no status hue on its clock.
    It is always on screen. The line may take two lines in the height one
@@ -993,13 +1027,13 @@ body.scroll-locked{
 .block.is-selected .block-name{ color: var(--text); }
 .block.is-selected .block-name::after{
   content: ''; display: block; height: 2px; margin: 3px auto 0; width: 60%;
-  border-radius: var(--radius-pill); background: var(--field-select);
+  border-radius: var(--radius-pill); background: var(--accent);
 }
 .block .chip{ padding: 1px 6px; }
 /* Said in words, quietly, and never as a chip: a chip would read as a status. */
 .block-unrecorded{
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: var(--fs-micro); color: var(--sig); white-space: nowrap;
+  font-size: var(--fs-micro); color: var(--sig-text); white-space: nowrap;
 }
 .attn-marker{
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
@@ -1030,7 +1064,9 @@ body.scroll-locked{
 .m-nori{ --c: var(--mat-nori); }
 .m-crate{ --c: var(--mat-crate); }
 .m-signal{ --c: var(--sig); }
-.platform .ground-shadow{ fill: var(--iso-shade); opacity: 0.55; }
+/* A soft shadow on the warm ground; --iso-shade is the world's too, so the
+   flat field softens it here rather than in the token. */
+.platform .ground-shadow{ fill: var(--iso-shade); opacity: 0.18; }
 .platform .select-ring{
   fill: none; stroke: var(--field-select); stroke-width: 0.16;
   stroke-dasharray: 0.7 0.45; stroke-linejoin: round;
@@ -1048,7 +1084,7 @@ body.scroll-locked{
 .platform .beacon-light{ fill: var(--sig); }
 .platform .beacon-glow{ fill: var(--sig); opacity: 0.26; }
 .platform .beacon-halo{ fill: var(--sig); opacity: 0.1; }
-.platform .beacon-core{ fill: var(--text); opacity: 0.8; }
+.platform .beacon-core{ fill: var(--field-select); opacity: 0.8; }
 .block.sig-unrecorded .platform .beacon-light{ fill: var(--field-floor); stroke: var(--sig); stroke-width: 0.14; }
 .platform .w-body{ fill: var(--worker-suit); }
 .platform .w-head{ fill: var(--worker-head); }
@@ -1084,8 +1120,8 @@ body.scroll-locked{
    the flat field in the same box stays drawn and stays the one you can
    touch; the world takes over only once its first frame is on screen. The
    box's height is what the screen has left (fitField() measures it); this
-   is its fallback. The page's chrome stays dark around it: a control
-   surface with one bright window onto the city. */
+   is its fallback. The page around it is the same warm ivory, so the
+   city sits in the app rather than in a window cut through it. */
 .field-box{ position: relative; }
 .project-field{ --world-h: clamp(300px, calc(100dvh - 330px - var(--inset-top) - var(--inset-bottom)), 780px); }
 .project-field.is-world, .project-field.world-loading{ height: var(--world-h); }
@@ -1221,7 +1257,7 @@ html.hub-screen #view-home{ padding-bottom: 0; }
   display: flex; align-items: center; gap: var(--space-sm); width: 100%;
   padding: 0 var(--space-sm) 0 var(--space-md);
   background: var(--surface); color: var(--text); text-align: left; cursor: pointer;
-  border: 1px solid var(--border); border-left: 3px solid var(--sig);
+  border: 1px solid var(--border); border-left: 3px solid var(--sig-text);
   border-radius: var(--radius-md); box-shadow: inset 0 1px 0 var(--edge-hi);
 }
 .focus-name{
@@ -1254,7 +1290,7 @@ html.hub-screen #view-home{ padding-bottom: 0; }
 .detail-row.stacked{ flex-direction: column; align-items: stretch; gap: var(--space-xs); }
 .detail-row.stacked .detail-value{ text-align: left; }
 .brief .notice{ margin-bottom: var(--space-md); }
-.brief .notice-error .notice-mark{ color: var(--sig-blocked); }
+.brief .notice-error .notice-mark{ color: var(--status-text-blocked); }
 .brief-tools[hidden]{ display: none; }
 
 /* ---- Where a project's state comes from ----
@@ -1313,10 +1349,10 @@ html.hub-screen #view-home{ padding-bottom: 0; }
   border: 1px solid var(--border); border-radius: var(--radius-md);
   font-size: var(--fs-support); font-weight: 600;
 }
-.status-option svg{ color: var(--sig); flex-shrink: 0; }
+.status-option svg{ color: var(--sig-text); flex-shrink: 0; }
 .status-option[aria-checked="true"]{
   color: var(--text); background: var(--surface-raised);
-  border-color: var(--sig); box-shadow: inset 0 0 0 1px var(--sig);
+  border-color: var(--sig-text); box-shadow: inset 0 0 0 1px var(--sig-text);
 }
 .status-picker.field-error .status-option{ border-color: var(--danger); }
 .status-picker:focus{ outline: none; }
@@ -1686,8 +1722,8 @@ const APP_CONFIG = {
   name: 'Mission Control',
   shortName: 'Mission Ctrl',
   description: 'A personal command center for software projects.',
-  themeColor: '#0B0F16',
-  backgroundColor: '#0B0F16'
+  themeColor: '#F3EEE4',
+  backgroundColor: '#F3EEE4'
 };
 
 /* APP_ID has to be safe as a storage key prefix, a Cache Storage name and a
@@ -1730,6 +1766,18 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-10-0',
+    version: '0.10.0',
+    title: 'Warm ivory',
+    date: '2026-10-01',
+    summary: 'The whole app now wears the city\'s own warm ivory, with deep charcoal words and a deep blue accent.',
+    improvements: [
+      'Every screen, sheet, form and message is cream rather than dark, so the city sits in the app instead of in a window cut through it',
+      'Status words keep their colours (QA amber, decision purple, blocked red, stable green, building cyan) in deeper shades that stay easy to read on cream',
+      'The city itself, its lights and its places are unchanged'
+    ]
+  },
   {
     id: 'v0-9-7',
     version: '0.9.7',
@@ -3712,7 +3760,7 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = 'b0051273b1d1';
+const APP_RELEASE = '6ab9d81956f6';
 const WORLD_MODULE = './release/render3d.f5e8309467dc.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
