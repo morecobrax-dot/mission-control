@@ -1731,6 +1731,16 @@ function validateAppId(id){
    ========================================================= */
 const APP_UPDATES = [
   {
+    id: 'v0-9-6',
+    version: '0.9.6',
+    title: 'Pan to any name',
+    date: '2026-09-30',
+    summary: 'On the smallest phones, panning the city now brings every project name into view.',
+    improvements: [
+      'A project name no longer stays pinned at the edge of the screen after its place has gone, where it could cover the name you had panned to find'
+    ]
+  },
+  {
     id: 'v0-9-5',
     version: '0.9.5',
     title: 'Every name on a small screen',
@@ -3692,18 +3702,18 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = '9d9d230477f6';
-const WORLD_MODULE = './release/render3d.1b8b176bff70.js';
+const APP_RELEASE = '1cad4c908f0b';
+const WORLD_MODULE = './release/render3d.c1f261ca0e18.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
   './release/dayplan-diorama.c60794997357.glb',
   './release/golden-diorama.e0b21a1c4dcc.glb',
-  './release/render3d.1b8b176bff70.js',
+  './release/render3d.c1f261ca0e18.js',
   './release/savings-diorama.9099b2690506.glb',
   './release/spacek-diorama.7b9d1f6a6052.glb',
   './release/street-life.e0a6f770609c.glb',
   './release/three.min.0c9283a1079c.js',
-  './release/world.b4213b399ebc.js'];
+  './release/world.588132f55909.js'];
 /* APP-RELEASE-END */
 
 function fieldScene(views){

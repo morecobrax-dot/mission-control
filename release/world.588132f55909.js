@@ -38,6 +38,7 @@ export const WORLD = {
   minPlacePx: 44,                // with every name readable on the whole city it fits down to this (a fingertip); smaller pans
   labelPx: 36,                   // a label's room in front of its district, in px, until the labels are measured
   edgePx: 12,                    // breathing room at the viewport's edges, in px
+  labelSlide: 0.1,               // a label slides in from the edge at most this share of its width: its middle stays over its place
   /* Every camera move is one flight (planFlight): longer for a longer way,
      leaving at the speed the camera already has, a little rise on a long
      hop, at rest on arrival. Instant under Reduce Motion. */
@@ -580,10 +581,19 @@ export function nextPixelRatio(current){
    focused and selected labels, what needs you, nearer rows (drawn in
    front), registry order; a label that would overlap one already placed,
    or anything the view keeps clear (the Overview button), is hidden, and a
-   hidden or off-screen label takes no taps. */
+   hidden or off-screen label takes no taps. At the view's edge a label
+   slides in to be read only a little (WORLD.labelSlide of its width), so
+   its middle stays over its own place, and a place leaving the view takes
+   its name with it. (0.9.5 pinned it at the edge however far its place
+   had gone, and there it hid the name of the place a pan had come to
+   show: on a 320px phone, Capy Sushi's in four views of ten with its
+   place in the middle. Letting it slide while its place's front was
+   still under it was not enough: a label hanging wholly to one side of a
+   place half off the edge still covered Capy Sushi's.) */
 export function labelSpot(anchor, w, h, under, viewW){
-  const k = Math.min(1, Math.max(0, under)), m = WORLD.edgePx;
-  const x = Math.min(Math.max(anchor.x - w / 2, m), Math.max(m, viewW - m - w));
+  const k = Math.min(1, Math.max(0, under)), m = WORLD.edgePx, slide = w * WORLD.labelSlide, centred = anchor.x - w / 2;
+  const inView = Math.min(Math.max(centred, m), Math.max(m, viewW - m - w));
+  const x = Math.min(Math.max(inView, centred - slide), centred + slide);
   return { x: Math.round(x), y: Math.round(anchor.y + LABEL_GAP * k - (h + LABEL_GAP) * (1 - k)) };
 }
 /* Each rect is { id, x, y, w, h, row, attn, off } in px (off: its place

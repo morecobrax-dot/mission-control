@@ -3382,6 +3382,48 @@ async function testWorld(){
   const shortPhone = W.chooseLayout(6, 341, 335, themes6.map(W.placeHeight));
   T('a short phone shows all six blocks instead of silently panning past the bank', shortPhone.fits && shortPhone.cols === 2);
 
+  /* 0.9.5 on a 320x568 phone (a 288x280 world that pans): labelSpot kept
+     a label in the view however far its place had gone, so a left-hand
+     place off the edge left its name pinned there, over the place the pan
+     had come to show. With Capy Sushi in the middle of the view its name
+     was hidden in 4 frames of 10, and so were DayPlan's and Personal
+     Savings'. Every frame a pan may rest on, swept, whoever leads (the
+     chosen, the focused, the keyboard's): a readable name has its middle
+     over its own place (WORLD.labelSlide), every name can be brought into
+     view and read, and a place in the middle of the view has its name
+     (only two names each on its own place may still meet). */
+  sub('panning finds every name: none is pinned over another place');
+  const panSweep = (n, w, h, leads) => {
+    const rooms = roomsFor(n), pick = W.chooseLayout(n, w, h, heightsFor(n), rooms), rest = W.panRest(null, W.islandOf(pick.districts)), S = 40;
+    const out = { pans: !pick.fits, frames: 0, astray: 0, unread: [], centred: new Array(n).fill(0), read: new Array(n).fill(0) };
+    leads.forEach((lead, li) => {
+      const seen = new Array(n).fill(false);
+      for(let i = 0; i <= S; i++) for(let j = 0; j <= S; j++){
+        const f = { x: rest.lo.x + (rest.hi.x - rest.lo.x) * i / S, z: rest.lo.z + (rest.hi.z - rest.lo.z) * j / S, d: pick.frame.d };
+        const rects = W.overviewLabelRects(pick.districts, f, w, h, rooms), shown = W.resolveLabels(rects, lead, w, h, []);
+        out.frames++;
+        rects.forEach(r => {
+          const d = pick.districts[r.id], a = W.project(W.labelAnchor(d), f, w, h), c = W.project([d.x, 0, d.z], f, w, h);
+          if(shown[r.id]){ seen[r.id] = true; if(Math.abs(r.x + r.w / 2 - a.x) > r.w * W.WORLD.labelSlide + 0.5) out.astray++; }
+          if(li === 0 && c.x > w * 0.25 && c.x < w * 0.75 && c.y > h * 0.3 && c.y < h * 0.85){ out.centred[r.id]++; if(shown[r.id]) out.read[r.id]++; }
+        });
+      }
+      seen.forEach((v, k) => { if(!v) out.unread.push(JSON.stringify(lead) + ':' + k); });
+    });
+    out.worst = Math.min.apply(null, out.centred.map((c, k) => c ? out.read[k] / c : 1));
+    return out;
+  };
+  const everyLead = n => [[]].concat(Array.from({ length: n }, (_, k) => [k]));
+  const se = panSweep(6, 288, 280, everyLead(6));
+  T('on the 320px phone every readable name stands over its own place, never pinned at the edge, whoever leads',
+    se.pans && se.frames > 10000 && se.astray === 0, se.astray + ' of ' + se.frames);
+  T('on the 320px phone every name can be panned to and read, whoever leads', se.unread.length === 0, se.unread.join(' '));
+  T('on the 320px phone a place in the middle of the view has its name readable (0.9.5: under six times in ten for the right-hand places)',
+    se.worst >= 0.97, se.read.map((r, k) => r + '/' + se.centred[k]).join(' '));
+  const bigger = [[6, 288, 292], [8, 288, 280], [12, 343, 296], [24, 358, 521], [50, 812, 259]].map(([n, w, h]) => Object.assign({ n: n, w: w, h: h }, panSweep(n, w, h, [[]])));
+  T('larger registries that pan: every name can be panned to and read, over its own place, and readable in the middle of the view',
+    bigger.every(b => b.pans && !b.astray && !b.unread.length && b.worst >= 0.9), bigger.map(b => b.n + '@' + b.w + 'x' + b.h + ':' + b.astray + '/' + b.unread.length + '/' + b.worst.toFixed(3)).join(' '));
+
   /* Living City 1: one small service truck and two passers-by. What these
      prevent: a vehicle or a person that jumps, slides, jitters, stands for
      a project, or looks like one of its workers. */
@@ -3979,11 +4021,14 @@ async function testWorld(){
     /S\.keep = \{ x: overviewBtn\.offsetLeft - 4,/.test(r3) && /const keepClear = atOverview => atOverview \|\| !S\.keep \? \[\] : \[S\.keep\];/.test(r3));
   /* One rule for every place (world.js labelSpot): on its own place, or its card just in front of it. */
   const anchor = { x: 200, y: 300 }, onIt = W.labelSpot(anchor, 90, 40, 0, 400), before = W.labelSpot(anchor, 90, 40, 1, 400);
-  const halfway = W.labelSpot(anchor, 90, 40, 0.5, 400), edge = W.labelSpot({ x: 5, y: 300 }, 90, 40, 0, 400);
+  const halfway = W.labelSpot(anchor, 90, 40, 0.5, 400), edge = W.labelSpot({ x: 52, y: 300 }, 90, 40, 0, 400);
+  const brink = W.labelSpot({ x: 5, y: 300 }, 90, 40, 0, 400), leftGone = W.labelSpot({ x: -10, y: 300 }, 90, 40, 0, 400), rightGone = W.labelSpot({ x: 410, y: 300 }, 90, 40, 0, 400);
   T('a label stands on its own place, its foot at the front edge; the card of the place in focus stands just in front of it',
     onIt.y + 40 <= anchor.y && onIt.y + 40 >= anchor.y - 6 && before.y >= anchor.y && before.y <= anchor.y + 6 && onIt.x === 155 && before.x === 155);
-  T('between the two it moves continuously, and it is never pushed out of the view', halfway.y > onIt.y && halfway.y < before.y &&
-    edge.x === W.WORLD.edgePx && Number.isFinite(edge.y));
+  T('between the two it moves continuously; at the edge it slides in a little to be read, its middle still over its own place', halfway.y > onIt.y && halfway.y < before.y &&
+    edge.x === W.WORLD.edgePx && W.WORLD.labelSlide > 0 && W.WORLD.labelSlide <= 0.1 && Number.isFinite(edge.y));
+  T('a place half off the edge, or gone from the view, takes its name with it, either side: no label is pinned at the edge',
+    brink.x < 0 && leftGone.x <= -10 && rightGone.x + 90 > 400, [brink.x, leftGone.x, rightGone.x].join());
 
   sub('the card: the place in focus says what it holds, and nothing else offers the brief');
   T('a card is there only while its place is in focus', /if\(changed\('card'\) \|\| changed\('focused'\)\)\{ t\.cardEl\.innerHTML = item\.focused \? item\.card \|\| '' : '';/.test(r3) &&

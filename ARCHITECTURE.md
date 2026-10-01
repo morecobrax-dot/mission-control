@@ -503,11 +503,23 @@ city it fits down to `minPlacePx` (44, a fingertip) rather than the
 geometry-only 68; otherwise the most names readable, then as before. A city
 that pans starts zoomed only as far out as keeps every name in its view
 clear of its neighbours, so at the overview a name is readable or off the
-view, never hidden behind another. Panned, a label whose place is partly
-off the view is clamped into it (`labelSpot`) and can cover a neighbour's:
-on a 320×568 phone (smaller than any verified screen; there the six pan)
-Capy Sushi's name is covered by Space Kindergarten's wherever both are
-partly in view; focus and keyboard reveal still show it. 0.9.4 chose by
+view, never hidden behind another. At the view's edge a label slides in to
+be read only a little (`labelSpot`, `WORLD.labelSlide`: a tenth of its
+width, 0.9.6), so its middle stays over its own place and a place leaving
+the view takes its name with it. 0.9.5 kept it in the view however far its
+place had gone: on a 320×568 phone (a 288×280 world that pans) a left-hand
+place off the edge left its name pinned there, over the place a pan had
+come to show, and with Capy Sushi, DayPlan or Personal Savings in the
+middle of the view their names were hidden about four frames in ten.
+Letting a label slide while its place's front was still under it halved
+that but not enough: a label hanging wholly to one side of a place half
+off the edge still covered Capy Sushi's. Contract 30 sweeps every frame a
+pan may rest on, whoever leads: each readable name has its middle over its
+own place, every name can be panned to and read, and a place in the
+middle of the view has its name (only two names each standing on its own
+place may still meet, and collision protection hides one). Every fitting
+overview is unchanged; a city that pans may start with an edge place's
+name a pan away rather than slid off its place. 0.9.4 chose by
 geometry alone: on a 375×667 phone with two
 unknown records and two or three attention buttons (a 343×296 world) two
 columns at 66px lost by 2px to three columns whose 100px labels collided,

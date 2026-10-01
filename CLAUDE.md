@@ -413,10 +413,27 @@ AUDIT → UNDERSTAND → IMPLEMENT → ADVERSARIAL VERIFY → DIFF AUDIT → SHI
     as the renderer does. The whole city with every name readable wins
     (down to a 44px place); a city that pans starts zoomed only as far out
     as keeps every name in its view clear, so at the overview a name is
-    readable or off the view, never hidden behind a neighbour (panned, a
-    label clamped at the view's edge can still cover one; focus and the
-    keyboard always show it). Never widen labels, shrink type or overlap
+    readable or off the view, never hidden behind a neighbour. At the
+    view's edge a label slides in only a little (`labelSpot`,
+    `WORLD.labelSlide`, a tenth of its width), its middle always over its
+    own place: a place leaving the view takes its name with it, so panning
+    brings every name into view and a place in the middle of the view has
+    its name (0.9.5 pinned a gone place's name at the edge, over the place
+    a 320px pan had come to show; sliding while its place's front was still
+    under it was not enough). Never widen labels, shrink type or overlap
     them to fit. 0.9.4 chose by geometry and showed four of six names on a
     375x667 phone. Navigation QA runs on controlled repository-status
     fixtures, never the live portfolio (that is its own smoke test), and a
-    constrained-world test never assumes the city fits. Contract 30.
+    constrained-world test never assumes the city fits; it finds each
+    project by touch (pan, tap, brief), not by the keyboard alone.
+    Contract 30.
+60. **The navigation system is protected.** Since 0.9.6 it is verified
+    whole: `chooseLayout` and the overview, `labelSpot`, `labelOff` and
+    `resolveLabels`, the pan (`groundAt`, `panRest`, the give), the one
+    flight (`planFlight`), focus and choice (`focusProject`, `leaveFocus`,
+    `selectedId`, `focusedId`), the swipe, the keyboard reveal, Overview
+    and touch ownership (rules 56-59). Change any of it only under a brief
+    that names it, and keep contracts 23, 24 and 30, the fixture-based
+    navigation suite and the touch pan-and-tap tour green on fitting and
+    panning worlds; a feature that only needs the world draws through the
+    field seam and leaves navigation as it is.

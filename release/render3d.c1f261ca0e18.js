@@ -39,7 +39,7 @@ import {
   lifeActive, lifeSpeed, lifePose, lifeOrigin, PALETTE, environmentFor, STATIONS, HAND_PROPS,
   placeHeight, cityPlan, cityParts, TRUCK_PARTS, DRIVE, WALK, STREET, driveAt, walkerAt,
   assetFor, assetFloor, assetHeight, assetCrew, ASSET_STATUS_MATERIAL, ASSET_LIFE_CLIP, CREW_JOIN, LIGHT, lightDirection
-} from './world.b4213b399ebc.js';
+} from './world.588132f55909.js';
 
 export const REVISION = THREE.REVISION;
 
