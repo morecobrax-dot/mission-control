@@ -263,8 +263,23 @@ The product's own rules, on top of everything above.
   switching is a visible choice in the brief, and it keeps both.
 - **A source is provenance, not a status.** A connected project says "From
   repository · updated 3 days ago", quietly and with no signal colour, and
-  its brief says which file it came from. A failed check is said in words
-  beside what is still shown.
+  its brief says which file it came from, under Source details. A failed
+  check is said in words beside what is still shown, never only inside
+  Source details.
+- **The brief answers "what do I do next?"** It reads in the order you
+  need it:
+  - the project and its chips (the status and what it needs; no Status row
+    repeats them);
+  - the blocker, when one is written;
+  - the next action, the strongest words on the page;
+  - the current work;
+  - the version, the phase and when the status was written, with "older"
+    beside that date;
+  - where it comes from, in one line;
+  - then the controls.
+  Every text is given whole. With no next action recorded it says "Next
+  action not recorded." and nothing is made up from a status or a flag.
+  The phone page and the docked panel are one brief. *(enforced)*
 - **Two times, never confused.** "Updated" is when the project's status was
   written; "Checked" is when this device last asked. Asking again never
   makes old news look new.

@@ -277,6 +277,25 @@ than the snapshot kept.
 when it last asked. The screen says "updated" only of the first, so asking
 again never makes old news look new.
 
+**The Quick Brief** (`briefHtml`, one renderer for the phone page and the
+docked panel; 0.10.1). Its order:
+1. name, purpose and chips;
+2. the blocker;
+3. `briefWorkHtml` — the next action (the largest type after the name), then
+   the current work;
+4. the docked panel's launchers (the phone keeps its bottom bar);
+5. `.brief-meta` — Version, Phase and Last updated, with `agedLineHtml`;
+6. `sourceHtml`;
+7. the management rows.
+
+`sourceHtml` gives one visible line (whose state, and for a repository's,
+how old) and any failed-check warning beside it. A native
+`<details class="source-details">` holds the file's path, the device's
+last check and what is kept. `sourceDetailsOpen`, this visit's memory,
+never stored, keeps the disclosure as the person left it when the brief
+redraws. No Status row: the chips say it. An unrecorded next action is
+"Next action not recorded."
+
 **Status age** (0.9.3, `statusAgeOf`). How old the record a project shows
 is: the effective record's own `updatedAt` — the repository's, or the one
 you recorded — never `fetchedAt` or `checkedAt`. Elapsed time between two

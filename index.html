@@ -1284,11 +1284,23 @@ html.hub-screen #view-home{ padding-bottom: 0; }
 .brief-purpose{ margin-top: 2px; color: var(--text-dim); font-size: var(--fs-support); }
 .brief-chips{ margin-bottom: var(--space-md); }
 .brief-note{ margin-bottom: var(--space-md); color: var(--text-faint); font-size: var(--fs-meta); }
-.brief-rows{ margin: var(--space-sm) 0 var(--space-lg); }
 .detail-value.is-unknown{ color: var(--text-faint); }
-/* Sentences read as a paragraph under their label, not squeezed to the right. */
-.detail-row.stacked{ flex-direction: column; align-items: stretch; gap: var(--space-xs); }
-.detail-row.stacked .detail-value{ text-align: left; }
+/* The work: the next action is the strongest text on the page, by size,
+   weight and the room around it rather than a box; the current work reads
+   under it. Both in full, wrapping, never cut. */
+.brief-work{ display: flex; flex-direction: column; gap: var(--space-lg); margin: var(--space-lg) 0 var(--space-xl); }
+.brief-label{
+  margin: 0 0 var(--space-xs);
+  font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint);
+}
+.brief-next-text{ font-size: var(--fs-title); font-weight: 600; line-height: var(--lh-body); color: var(--text); overflow-wrap: anywhere; white-space: pre-line; }
+.brief-current-text{ font-size: var(--fs-body); color: var(--text); overflow-wrap: anywhere; white-space: pre-line; }
+.brief-work .is-unknown{ font-size: var(--fs-support); font-weight: 400; color: var(--text-faint); }
+/* When it was written, compact, under a quiet rule; older says so beside it. */
+.brief-meta{ margin-bottom: var(--space-md); padding-top: var(--space-xs); border-top: 1px solid var(--border-quiet); }
+.brief-meta .detail-row{ padding: var(--space-xs) 0; border-bottom: none; }
+.brief-meta .source-aged{ margin-top: var(--space-xs); font-size: var(--fs-meta); }
 .brief .notice{ margin-bottom: var(--space-md); }
 .brief .notice-error .notice-mark{ color: var(--status-text-blocked); }
 .brief-tools[hidden]{ display: none; }
@@ -1296,12 +1308,22 @@ html.hub-screen #view-home{ padding-bottom: 0; }
 /* ---- Where a project's state comes from ----
    Quiet by design: a source is provenance, not a status, so it wears no
    signal hue. A failed check is said in words, beside what is still shown. */
-.source-panel{
+.source-summary{
   display: flex; flex-direction: column; gap: var(--space-xs);
-  margin-bottom: var(--space-md); padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--border-quiet); border-radius: var(--radius-md);
-  background: var(--surface-sunken);
-  font-size: var(--fs-meta); color: var(--text-dim);
+  margin-bottom: var(--space-md); font-size: var(--fs-meta); color: var(--text-dim);
+}
+/* Source details: a native disclosure, its summary a full-height target. */
+.source-details summary{
+  display: flex; align-items: center; gap: var(--space-xs); width: max-content; max-width: 100%;
+  min-height: var(--touch-min); cursor: pointer; list-style: none;
+  color: var(--accent); font-size: var(--fs-support); font-weight: 600;
+}
+.source-details summary::-webkit-details-marker{ display: none; }
+.source-details summary svg{ flex-shrink: 0; transition: transform var(--dur-fast) var(--ease); }
+.source-details[open] summary svg{ transform: rotate(90deg); }
+.source-body{
+  display: flex; flex-direction: column; gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); background: var(--surface-sunken);
 }
 .source-line{ display: flex; align-items: center; gap: var(--space-xs); color: var(--text); font-weight: 600; }
 .source-line svg{ flex-shrink: 0; color: var(--text-dim); }
@@ -1766,6 +1788,18 @@ function validateAppId(id){
    history begins at its own 0.1.0.
    ========================================================= */
 const APP_UPDATES = [
+  {
+    id: 'v0-10-1',
+    version: '0.10.1',
+    title: 'What do I do next?',
+    date: '2026-10-02',
+    summary: 'A project\'s brief now leads with what blocks it, its next action and its current work.',
+    improvements: [
+      'The next action is the first and strongest thing after a project\'s name, status and any blocker, followed by the current work',
+      'Version, phase and when the status was written sit together in one compact block, and an older status still says so beside its date',
+      'Where a status comes from is one line; its file, its last check and what is kept are under Source details. A failed check is still said in view'
+    ]
+  },
   {
     id: 'v0-10-0',
     version: '0.10.0',
@@ -3760,7 +3794,7 @@ function watchLayout(){
    sync. APP_RELEASE names this set; a worker reports its own, so the page
    knows when a newer release is ready. */
 /* APP-RELEASE-BEGIN */
-const APP_RELEASE = '6ab9d81956f6';
+const APP_RELEASE = '0be4b01c7c10';
 const WORLD_MODULE = './release/render3d.f5e8309467dc.js';
 const APP_FILES = ['./release/capysushi-diorama.5e636e127ee4.glb',
   './release/dailyverse-diorama.97f674076d4d.glb',
@@ -4368,13 +4402,19 @@ function renderFocusBar(views){
 /* =========================================================
    QUICK BRIEF — one renderer, two places
    ========================================================= */
+/* It reads in the order you need it: what this is and what it needs (the
+   chips say the status, so no Status row repeats them), what blocks it,
+   the next action — the strongest words on the page — then the current
+   work, then when it was written, then where it comes from. A healthy
+   source's explanations live in Source details, so they never push the
+   work down; a warning that bears on the state shown never hides there.
+   (0.10.0 led with the source panel and set Status, Version and Phase
+   above the work: the next action sat 436px down a phone, below the
+   first screen of a short one when a blocker was written.) */
 function briefHtml(v, docked){
-  const rows = [
-    ['Status', v.recorded ? SIGNALS[v.status].label : null],
+  const meta = [
     ['Version', v.version],
     ['Phase', v.phase],
-    ['Current work', v.currentTask, true],
-    ['Next action', v.nextAction, true],
     ['Last updated', v.lastUpdated ? (statusAgeWords(v.lastUpdated, v.age) || 'At an unknown time') : null]
   ];
   return '<article class="brief">' +
@@ -4390,59 +4430,79 @@ function briefHtml(v, docked){
       ? 'No status has arrived from its repository yet. It counts as a project, but not as active or as needing you.'
       : 'No state is recorded for this project yet. It counts as a project, ' +
         'but not as active or as needing you, until you choose Update state.') + '</p>') +
-    sourcePanelHtml(v) +
     (v.blocker ? '<div class="notice notice-error"><span class="notice-mark" aria-hidden="true">' + signalIcon('blocked', 17) +
       '</span><span><strong>Blocked</strong>' + escapeHtml(v.blocker) + '</span></div>' : '') +
+    briefWorkHtml(v) +
     (docked ? (anyTool(v) ? toolsHtml(v, true) : toolsEmptyHtml()) : (anyTool(v) ? '' : toolsEmptyHtml())) +
-    '<div class="brief-rows">' + rows.map(r => briefRowHtml(r[0], r[1], r[2])).join('') + '</div>' +
+    '<div class="brief-meta">' + meta.map(r => briefRowHtml(r[0], r[1])).join('') + agedLineHtml(v) + '</div>' +
+    sourceHtml(v) +
     '<div class="list">' + manageRowsHtml(v) + '</div>' +
   '</article>';
 }
 
-/* Where this project's state comes from, said quietly: a source is
-   provenance, not a status. Everything a repository wrote is escaped text. */
-function sourcePanelHtml(v){
-  /* Three times, never confused: when the record was written (the Last
-     updated row, and this line once it is older), when this device last
-     asked, and — after a check that failed — that the saved copy is shown. */
-  const aged = v.age && v.age.older ? '<p class="source-aged">' + clockIcon(13) + '<span>' + escapeHtml(v.connected
+/* The work, in full: the next action first and largest, then the current
+   work. Unknown is said, never filled in from a status or what it needs. */
+function briefWorkHtml(v){
+  return '<section class="brief-work">' +
+    '<div class="brief-next"><h3 class="brief-label">Next action</h3>' +
+      (v.nextAction ? '<p class="brief-next-text">' + escapeHtml(v.nextAction) + '</p>'
+                    : '<p class="brief-next-text is-unknown">Next action not recorded.</p>') + '</div>' +
+    '<div class="brief-current"><h3 class="brief-label">Current work</h3>' +
+      (v.currentTask ? '<p class="brief-current-text">' + escapeHtml(v.currentTask) + '</p>'
+                     : '<p class="brief-current-text is-unknown">Not recorded</p>') + '</div>' +
+  '</section>';
+}
+
+/* Older is a date, said beside the date: always shown while it is. */
+function agedLineHtml(v){
+  return v.age && v.age.older ? '<p class="source-aged">' + clockIcon(13) + '<span>' + escapeHtml(v.connected
     ? 'Last updated ' + STATUS_OLDER_DAYS + '+ days ago by its repository. A check that finds nothing newer does not change this date.'
     : 'Last updated ' + STATUS_OLDER_DAYS + '+ days ago on this device.') + '</span></p>' : '';
-  if(!v.repo){
-    return '<div class="source-panel"><p class="source-detail">Kept by hand on this device. Its repository ' +
-      'is private, so Mission Control never asks it for anything.</p>' + aged + '</div>';
-  }
-  const e = v.repo.entry;
-  const where = '<code>' + escapeHtml(v.repo.path + '/' + STATUS_FILE) + '</code>';
+}
+
+/* Where this project's state comes from, said quietly: a source is
+   provenance, not a status. One line says whose state is shown and, for a
+   repository's, how old; a check that failed says, beside it, that the
+   saved copy is shown. Everything else — the file's path, when this device
+   last asked, what is kept — is in Source details, a native disclosure
+   (a button to touch and to the keyboard, its state said by the browser)
+   that stays as it was left while the brief redraws. Everything a
+   repository wrote is escaped text. */
+let sourceDetailsOpen = false;
+function sourceHtml(v){
+  const e = v.repo && v.repo.entry;
+  const where = v.repo ? '<code>' + escapeHtml(v.repo.path + '/' + STATUS_FILE) + '</code>' : '';
   const checked = e && e.checkedAt ? 'Checked ' + escapeHtml(ageText(e.checkedAt)) + ' by this device.' : 'Not checked by this device yet.';
   const problem = checkProblemHtml(e);
-  const warn = text => '<p class="source-warn">' + warnIcon(13) + '<span>' + text + '</span></p>';
-  if(v.connected){
-    return '<div class="source-panel">' +
-      '<p class="source-line">' + svg(repoIconPaths(), 14) +
-        escapeHtml(v.recorded ? 'From repository · updated ' + statusAgoText(v.lastUpdated, v.age) : 'From repository') + '</p>' +
-      '<p class="source-detail">Maintained in ' + where + '. ' + checked + '</p>' +
-      aged +
-      (problem ? warn(problem + (e.snapshot ? ' Showing the copy saved on this device, fetched ' + escapeHtml(ageText(e.fetchedAt)) + '.' : '')) : '') +
-      (v.hasManual ? '<p class="source-detail">The state you recorded for it on this device is kept.</p>' : '') +
-    '</div>';
+  const repoMark = svg(repoIconPaths(), 14);
+  const own = v.recorded ? 'Recorded on this device' : 'Nothing recorded on this device';
+  let line, mark = '', warn = problem, details;
+  if(!v.repo){
+    line = 'Kept by hand on this device';
+    details = ['Its repository is private, so Mission Control never asks it for anything.'];
+  } else if(v.connected){
+    mark = repoMark;
+    line = v.recorded ? 'From repository · updated ' + statusAgoText(v.lastUpdated, v.age) : 'From repository';
+    warn = problem && problem + (e.snapshot ? ' Showing the copy saved on this device, fetched ' + escapeHtml(ageText(e.fetchedAt)) + '.' : '');
+    details = ['Maintained in ' + where + '. ' + checked].concat(v.hasManual ? ['The state you recorded for it on this device is kept.'] : []);
+  } else if(e && e.snapshot){
+    line = v.hasManual ? 'Your own state, recorded on this device' : 'Your own state, not recorded yet';
+    details = [escapeHtml('Its repository publishes a status · updated ' + ageText(e.snapshot.updatedAt)) + ', which is kept. Published in ' + where + '. ' + checked];
+  } else if(e && e.outcome === 'missing'){
+    line = own + ' · its repository publishes nothing yet';
+    details = ['Nothing is published at ' + where + ' yet. ' + checked];
+  } else {
+    line = own;
+    details = ['Mission Control reads ' + where + ' once it is published. ' + checked];
   }
-  if(e && e.snapshot){
-    return '<div class="source-panel">' +
-      '<p class="source-line">' + svg(repoIconPaths(), 14) +
-        escapeHtml('Its repository publishes a status · updated ' + ageText(e.snapshot.updatedAt)) + '</p>' +
-      '<p class="source-detail">' + (v.hasManual ? 'Showing the state you recorded on this device.'
-                                                 : 'Set to your own state, which is not recorded yet.') +
-        ' Published in ' + where + '. ' + checked + '</p>' +
-      aged + (problem ? warn(problem) : '') +
-    '</div>';
-  }
-  if(e && e.outcome === 'missing'){
-    return '<div class="source-panel"><p class="source-detail">Nothing is published at ' + where + ' yet. ' +
-      checked + '</p>' + aged + '</div>';
-  }
-  return '<div class="source-panel"><p class="source-detail">Mission Control reads ' + where +
-    ' once it is published. ' + checked + '</p>' + aged + (problem ? warn(problem) : '') + '</div>';
+  return '<div class="source-summary">' +
+    '<p class="source-line">' + mark + '<span>' + escapeHtml(line) + '</span></p>' +
+    (warn ? '<p class="source-warn">' + warnIcon(13) + '<span>' + warn + '</span></p>' : '') +
+    '<details class="source-details"' + (sourceDetailsOpen ? ' open' : '') + ' ontoggle="sourceDetailsOpen = this.open">' +
+      '<summary>' + chevronRight(14) + 'Source details</summary>' +
+      '<div class="source-body">' + details.map(t => '<p class="source-detail">' + t + '</p>').join('') + '</div>' +
+    '</details>' +
+  '</div>';
 }
 
 /* The last check, when it did not get a fresh answer, in words. */
@@ -4511,8 +4571,8 @@ function focusBriefName(){
   if(name && name.offsetParent !== null) try{ name.focus({ preventScroll: true }); }catch(e){}
 }
 
-function briefRowHtml(label, value, stacked){
-  return '<div class="detail-row' + (stacked ? ' stacked' : '') + '"><span class="detail-label">' + escapeHtml(label) + '</span>' +
+function briefRowHtml(label, value){
+  return '<div class="detail-row"><span class="detail-label">' + escapeHtml(label) + '</span>' +
     '<span class="detail-value' + (value ? '' : ' is-unknown') + '">' + (value ? escapeHtml(value) : 'Not recorded') + '</span></div>';
 }
 

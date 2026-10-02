@@ -1729,10 +1729,11 @@ function testHub(){
   T('the brief page opens', d.getElementById('briefOverlay').classList.contains('open'));
   T('its title is the project', d.getElementById('briefTitle').textContent === 'DayPlan');
   const brief = html('briefBody');
-  T('it carries every field the brief asks for',
-    ['Status', 'Version', 'Phase', 'Current work', 'Next action', 'Last updated'].every(l => brief.indexOf('>' + l + '<') !== -1) &&
-    brief.indexOf('Visual daily planner') !== -1);
-  T('every one of them says Not recorded', (brief.match(/is-unknown">Not recorded/g) || []).length === 6);
+  T('it carries every field the brief asks for, and no Status row repeating the chips',
+    ['Next action', 'Current work', 'Version', 'Phase', 'Last updated'].every(l => brief.indexOf('>' + l + '<') !== -1) &&
+    brief.indexOf('Visual daily planner') !== -1 && brief.indexOf('>Status<') === -1);
+  T('every one of them says it is not recorded, the next action in its own words',
+    (brief.match(/is-unknown">Not recorded</g) || []).length === 4 && /is-unknown">Next action not recorded\.</.test(brief));
   T('and it says the project counts as nothing more', /No state is recorded for this project yet/.test(brief));
   T('its chip says Needs update, not a status', /class="chip sig-unrecorded"/.test(brief) &&
     !/class="chip sig-(planning|building|release_ready|stable|paused)"/.test(brief));
@@ -3052,6 +3053,31 @@ function testStatusAge(){
   T('an unreadable time says so, and claims nothing', /At an unknown time/.test(c.briefHtml(v('space-kindergarten'), false)) &&
     !/source-aged/.test(c.briefHtml(v('space-kindergarten'), false)));
 
+  /* 0.10.0 led the brief with the source panel and set Status, Version
+     and Phase above the work: on a phone the next action sat 436px down,
+     and with a blocker written it fell below a short phone's first screen. */
+  sub('the brief: what blocks it and what to do next come first, then when, then where from');
+  const worked = Object.assign({}, v('loop'), { blocker: 'FAKE the art for chapter two is not in', nextAction: 'FAKE record the second chapter, then check it against the pictures',
+    currentTask: 'FAKE the tracing scenes are drawn', attention: ['blocked'] });
+  const wb = c.briefHtml(worked, false), at = s => wb.indexOf(s);
+  const order = [at('class="brief-name"'), at('class="chip-row brief-chips"'), at('class="notice notice-error"'), at('>Next action<'), at('>Current work<'),
+    at('>Version<'), at('>Last updated<'), at('class="source-summary"'), at('<details class="source-details"'), at('<div class="list">')];
+  T('it reads in the order you need it: the project, what it needs, its blocker, the next action, the current work, when it was written, where it comes from, what you can do',
+    order.every((p, i) => p > -1 && (i === 0 || p > order[i - 1])), order.join());
+  T('the next action and the current work are given whole, and the next action is the strongest words on the page',
+    /<p class="brief-next-text">FAKE record the second chapter, then check it against the pictures<\/p>/.test(wb) &&
+    /<p class="brief-current-text">FAKE the tracing scenes are drawn<\/p>/.test(wb) &&
+    /\.brief-next-text\{ font-size: var\(--fs-title\); font-weight: 600;[^}]*overflow-wrap: anywhere;/.test(css()) &&
+    !/\.brief-(next|current)-text\{[^}]*(text-overflow|line-clamp|nowrap)/.test(css()) && /\.brief-current-text\{ font-size: var\(--fs-body\)/.test(css()));
+  const noNext = Object.assign({}, v('loop'), { status: 'building', attention: ['needs_qa'], nextAction: null });
+  T('with no next action recorded it says so, whatever the status and what it needs: nothing is made up to fill it',
+    /<div class="brief-next"><h3 class="brief-label">Next action<\/h3><p class="brief-next-text is-unknown">Next action not recorded\.<\/p><\/div>/.test(c.briefHtml(noNext, false)));
+  T('one renderer for the page and the docked panel', /body\.innerHTML = briefHtml\(v, false\)/.test(c.renderBriefPage.toString()) &&
+    /briefHtml\(v, true\)/.test(c.renderDockedBrief.toString()));
+  T('Source details is a native disclosure: a full-height target for a finger and the keyboard, and it stays as it was left while the brief redraws',
+    /<details class="source-details"[^>]* ontoggle="sourceDetailsOpen = this\.open"><summary>[\s\S]*?Source details<\/summary>/.test(wb) &&
+    /\.source-details summary\{[^}]*min-height: var\(--touch-min\)/.test(css()));
+
   const raw = mockRaw(c);
   raw.answers['capybara-sushi'] = answer(200, statusFile('capybara-sushi', { updatedAt: iso(NOW - 20 * DAY) }));
   const entry = id => (JSON.parse(shared.get(ns + c.KEYS.repoStatus) || '[]').find(r => r.id === id)) || null;
@@ -3072,6 +3098,13 @@ function testStatusAge(){
     T('the brief tells the record\'s time from the device\'s check',
       /From repository · updated 20 days ago</.test(brief) && /Checked just now by this device\./.test(brief) &&
       /Last updated 14\+ days ago by its repository\. A check that finds nothing newer does not change this date\./.test(brief));
+    const inDetails = s => { const d = brief.indexOf('<details class="source-details"'), e = brief.indexOf('</details>', d), p = brief.indexOf(s); return p > d && p < e; };
+    T('a healthy source says one line in view and keeps its path and check time in Source details, below the work',
+      brief.indexOf('From repository · updated 20 days ago') < brief.indexOf('<details class="source-details"') && !inDetails('From repository · updated') &&
+      inDetails('Maintained in <code>') && inDetails('Checked just now by this device.') && brief.indexOf('>Next action<') < brief.indexOf('class="source-summary"'));
+    T('and that it is older is said beside its date, never folded away',
+      !inDetails('Last updated 14+ days ago') && brief.indexOf('class="source-aged"') > brief.indexOf('>Last updated<') &&
+      brief.indexOf('class="source-aged"') < brief.indexOf('class="source-summary"'));
     T('and the toast never calls an old status up to date', /No repository has published a newer status/.test(toasts()) && !/up to date/.test(toasts()));
     c.navigator.onLine = false;
     clock.advance(2 * 60 * 60 * 1000);
@@ -3080,6 +3113,10 @@ function testStatusAge(){
     T('a failed check keeps the age and says the saved copy is shown',
       v('capybara-sushi').age.days === 20 &&
       /The last check was made offline\. Showing the copy saved on this device, fetched 2 hours ago\./.test(c.briefHtml(v('capybara-sushi'), false)));
+    const failed = c.briefHtml(v('capybara-sushi'), false);
+    T('and says it in view, beside the source line, never only inside Source details',
+      failed.indexOf('class="source-warn"') > failed.indexOf('class="source-summary"') &&
+      failed.indexOf('class="source-warn"') < failed.indexOf('<details class="source-details"'));
     c.navigator.onLine = true;
     raw.answers['capybara-sushi'] = answer(200, statusFile('capybara-sushi', { updatedAt: iso(clock.now() - 60 * 1000) }));
     return c.checkProjectNow('capybara-sushi');
